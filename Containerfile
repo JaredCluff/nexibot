@@ -76,15 +76,17 @@ WORKDIR /build/src-tauri
 RUN cargo build --release
 
 # ============================================================================
-# Stage 5: Build the Node.js Anthropic bridge
+# Stage 5: Build the Node.js bridge service
 # ============================================================================
 FROM docker.io/node:20-slim AS bridge-builder
 
 WORKDIR /build/bridge
-COPY anthropic-bridge/package.json anthropic-bridge/package-lock.json* ./
+COPY bridge/package.json bridge/package-lock.json* ./
 RUN npm ci --omit=dev
 
-COPY anthropic-bridge/ .
+COPY bridge/ .
+RUN cd plugins/anthropic && npm ci --omit=dev && cd ../..
+RUN cd plugins/openai && npm ci --omit=dev && cd ../..
 
 # ============================================================================
 # Stage 6: Runtime image (rootless, non-root user)

@@ -1,0 +1,9 @@
+{
+  "name": "nexibot-bridge-anthropic",
+  "version": "1.0.0",
+  "description": "Anthropic Claude OAuth bridge plugin for NexiBot",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.77.0"
+  }
+}

@@ -1,7 +1,7 @@
-//! Anthropic Bridge Service Manager
+//! Bridge Service Manager
 //!
-//! Manages the lifecycle of the Node.js bridge service that enables OAuth token support
-//! by using the official Anthropic TypeScript SDK.
+//! Manages the lifecycle of the Node.js bridge service that provides plugin-based
+//! provider SDK integration (Anthropic OAuth, OpenAI, etc.).
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,14 @@ pub enum BridgeStatus {
     Error(String),
 }
 
+/// Plugin info from health response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginInfo {
+    pub name: String,
+    pub version: String,
+    pub source: String,
+}
+
 /// Bridge service health response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeHealth {
@@ -31,6 +39,7 @@ pub struct BridgeHealth {
     pub service: String,
     pub version: String,
     pub timestamp: String,
+    pub plugins: Option<Vec<PluginInfo>>,
 }
 
 /// Bridge service manager
@@ -76,13 +85,13 @@ impl BridgeManager {
             info!("[BRIDGE] current_exe: {}", exe_path.display());
 
             // 1. Development: exe is at src-tauri/target/{debug,release}/nexibot-tauri
-            //    Bridge is at nexibot/anthropic-bridge (3 levels up from exe)
+            //    Bridge is at nexibot/bridge (3 levels up from exe)
             let mut dev_path = exe_path.clone();
             dev_path.pop(); // Remove exe name
             dev_path.pop(); // Remove debug/release
             dev_path.pop(); // Remove target
             dev_path.pop(); // Remove src-tauri
-            dev_path.push("anthropic-bridge");
+            dev_path.push("bridge");
 
             if dev_path.exists() {
                 info!("[BRIDGE] Found bridge at dev path: {}", dev_path.display());
@@ -96,7 +105,7 @@ impl BridgeManager {
             macos_resources.pop(); // -> Contents/
             macos_resources.push("Resources");
             macos_resources.push("_bridge_bundle");
-            macos_resources.push("anthropic-bridge");
+            macos_resources.push("bridge");
 
             if macos_resources.exists() {
                 info!(
@@ -111,7 +120,7 @@ impl BridgeManager {
             resources_flat.pop();
             resources_flat.pop();
             resources_flat.push("Resources");
-            resources_flat.push("anthropic-bridge");
+            resources_flat.push("bridge");
 
             if resources_flat.exists() {
                 info!(
@@ -122,11 +131,11 @@ impl BridgeManager {
             }
 
             // 4. Windows NSIS install: exe is at AppData/Local/NexiBot/nexibot-tauri.exe
-            //    Bridge is at AppData/Local/NexiBot/_bridge_bundle/anthropic-bridge/
+            //    Bridge is at AppData/Local/NexiBot/_bridge_bundle/bridge/
             let mut windows_nsis = exe_path.clone();
             windows_nsis.pop(); // Remove exe name
             windows_nsis.push("_bridge_bundle");
-            windows_nsis.push("anthropic-bridge");
+            windows_nsis.push("bridge");
 
             info!("[BRIDGE] Checking Windows NSIS path: {}", windows_nsis.display());
             if windows_nsis.exists() {
@@ -140,7 +149,7 @@ impl BridgeManager {
             // 5. Sibling of exe (legacy check)
             let mut sibling_path = exe_path.clone();
             sibling_path.pop();
-            sibling_path.push("anthropic-bridge");
+            sibling_path.push("bridge");
 
             if sibling_path.exists() {
                 info!(
@@ -152,8 +161,8 @@ impl BridgeManager {
         }
 
         // Fallback to current directory
-        warn!("[BRIDGE] Could not find anthropic-bridge in any expected location, falling back to CWD");
-        PathBuf::from("anthropic-bridge")
+        warn!("[BRIDGE] Could not find bridge in any expected location, falling back to CWD");
+        PathBuf::from("bridge")
     }
 
     /// Get current bridge URL
@@ -263,8 +272,17 @@ impl BridgeManager {
             anyhow::bail!("Bridge server.js not found at: {}", server_js.display());
         }
 
+        // Determine external plugins directory
+        let plugins_dir = std::env::var("BRIDGE_PLUGINS_DIR").unwrap_or_else(|_| {
+            let mut default_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+            default_dir.push("nexibot");
+            default_dir.push("bridge-plugins");
+            default_dir.to_string_lossy().to_string()
+        });
+
         let child = hidden_command("node")
             .arg("server.js")
+            .env("BRIDGE_PLUGINS_DIR", &plugins_dir)
             .current_dir(&self.bridge_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())

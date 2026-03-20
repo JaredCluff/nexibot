@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Desktop App (NexiBot / Tauri)
 ```bash
 cd ui && npm install && cd ..                  # Install UI dependencies (required first time)
-cd anthropic-bridge && npm install && cd ..    # Install bridge dependencies (required first time)
+cd bridge && npm install && cd ..              # Install bridge core dependencies (required first time)
+cd bridge/plugins/anthropic && npm install && cd ../../..  # Install Anthropic plugin deps
+cd bridge/plugins/openai && npm install && cd ../../..     # Install OpenAI plugin deps
 cargo tauri dev                                # Development mode with hot reload
 cargo tauri build                              # Production build (output in src-tauri/target/release/bundle/)
 cargo tauri build --target aarch64-apple-darwin  # Build for specific target
@@ -37,11 +39,12 @@ cd ui && npm run dev            # Run UI dev server standalone
 cd ui && npm run build          # Build UI for production
 ```
 
-### Anthropic Bridge
+### Bridge Service
 ```bash
-cd anthropic-bridge && npm start   # Start bridge service (port 18790)
-cd anthropic-bridge && npm run dev # Development mode with auto-restart
+cd bridge && npm start             # Start bridge service (port 18790)
+cd bridge && npm run dev           # Development mode with auto-restart
 BRIDGE_PORT=9000 npm start         # Custom port
+./bridge/start-bridge.sh           # Auto-installs all deps and starts
 ```
 
 ## Architecture
@@ -79,13 +82,15 @@ The root `Cargo.toml` is workspace-only (no `[package]` section).
 - `model_router.rs` - Dynamic model selection based on config and fallback logic
 - `system_prompt.rs` - System prompt management per provider
 
-### Anthropic Bridge (`anthropic-bridge/`)
-Node.js service bridging NexiBot to the Anthropic TypeScript SDK for OAuth token support.
+### Bridge Service (`bridge/`)
+Plugin-based Node.js bridge service for provider SDK integration.
 - Listens on `http://127.0.0.1:18790`
-- Uses `@anthropic-ai/sdk` v0.77+ with `authToken` for OAuth
-- Also proxies OpenAI models via `openai` SDK
-- DuckDuckGo search proxy (avoids bot detection with browser-like TLS fingerprint)
-- Endpoints: `/health`, `/api/models`, `/api/openai/models`, `/api/messages/stream`, `/api/messages`, `/api/openai/messages/stream`, `/api/openai/messages`, `/api/search`
+- Plugin system: discovers and loads plugins from `bridge/plugins/` (built-in) and `BRIDGE_PLUGINS_DIR` (external)
+- Core: `server.js` (plugin loader), `lib/normalize.js`, `lib/search.js`, `lib/utils.js`
+- Anthropic plugin (`plugins/anthropic/`): OAuth support via `@anthropic-ai/sdk` with `authToken`, Claude Code identity injection, tool name casing
+- OpenAI plugin (`plugins/openai/`): OpenAI SDK proxy with response normalization to Anthropic format
+- DuckDuckGo search proxy (core, avoids bot detection with browser-like TLS fingerprint)
+- Endpoints: `/health`, `/api/search`, `/api/models`, `/api/messages/stream`, `/api/messages`, `/api/openai/models`, `/api/openai/messages/stream`, `/api/openai/messages`
 
 ### Session & Memory (`src-tauri/src/`)
 - `sessions.rs` - Session manager with inbox messaging, bounded at MAX_INBOX_SIZE=1000, MAX_SESSIONS=100
@@ -199,7 +204,7 @@ Node.js service bridging NexiBot to the Anthropic TypeScript SDK for OAuth token
 - `mcp.rs` - MCP (Model Context Protocol) server integration
 
 ### Other Modules (`src-tauri/src/`)
-- `bridge.rs` - Bridge service manager for Node.js anthropic-bridge child process
+- `bridge.rs` - Bridge service manager for Node.js bridge child process
 - `oauth.rs` - OAuth profile management (auth-profiles.json)
 - `oauth_flow.rs` - OAuth flow handlers
 - `pairing.rs` - DM pairing security for all channels with 12-char codes (60-bit entropy, 15-min expiry)
@@ -261,7 +266,8 @@ Node.js service bridging NexiBot to the Anthropic TypeScript SDK for OAuth token
 - Docker sandbox env vars are sanitized in strict mode before container creation
 - Config profile names are validated against path traversal (CWE-22)
 - Config composition: base config <- profile overlay <- `NEXIBOT_*` env vars
-- Bridge uses Anthropic SDK `authToken` for OAuth tokens, `apiKey` for API keys
+- Bridge is plugin-based: provider-specific code lives in `bridge/plugins/`, loaded at startup
+- Bridge Anthropic plugin uses SDK `authToken` for OAuth tokens, `apiKey` for API keys
 - OAuth profiles stored at `~/Library/Application Support/ai.nexibot.desktop/auth-profiles.json`
 - Config stored at `~/Library/Application Support/ai.nexibot.desktop/config.yaml`
 
@@ -325,8 +331,8 @@ Node.js service bridging NexiBot to the Anthropic TypeScript SDK for OAuth token
 - **argon2** 0.5 - Password hashing
 - **keyring** 3 - OS-native credential storage
 
-### Node.js (anthropic-bridge/package.json)
-- **@anthropic-ai/sdk** ^0.77.0 - Anthropic TypeScript SDK (OAuth + models.list)
-- **openai** ^4.67.0 - OpenAI SDK
-- **express** ^4.21.2 - Web server
-- **cors** ^2.8.5 - CORS middleware
+### Node.js (bridge/)
+- **express** ^4.21.2 - Web server (core bridge/package.json)
+- **cors** ^2.8.5 - CORS middleware (core bridge/package.json)
+- **@anthropic-ai/sdk** ^0.77.0 - Anthropic TypeScript SDK (plugins/anthropic/package.json)
+- **openai** ^4.67.0 - OpenAI SDK (plugins/openai/package.json)

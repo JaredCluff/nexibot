@@ -1,0 +1,9 @@
+{
+  "name": "nexibot-bridge-openai",
+  "version": "1.0.0",
+  "description": "OpenAI bridge plugin for NexiBot",
+  "type": "module",
+  "dependencies": {
+    "openai": "^4.67.0"
+  }
+}

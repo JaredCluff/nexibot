@@ -1,0 +1,15 @@
+{
+  "name": "nexibot-bridge-openai",
+  "version": "1.0.0",
+  "description": "OpenAI chat model bridge with Anthropic-format normalization",
+  "bridge_api_version": "1",
+  "routes": {
+    "prefix": "/api/openai",
+    "endpoints": [
+      { "method": "POST", "path": "/api/openai/messages" },
+      { "method": "POST", "path": "/api/openai/messages/stream" },
+      { "method": "GET", "path": "/api/openai/models" }
+    ]
+  },
+  "entry": "index.js"
+}

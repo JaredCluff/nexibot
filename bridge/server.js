@@ -1,0 +1,213 @@
+/**
+ * NexiBot Bridge Service
+ *
+ * Plugin-based bridge server that discovers and loads provider plugins at
+ * startup. Each plugin exports a register(app, context) function that mounts
+ * its own Express routes.
+ *
+ * Architecture:
+ *   NexiBot (Rust) -> HTTP/SSE -> Bridge (Node.js) -> Provider APIs
+ *
+ * Plugin locations:
+ *   - Built-in:  bridge/plugins/        (shipped with NexiBot)
+ *   - External:  BRIDGE_PLUGINS_DIR     (user-installed, e.g. ~/.config/nexibot/bridge-plugins/)
+ */
+
+import express from 'express';
+import cors from 'cors';
+import { readdir, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { normalizeMessages, validateAndRepairMessages } from './lib/normalize.js';
+import { keyFingerprint } from './lib/utils.js';
+import searchRouter from './lib/search.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const app = express();
+const PORT = process.env.BRIDGE_PORT || 18790;
+
+// Restrict CORS to localhost origins only — the bridge should never be
+// accessible from arbitrary web pages.
+app.use(cors({
+  origin: [
+    'http://127.0.0.1',
+    'http://localhost',
+    'https://tauri.localhost',
+    /^http:\/\/127\.0\.0\.1:\d+$/,
+    /^http:\/\/localhost:\d+$/,
+  ],
+}));
+app.use(express.json({ limit: '10mb' }));
+
+// Track loaded plugins
+const loadedPlugins = [];
+
+/**
+ * Load plugins from a directory.
+ * Each subdirectory with a plugin.json is treated as a plugin.
+ */
+async function loadPluginsFromDir(pluginsDir, label) {
+  if (!existsSync(pluginsDir)) {
+    console.log(`[Bridge] Plugin directory not found (${label}): ${pluginsDir}`);
+    return;
+  }
+
+  let entries;
+  try {
+    entries = await readdir(pluginsDir, { withFileTypes: true });
+  } catch (err) {
+    console.error(`[Bridge] Failed to read plugin directory (${label}):`, err.message);
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const pluginDir = path.join(pluginsDir, entry.name);
+    const manifestPath = path.join(pluginDir, 'plugin.json');
+
+    if (!existsSync(manifestPath)) {
+      continue;
+    }
+
+    try {
+      const manifestRaw = await readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(manifestRaw);
+
+      // Validate required manifest fields
+      if (!manifest.name || typeof manifest.name !== 'string') {
+        console.warn(`[Bridge] Skipping plugin in '${entry.name}': missing or invalid 'name' in plugin.json`);
+        continue;
+      }
+
+      if (!manifest.version || typeof manifest.version !== 'string') {
+        console.warn(`[Bridge] Skipping plugin '${manifest.name}': missing or invalid 'version' in plugin.json`);
+        continue;
+      }
+
+      // Validate bridge API version
+      if (manifest.bridge_api_version !== '1') {
+        console.warn(`[Bridge] Skipping plugin '${manifest.name}': unsupported bridge_api_version '${manifest.bridge_api_version}'`);
+        continue;
+      }
+
+      // Validate and resolve the plugin entry path — must stay within the plugin directory
+      const entryFile = manifest.entry || 'index.js';
+      const entryPath = path.resolve(pluginDir, entryFile);
+      if (!entryPath.startsWith(pluginDir + path.sep) && entryPath !== pluginDir) {
+        console.warn(`[Bridge] Skipping plugin '${manifest.name}': entry path '${entryFile}' escapes plugin directory`);
+        continue;
+      }
+
+      const plugin = await import(entryPath);
+
+      if (typeof plugin.register !== 'function') {
+        console.warn(`[Bridge] Skipping plugin '${manifest.name}': no register() export`);
+        continue;
+      }
+
+      // Build context object passed to plugins
+      const context = {
+        utils: {
+          normalizeMessages,
+          validateAndRepairMessages,
+          keyFingerprint,
+        },
+        logger: console,
+      };
+
+      // Register plugin routes
+      plugin.register(app, context);
+
+      const info = {
+        name: manifest.name,
+        version: manifest.version,
+        description: manifest.description,
+        source: label,
+        health: typeof plugin.health === 'function' ? plugin.health() : null,
+      };
+
+      loadedPlugins.push(info);
+      console.log(`[Bridge] Loaded plugin: ${manifest.name} v${manifest.version} (${label})`);
+
+    } catch (err) {
+      console.error(`[Bridge] Failed to load plugin '${entry.name}' (${label}):`, err.message);
+    }
+  }
+}
+
+/**
+ * Health check endpoint — returns loaded plugin list
+ */
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'nexibot-bridge',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    plugins: loadedPlugins.map(p => ({
+      name: p.name,
+      version: p.version,
+      source: p.source,
+      health: p.health,
+    })),
+  });
+});
+
+// Mount search router (core service, not a plugin)
+app.use(searchRouter);
+
+/**
+ * Shutdown handler
+ */
+process.on('SIGINT', () => {
+  console.log('[Bridge] Shutting down...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('[Bridge] Shutting down...');
+  process.exit(0);
+});
+
+/**
+ * Start server after loading plugins
+ */
+async function main() {
+  // 1. Load built-in plugins
+  const builtinPluginsDir = path.join(__dirname, 'plugins');
+  await loadPluginsFromDir(builtinPluginsDir, 'built-in');
+
+  // 2. Load external plugins (user-installed)
+  const externalPluginsDir = process.env.BRIDGE_PLUGINS_DIR;
+  if (externalPluginsDir) {
+    await loadPluginsFromDir(externalPluginsDir, 'external');
+  }
+
+  // Start listening
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log('');
+    console.log('  NexiBot Bridge Service');
+    console.log('  ----------------------');
+    console.log(`  Listening on http://127.0.0.1:${PORT}`);
+    console.log(`  Loaded ${loadedPlugins.length} plugin(s):`);
+    for (const p of loadedPlugins) {
+      console.log(`    - ${p.name} v${p.version} (${p.source})`);
+    }
+    console.log('');
+    console.log('  Core endpoints:');
+    console.log(`    GET  http://127.0.0.1:${PORT}/health`);
+    console.log(`    POST http://127.0.0.1:${PORT}/api/search`);
+    console.log('');
+    console.log('  Press Ctrl+C to stop');
+    console.log('');
+  });
+}
+
+main().catch(err => {
+  console.error('[Bridge] Fatal error during startup:', err);
+  process.exit(1);
+});
