@@ -99,6 +99,15 @@ jobs:
             ui/package-lock.json
             anthropic-bridge/package-lock.json
 
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo '[package]
+          name = "nexibot-connect"
+          version = "0.1.0"
+          edition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
+
       - name: Install bridge dependencies
         run: npm ci
         working-directory: anthropic-bridge
