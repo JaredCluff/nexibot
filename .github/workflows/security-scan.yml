@@ -37,6 +37,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
+
       - name: Install cargo-audit
         run: cargo install cargo-audit
 
@@ -72,6 +78,12 @@ jobs:
       - name: Rust build cache
         uses: swatinem/rust-cache@v2
 
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -102,6 +114,12 @@ jobs:
 
       - name: Rust build cache
         uses: swatinem/rust-cache@v2
+
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
 
       - name: Install Linux dependencies
         run: |
