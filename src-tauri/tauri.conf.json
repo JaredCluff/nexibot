@@ -20,7 +20,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "_bridge_bundle/anthropic-bridge"
+      "_bridge_bundle/bridge"
     ],
     "macOS": {
       "frameworks": [

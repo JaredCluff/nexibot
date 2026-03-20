@@ -61,7 +61,7 @@ jobs:
 
       - name: Audit Bridge dependencies
         run: npm audit --audit-level=high || true
-        working-directory: anthropic-bridge
+        working-directory: bridge
 
   cargo-clippy:
     name: Clippy Lint

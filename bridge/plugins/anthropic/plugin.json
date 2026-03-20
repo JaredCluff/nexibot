@@ -1,0 +1,15 @@
+{
+  "name": "nexibot-bridge-anthropic",
+  "version": "1.0.0",
+  "description": "Anthropic Claude OAuth bridge with Claude Code identity injection",
+  "bridge_api_version": "1",
+  "routes": {
+    "prefix": "/api",
+    "endpoints": [
+      { "method": "POST", "path": "/api/messages" },
+      { "method": "POST", "path": "/api/messages/stream" },
+      { "method": "GET", "path": "/api/models" }
+    ]
+  },
+  "entry": "index.js"
+}

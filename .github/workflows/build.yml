@@ -97,7 +97,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: |
             ui/package-lock.json
-            anthropic-bridge/package-lock.json
+            bridge/package-lock.json
 
       - name: Stub nexibot-connect plugin
         run: |
@@ -109,8 +109,11 @@ jobs:
           echo '// stub' > nexibot-connect/src/lib.rs
 
       - name: Install bridge dependencies
-        run: npm ci
-        working-directory: anthropic-bridge
+        run: |
+          npm ci
+          cd plugins/anthropic && npm ci && cd ../..
+          cd plugins/openai && npm ci && cd ../..
+        working-directory: bridge
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"

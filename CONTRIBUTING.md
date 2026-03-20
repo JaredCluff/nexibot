@@ -33,7 +33,9 @@ cd nexibot
 
 # Install dependencies
 cd ui && npm install && cd ..
-cd anthropic-bridge && npm install && cd ..
+cd bridge && npm install && cd ..
+cd bridge/plugins/anthropic && npm install && cd ../../..
+cd bridge/plugins/openai && npm install && cd ../../..
 
 # Desktop app (Tauri)
 cargo tauri dev

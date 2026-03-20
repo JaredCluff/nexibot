@@ -215,7 +215,7 @@ open -a NexiBot
 #### Backend Error Simulation
 ```bash
 # Rename bridge process (cause invoke to fail)
-mv ~/path/to/anthropic-bridge ~/path/to/anthropic-bridge.bak
+mv ~/path/to/bridge ~/path/to/bridge.bak
 
 # Launch NexiBot
 open -a NexiBot
@@ -226,7 +226,7 @@ open -a NexiBot
 ✓ No crash
 
 # Restore bridge
-mv ~/path/to/anthropic-bridge.bak ~/path/to/anthropic-bridge
+mv ~/path/to/bridge.bak ~/path/to/bridge
 ```
 
 ## Running Tests

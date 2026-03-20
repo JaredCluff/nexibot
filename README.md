@@ -40,7 +40,9 @@ cd nexibot
 
 # Install dependencies
 cd ui && npm install && cd ..
-cd anthropic-bridge && npm install && cd ..
+cd bridge && npm install && cd ..
+cd bridge/plugins/anthropic && npm install && cd ../../..
+cd bridge/plugins/openai && npm install && cd ../../..
 
 # Build desktop app
 cargo tauri build
@@ -73,7 +75,7 @@ nexibot/
 ├── cli/                    # CLI commands
 ├── k2k-common/             # K2K federation protocol library
 ├── ui/                     # React frontend
-├── anthropic-bridge/       # Node.js OAuth bridge
+├── bridge/                 # Plugin-based Node.js bridge service
 └── docs/                   # User documentation
 ```
 
