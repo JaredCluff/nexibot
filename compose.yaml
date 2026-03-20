@@ -1,0 +1,90 @@
+# NexiBot Podman Compose
+#
+# Usage:
+#   podman compose up -d               # Start all services
+#   podman compose up -d nexibot       # NexiBot only (no Ollama)
+#   podman compose logs -f nexibot     # Tail logs
+#   podman compose down                # Stop all services
+#
+# Configuration:
+#   Copy .env.example to .env and fill in your API keys.
+#   Or mount a config file with:  volumes: - ./config.yaml:/home/nexibot/.config/nexibot/config.yaml
+#
+# Podman network note:
+#   Podman creates networks automatically. If you need the bridge container
+#   to reach the host's Anthropic endpoint, ensure DNS resolution works:
+#     podman network create nexibot-net
+#     # Then set `network: nexibot-net` below.
+
+name: nexibot
+
+services:
+  # ── NexiBot Server ───────────────────────────────────────────────────────
+  nexibot:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: nexibot:latest
+    container_name: nexibot
+    restart: unless-stopped
+    # Run as non-root user (UID/GID 1000 — matches the nexibot user in the image)
+    user: "1000:1000"
+    ports:
+      - "127.0.0.1:18790:18790"   # Anthropic bridge (loopback-only by default)
+      - "127.0.0.1:18791:18791"   # Webhook / HTTP REST API (loopback-only)
+      - "127.0.0.1:18792:18792"   # Gateway WebSocket (enable in config)
+    volumes:
+      # Persistent data directories — created automatically if missing
+      - nexibot-config:/home/nexibot/.config/nexibot
+      - nexibot-models:/home/nexibot/.config/nexibot/models
+    environment:
+      # ── Mode ──────────────────────────────────────────────────────────
+      NEXIBOT_HEADLESS: "1"
+      # ── LLM API keys (at least one required) ──────────────────────────
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      # ── Ollama (optional, use the ollama service below) ───────────────
+      NEXIBOT_OLLAMA_URL: "http://ollama:11434"
+      # ── Channel bots (optional) ───────────────────────────────────────
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
+      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN:-}"
+      WHATSAPP_PHONE_NUMBER_ID: "${WHATSAPP_PHONE_NUMBER_ID:-}"
+      WHATSAPP_ACCESS_TOKEN: "${WHATSAPP_ACCESS_TOKEN:-}"
+      WHATSAPP_VERIFY_TOKEN: "${WHATSAPP_VERIFY_TOKEN:-}"
+      # ── Logging ───────────────────────────────────────────────────────
+      RUST_LOG: "${RUST_LOG:-nexibot_tauri=info,warn}"
+      # ── Bridge port ───────────────────────────────────────────────────
+      BRIDGE_PORT: "18790"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18791/webhook/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    depends_on:
+      ollama:
+        condition: service_started
+
+  # ── Ollama (optional local LLM) ──────────────────────────────────────────
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: nexibot-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # GPU support — uncomment for NVIDIA:
+    # devices:
+    #   - driver: nvidia
+    #     count: all
+    #     capabilities: [gpu]
+
+volumes:
+  nexibot-config:
+    driver: local
+  nexibot-models:
+    driver: local
+  ollama-data:
+    driver: local

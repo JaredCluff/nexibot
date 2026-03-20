@@ -1,0 +1,452 @@
+/* ── SkillMarketplace ────────────────────────────────────────────────────── */
+
+.sm-container {
+  position: relative;
+  width: 100%;
+}
+
+/* ── Search bar ──────────────────────────────────────────────────────────── */
+
+.sm-search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sm-search-input {
+  flex: 1;
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sm-search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.sm-search-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+}
+
+.sm-search-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* ── Status / loading ────────────────────────────────────────────────────── */
+
+.sm-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.sm-status-error {
+  color: var(--error);
+  gap: 12px;
+}
+
+.sm-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: sm-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes sm-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sm-retry-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+  cursor: pointer;
+}
+
+.sm-retry-btn:hover {
+  background: rgba(255, 59, 48, 0.08);
+}
+
+/* ── Results grid ────────────────────────────────────────────────────────── */
+
+.sm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+/* ── Skill card ──────────────────────────────────────────────────────────── */
+
+.sm-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sm-card:hover,
+.sm-card:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  outline: none;
+}
+
+.sm-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sm-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sm-installed-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(52, 199, 89, 0.15);
+  color: #34c759;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sm-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.sm-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sm-card-author {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sm-card-downloads {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sm-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sm-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: var(--border);
+  color: var(--text-secondary);
+}
+
+/* ── Star rating ─────────────────────────────────────────────────────────── */
+
+.sm-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 12px;
+}
+
+.sm-star {
+  color: var(--border);
+}
+
+.sm-star.filled {
+  color: #f9e2af;
+}
+
+.sm-star.half {
+  color: #f9e2af;
+  opacity: 0.55;
+}
+
+.sm-rating-num {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-left: 3px;
+}
+
+/* ── Detail overlay ──────────────────────────────────────────────────────── */
+
+.sm-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8500;
+  padding: 24px;
+}
+
+.sm-detail-panel {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Detail panel header ─────────────────────────────────────────────────── */
+
+.sm-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sm-detail-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.sm-detail-author {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+  display: block;
+}
+
+.sm-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sm-close-btn:hover {
+  background: var(--border);
+  color: var(--text);
+  opacity: 1;
+}
+
+.sm-detail-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sm-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Security section ────────────────────────────────────────────────────── */
+
+.sm-security-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sm-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.sm-loading-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sm-error-text {
+  font-size: 12px;
+  color: var(--error);
+}
+
+.sm-risk-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sm-risk-icon {
+  font-size: 14px;
+}
+
+.sm-risk-summary {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.sm-findings {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sm-finding {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.sm-finding-sev {
+  font-weight: 600;
+}
+
+/* ── Detail actions ──────────────────────────────────────────────────────── */
+
+.sm-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sm-install-btn {
+  padding: 9px 22px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.sm-install-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.sm-install-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sm-installed-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #34c759;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+
+.sm-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 9000;
+  white-space: nowrap;
+  max-width: 90vw;
+}
+
+.sm-toast-ok {
+  background: rgba(52, 199, 89, 0.18);
+  border: 1px solid rgba(52, 199, 89, 0.35);
+  color: #34c759;
+}
+
+.sm-toast-err {
+  background: rgba(255, 59, 48, 0.15);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  color: var(--error);
+}
+
+.sm-toast-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.sm-toast-dismiss:hover {
+  opacity: 1;
+}

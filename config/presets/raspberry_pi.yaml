@@ -1,0 +1,63 @@
+# NexiBot — Raspberry Pi 5 headless preset
+#
+# Install:
+#   mkdir -p ~/.config/nexibot
+#   cp raspberry_pi.yaml ~/.config/nexibot/config.raspberry_pi.yaml
+#
+# Then launch with:
+#   NEXIBOT_HEADLESS=1 NEXIBOT_PROFILE=raspberry_pi nexibot-tauri
+#
+# Or set NEXIBOT_PROFILE=raspberry_pi in your systemd unit / launch script.
+
+# ── Audio input ──────────────────────────────────────────────────────────────
+audio:
+  enabled: true
+  # Set to your USB mic device name if auto-detection picks the wrong device.
+  # Leave unset to use the system default.
+  input_device: ~
+  sample_rate: 16000
+  channels: 1
+
+# ── Wake word — disabled on Pi (use push-to-talk or always-on VAD) ───────────
+wakeword:
+  enabled: false
+  wake_word: "hey nexus"
+  threshold: 0.85
+  # STT-based fallback also disabled (per architecture constraints)
+  stt_wakeword_enabled: false
+  voice_response_enabled: true
+
+# ── VAD — always-on; push_to_talk mode uses VAD only for end-of-speech ───────
+vad:
+  enabled: true
+  threshold: 0.5
+  min_speech_duration_ms: 250
+  min_silence_duration_ms: 600   # slightly longer on Pi to reduce false cuts
+  require_silero: false
+  # Push-to-talk: the user manually starts recording (button / GPIO).
+  # VAD only determines when speech has ended.
+  push_to_talk: true
+
+# ── STT — Deepgram Nova-3 (cloud, 200 hrs/month free tier) ───────────────────
+stt:
+  enabled: true
+  backend: deepgram
+  # Set your Deepgram API key here, or via NEXIBOT_DEEPGRAM_API_KEY env var.
+  deepgram_api_key: ~
+
+  # Rate limiter — protects the 200 hrs/month free tier.
+  deepgram_rate_limit:
+    enabled: true
+    calls_per_minute: 10
+    monthly_budget_secs: 720000   # 200 hours
+    block_on_budget_exhausted: true
+
+# ── TTS — Piper (local neural TTS, no cloud dependency) ─────────────────────
+tts:
+  enabled: true
+  backend: piper
+  # Path to a Piper .onnx model file. Download from:
+  #   https://github.com/rhasspy/piper/releases
+  # Example: ~/.local/share/piper/en_US-lessac-medium.onnx
+  piper_model_path: ~
+  piper_voice: en_US-lessac-medium

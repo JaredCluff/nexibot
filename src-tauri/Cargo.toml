@@ -1,0 +1,226 @@
+[package]
+name = "nexibot-tauri"
+version = "0.8.0"
+edition = "2021"
+description = "NexiBot Tauri backend"
+license = "Apache-2.0"
+
+[lib]
+name = "nexibot_tauri"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[[bin]]
+name = "nexibot-tauri"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+tauri-plugin-deep-link = "2"
+
+# Vendored OpenSSL for ort-sys download-binaries build script (Linux only — avoids requiring libssl-dev)
+[target.'cfg(target_os = "linux")'.build-dependencies]
+openssl-sys = { version = "0.9", features = ["vendored"] }
+
+[dependencies]
+# Tauri framework
+tauri = { version = "2.10", features = ["tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-deep-link = "2"
+
+# Shared K2K library
+k2k-common = { path = "../k2k-common" }
+
+# Knowledge Nexus connector plugin (optional, gated behind "connect" feature)
+nexibot-connect = { path = "../nexibot-connect", optional = true }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client (for Claude API)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart", "blocking"] }
+
+# HTTP server (for OAuth callback)
+axum = "0.7"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+tower = "0.5"
+
+# TLS certificate generation
+rcgen = "0.13"
+
+# Auto-update
+tauri-plugin-updater = "2"
+
+# WebSocket (for streaming)
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+
+# Audio capture and processing
+cpal = "0.15"
+hound = "3.5"
+rodio = "0.19"  # Audio playback for TTS
+
+# ONNX Runtime (for wake word detection)
+# Pinned: pre-release version with breaking API changes between RCs
+ort = { version = "=2.0.0-rc.10", features = ["download-binaries"] }
+ndarray = "0.16"
+
+# Cross-platform local STT (SenseVoice) and VAD (Silero) via sherpa-onnx
+# For ARM64 Windows: use default-features=false (no pre-built binaries available,
+# builds from CMake source). Also needs short CARGO_TARGET_DIR for MAX_PATH.
+sherpa-rs = "0.6"
+
+# Voice Activity Detection (currently disabled due to dependency issues)
+# silero-vad-rs = "0.1"  # Requires ort 2.0.0-rc.9 which doesn't compile
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Configuration
+directories = "5"
+dirs = "5"
+serde_yml = "0.0.12"
+regex = "1"
+
+# File watching (hot reload)
+notify = "7"
+notify-debouncer-mini = "0.5"
+
+# MCP (Model Context Protocol) client
+rmcp = { version = "0.14", features = ["client", "transport-child-process"] }
+
+# OAuth flow
+url = "2"
+rand = "0.8"
+base64 = "0.22"
+sha2 = "0.10"
+sha1 = "0.10"
+
+# Open URLs in browser
+open = "5"
+hmac = "0.12"
+hex = "0.4"
+jsonwebtoken = "9"
+
+# HuggingFace tokenizers (for DeBERTa defense pipeline)
+tokenizers = { version = "0.20", default-features = false, features = ["onig"] }
+
+# Destructive Command Guard — AI-safe command evaluation (MIT licensed)
+destructive_command_guard = { git = "https://github.com/Dicklesworthstone/destructive_command_guard", rev = "7385931d" }
+
+# Constant-time comparison (for timing-attack-safe auth)
+subtle = "2"
+
+# IDN/Punycode normalization (for SSRF hostname blocklist bypass prevention)
+idna = "1"
+
+# Authenticated encryption (AES-256-GCM) for session transcripts
+aes-gcm = "0.10"
+# Password-based key derivation (Argon2id) for session encryption passphrase
+argon2 = "0.5"
+
+# OS-native credential storage (keyring/keychain)
+keyring = "3"
+
+# HTML to text conversion (for fetch tool)
+html2text = "0.12"
+
+# SQLite with FTS5 full-text search (memory store)
+# FTS5 is enabled by default in the bundled SQLite build
+rusqlite = { version = "0.35", features = ["bundled"] }
+
+# Fixed-capacity LRU cache (embedding cache)
+lru = "0.12"
+
+# Browser automation via Chrome DevTools Protocol
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+
+# Telegram bot
+teloxide = { version = "0.13", features = ["macros"] }
+
+# Discord bot
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "cache"] }
+
+# TOML parsing (for skill definitions)
+toml = "0.8"
+
+# Binary lookup for skill requirement validation
+which = "7"
+
+# OGG Opus decoding (for Telegram voice messages)
+ogg = "0.9"
+audiopus = { version = "0.3.0-rc.0", features = ["decoder", "encoder"] }
+
+# PTY session management (cross-platform: macOS, Linux, Windows ConPTY)
+portable-pty = "0.8"
+
+# Ed25519 signatures for signed security plugin verification
+ed25519-dalek = { version = "2", features = ["serde", "rand_core"] }
+
+# Rhai scripting engine for sandboxed security plugins
+rhai = { version = "1", features = ["sync", "serde"] }
+
+# SMTP sending (email channel)
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder"] }
+# Mail parsing (email channel — IMAP)
+mailparse = "0.15"
+# TLS for raw IMAP connection
+rustls = "0.23"
+rustls-pki-types = "1"
+webpki-roots = "0.26"
+
+# Secret values — zeroes memory on drop, prevents accidental Debug printing
+secrecy = { version = "0.8", features = ["serde"] }
+
+# Explicit memory zeroing for key maps
+zeroize = { version = "1", features = ["derive"] }
+
+# macOS-specific dependencies for Speech framework FFI and Computer Use
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+cocoa = "0.26"
+core-foundation = "0.10"
+core-graphics = "0.24"
+core-graphics-types = "0.2"
+
+# Windows-specific dependencies for native control (Computer Use) and tray
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+] }
+
+# Linux: vendored OpenSSL (avoids requiring libssl-dev for ort-sys binary downloads)
+[target.'cfg(target_os = "linux")'.dependencies]
+openssl-sys = { version = "0.9", features = ["vendored"] }
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
+
+[features]
+default = []
+custom-protocol = ["tauri/custom-protocol"]
+connect = ["dep:nexibot-connect"]

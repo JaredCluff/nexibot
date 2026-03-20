@@ -1,0 +1,161 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-button {
+  font-size: 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.settings-button:hover {
+  background-color: var(--border);
+}
+
+.canvas-toggle-button {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background-color: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  font-weight: 500;
+}
+
+.canvas-toggle-button:hover {
+  background-color: var(--border);
+  color: var(--text);
+}
+
+.shell-viewer-button {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background-color: var(--surface);
+  color: #cba6f7;
+  border: 1px solid #45475a;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  font-weight: 500;
+}
+
+.shell-viewer-button:hover {
+  background-color: rgba(203, 166, 247, 0.12);
+  border-color: #cba6f7;
+}
+
+.app-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+
+/* Split layout for chat + canvas */
+.app-split-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.app-content {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  transition: flex 0.3s ease;
+}
+
+.canvas-panel {
+  width: 0;
+  overflow: hidden;
+  transition: width 0.3s ease;
+}
+
+.app-split-layout.canvas-visible .app-content {
+  flex: 6;
+}
+
+.app-split-layout.canvas-visible .canvas-panel {
+  width: auto;
+  flex: 4;
+  overflow: hidden;
+}
+
+.sidebar-toggle {
+  font-size: 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  color: var(--text);
+}
+
+.sidebar-toggle:hover {
+  background-color: var(--border);
+}
+
+.app.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-boundary {
+  padding: 20px;
+  color: var(--error);
+  background-color: var(--surface);
+}
+
+.error-boundary pre {
+  white-space: pre-wrap;
+  font-size: 13px;
+  margin-top: 8px;
+}

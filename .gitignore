@@ -1,0 +1,54 @@
+# Rust build artifacts (single workspace target at root)
+/target/
+
+# nexibot-cli build artifacts (workspace member, built separately)
+/cli/target/
+
+# Node.js
+node_modules/
+**/node_modules/
+
+# Frontend build outputs
+ui/dist/
+
+# Tauri generated bridge bundle (rebuilt on every cargo tauri build)
+src-tauri/_bridge_bundle/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files (never commit real credentials)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Release bundles (too large for git)
+*.deb
+*.AppImage
+*.dmg
+*.msi
+*.exe
+*.app
+
+# macOS code signing artefacts
+*.mobileprovision
+*.p12
+*.cer
+
+# ONNX models (downloaded at runtime, too large for git)
+**/models/*.onnx
+**/models/*.ort
+
+# Tauri build-generated schemas (rebuilt on every cargo tauri build)
+src-tauri/gen/

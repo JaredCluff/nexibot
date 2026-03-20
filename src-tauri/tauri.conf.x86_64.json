@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "macOS": {
+      "frameworks": [
+        "../../target/x86_64-apple-darwin/release/libonnxruntime.1.17.1.dylib",
+        "../../target/x86_64-apple-darwin/release/libsherpa-onnx-c-api.dylib"
+      ]
+    }
+  }
+}

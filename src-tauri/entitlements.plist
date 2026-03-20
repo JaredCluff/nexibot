@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime: allow JIT-compiled memory for ONNX Runtime ML inference -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Allow JIT compilation (ONNX Runtime, DeBERTa, Silero VAD) -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Allow loading dylibs not signed with our certificate (libonnxruntime, libsherpa-onnx-c-api) -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Speech recognition via macOS Speech Framework (SFSpeechRecognizer) -->
+    <key>com.apple.security.speech-recognition</key>
+    <true/>
+
+    <!-- Microphone access for voice pipeline and wake word detection -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Accessibility for Computer Use API (screenshot, mouse, keyboard control) -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

@@ -1,0 +1,14 @@
+{
+  "name": "nexibot-channel-simulators",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Channel webhook simulators for integration testing",
+  "type": "module",
+  "scripts": {
+    "telegram": "node telegram-sim.js",
+    "whatsapp": "node whatsapp-sim.js",
+    "api-smoke": "node api-smoke.js",
+    "all": "node run-all.js"
+  },
+  "dependencies": {}
+}

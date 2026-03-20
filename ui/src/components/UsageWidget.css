@@ -1,0 +1,206 @@
+/* UsageWidget — styles */
+
+.uw-container {
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border-color, #3a3a5c);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 240px;
+}
+
+/* ── States ─────────────────────────────────────────────────────────────────── */
+
+.uw-placeholder,
+.uw-loading,
+.uw-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary, #7f849c);
+  font-size: 12px;
+}
+
+.uw-placeholder-icon { font-size: 28px; }
+.uw-placeholder-text { margin: 0; }
+
+.uw-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-color, #3a3a5c);
+  border-top-color: var(--accent-color, #89b4fa);
+  border-radius: 50%;
+  animation: uw-spin 0.7s linear infinite;
+}
+
+@keyframes uw-spin {
+  to { transform: rotate(360deg); }
+}
+
+.uw-error-text { margin: 0; }
+.uw-retry-btn {
+  padding: 5px 14px;
+  background: var(--bg-tertiary, #181825);
+  border: 1px solid var(--border-color, #3a3a5c);
+  border-radius: 5px;
+  color: var(--text-secondary, #7f849c);
+  font-size: 12px;
+  cursor: pointer;
+}
+.uw-retry-btn:hover { color: var(--text-primary, #cdd6f4); }
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.uw-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.uw-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #cdd6f4);
+  flex: 1;
+}
+
+.uw-tier-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1e1e2e;
+  text-transform: capitalize;
+}
+
+.uw-refresh-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #7f849c);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.uw-refresh-btn:hover { color: var(--text-primary, #cdd6f4); }
+
+/* ── Progress bar ────────────────────────────────────────────────────────────── */
+
+.uw-progress-track {
+  height: 8px;
+  background: var(--bg-tertiary, #181825);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.uw-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* ── Balance row ─────────────────────────────────────────────────────────────── */
+
+.uw-balance-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.uw-balance-used { color: var(--text-primary, #cdd6f4); }
+.uw-balance-total { color: var(--text-secondary, #7f849c); }
+
+/* ── Warning ─────────────────────────────────────────────────────────────────── */
+
+.uw-warning {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(250, 179, 135, 0.12);
+  border: 1px solid rgba(250, 179, 135, 0.3);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #fab387;
+}
+
+.uw-warning-critical {
+  background: rgba(243, 139, 168, 0.12);
+  border-color: rgba(243, 139, 168, 0.3);
+  color: #f38ba8;
+}
+
+/* ── Period ──────────────────────────────────────────────────────────────────── */
+
+.uw-period {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--text-secondary, #6c7086);
+}
+
+/* ── Breakdown ───────────────────────────────────────────────────────────────── */
+
+.uw-breakdown {
+  margin-top: 14px;
+  border-top: 1px solid var(--border-color, #3a3a5c);
+  padding-top: 12px;
+}
+
+.uw-breakdown-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #7f849c);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.uw-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.uw-op-label {
+  font-size: 11px;
+  color: var(--text-secondary, #7f849c);
+  width: 90px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uw-op-track {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-tertiary, #181825);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.uw-op-fill {
+  height: 100%;
+  background: var(--accent-color, #89b4fa);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.uw-op-value {
+  font-size: 11px;
+  color: var(--text-primary, #cdd6f4);
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.uw-breakdown-total {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #7f849c);
+  text-align: right;
+}

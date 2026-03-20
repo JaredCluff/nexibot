@@ -1,0 +1,16 @@
+{
+  "name": "nexibot-mock-llm",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Record/replay proxy for LLM API testing",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "record": "MOCK_MODE=record node server.js",
+    "replay": "MOCK_MODE=replay node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5"
+  }
+}

@@ -1,0 +1,10 @@
+_bridge_bundle/
+_native_dlls/
+
+# Windows native DLLs staged by build.rs for bundling
+onnxruntime.dll
+onnxruntime_providers_shared.dll
+sherpa-onnx-c-api.dll
+sherpa-onnx-cxx-api.dll
+DirectML.dll
+cargs.dll

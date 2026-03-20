@@ -1,0 +1,15 @@
+[workspace]
+members = ["k2k-common", "src-tauri", "cli"]
+resolver = "2"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 16
+strip = true
+incremental = true
+
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+panic = "abort"

@@ -1,0 +1,8 @@
+# Workspace-wide Cargo configuration
+#
+# On Windows MSVC targets, link the C runtime dynamically (-crt-static)
+# to avoid conflicts with ONNX Runtime and other native DLLs that ship
+# with a dynamic CRT.
+
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=-crt-static"]
