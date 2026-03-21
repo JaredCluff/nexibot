@@ -136,7 +136,7 @@ describe('Initial render', () => {
 
   it('Send button is disabled when textarea is empty', async () => {
     await renderChat();
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
   });
 
   it('shows "Voice off" in the voice bar', async () => {
@@ -162,7 +162,7 @@ describe('Message sending', () => {
     const textarea = screen.getByPlaceholderText(/Message NexiBot/i);
     await user.type(textarea, 'Hello');
 
-    expect(screen.getByRole('button', { name: 'Send' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
   });
 
   it('pressing Enter calls send_message_with_events', async () => {
@@ -219,7 +219,7 @@ describe('Message sending', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /■ Stop/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
     });
   });
 
@@ -270,7 +270,7 @@ describe('Tool approval flow', () => {
       });
     });
 
-    expect(screen.getByText('Approval required for browser_click')).toBeInTheDocument();
+    expect(screen.getByText(/Approve:.*browser_click/)).toBeInTheDocument();
     expect(screen.getByText('External action requires confirmation')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Approve' }));
@@ -300,7 +300,7 @@ describe('Tool approval flow', () => {
       });
     });
 
-    expect(screen.getByText('Approval required for browser_click')).toBeInTheDocument();
+    expect(screen.getByText(/Approve:.*browser_click/)).toBeInTheDocument();
     expect(screen.getByText('First approval needed')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Deny' }));
@@ -312,7 +312,7 @@ describe('Tool approval flow', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Approval required for filesystem_write')).toBeInTheDocument();
+      expect(screen.getByText(/Approve:.*filesystem_write/)).toBeInTheDocument();
     });
     expect(screen.getByText('Second approval needed')).toBeInTheDocument();
 
@@ -366,7 +366,7 @@ describe('Streaming response', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('web_search')).toBeInTheDocument();
+      expect(screen.getByText('Web Search')).toBeInTheDocument();
     });
   });
 });
@@ -381,7 +381,7 @@ describe('Stop stream', () => {
     await user.type(screen.getByPlaceholderText(/Message NexiBot/i), 'Hi');
     await user.keyboard('{Enter}');
 
-    const stopBtn = await screen.findByRole('button', { name: /■ Stop/i });
+    const stopBtn = await screen.findByRole('button', { name: 'Stop' });
     await user.click(stopBtn);
 
     expect(vi.mocked(invoke)).toHaveBeenCalledWith('cancel_message');
