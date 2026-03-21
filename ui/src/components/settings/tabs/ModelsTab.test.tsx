@@ -215,7 +215,7 @@ describe('Model selection', () => {
     expect(gptLabel).not.toHaveClass('selected');
   });
 
-  it('sets max_tokens to 8192 for claude-opus model', async () => {
+  it('sets max_tokens to 16384 for claude-opus model', async () => {
     const user = userEvent.setup();
     const { setConfig } = setupSettings({
       config: makeConfig({
@@ -240,19 +240,19 @@ describe('Model selection', () => {
       expect.objectContaining({
         claude: expect.objectContaining({
           model: 'claude-opus-4-6',
-          max_tokens: 8192,
+          max_tokens: 16384,
         }),
       }),
     );
   });
 
-  it('sets max_tokens to 4096 for non-opus/sonnet model', async () => {
+  it('sets max_tokens to 16384 for gpt-4o model', async () => {
     const user = userEvent.setup();
     const { setConfig } = setupSettings({
       config: makeConfig({
         claude: {
           model: 'claude-opus-4-6',
-          max_tokens: 8192,
+          max_tokens: 16384,
           system_prompt: '',
           fallback_model: undefined,
           api_key: undefined,
@@ -271,7 +271,7 @@ describe('Model selection', () => {
       expect.objectContaining({
         claude: expect.objectContaining({
           model: 'gpt-4o',
-          max_tokens: 4096,
+          max_tokens: 16384,
         }),
       }),
     );
