@@ -489,8 +489,8 @@ export function SystemTab() {
           <label className="toggle-label">
             <input
               type="checkbox"
-              checked={config.sandbox?.enabled ?? false}
-              onChange={(e) => setConfig({ ...config, sandbox: { ...(config.sandbox ?? { enabled: false, image: 'debian:bookworm-slim', non_root_user: 'sandbox', memory_limit: '512m', cpu_limit: 1.0, network_mode: 'none', timeout_seconds: 60, blocked_paths: [] }), enabled: e.target.checked } })}
+              checked={config.sandbox?.enabled ?? true}
+              onChange={(e) => setConfig({ ...config, sandbox: { ...(config.sandbox ?? { enabled: true, image: 'debian:bookworm-slim', non_root_user: 'sandbox', memory_limit: '512m', cpu_limit: 1.0, network_mode: 'none', timeout_seconds: 60, blocked_paths: [] }), enabled: e.target.checked } })}
             />
             Enable Sandbox<InfoTip text="Run all command execution inside Docker containers." />
           </label>
