@@ -148,6 +148,30 @@
   }
 }
 
+/* Defense model loading status bar */
+.defense-status-bar {
+  padding: 6px 16px;
+  font-size: 12px;
+  text-align: center;
+  background-color: rgba(166, 227, 161, 0.12);
+  color: #a6e3a1;
+  border-bottom: 1px solid rgba(166, 227, 161, 0.2);
+  animation: defense-status-fade-in 0.2s ease-out;
+}
+
+@keyframes defense-status-fade-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding: 0 16px;
+  }
+  to {
+    opacity: 1;
+    max-height: 40px;
+    padding: 6px 16px;
+  }
+}
+
 .error-boundary {
   padding: 20px;
   color: var(--error);

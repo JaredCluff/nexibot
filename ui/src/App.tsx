@@ -57,6 +57,7 @@ function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(undefined);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [defenseStatus, setDefenseStatus] = useState<string | null>(null);
 
   useEffect(() => {
     try { setWindowLabel(getCurrentWindow().label); } catch { /* outside Tauri */ }
@@ -86,6 +87,31 @@ function App() {
     }).then((fn) => { unlisten = fn; });
 
     return () => { unlisten?.(); };
+  }, []);
+
+  // Listen for defense model loading events
+  useEffect(() => {
+    const unlistenLoading = listen('defense:loading', () => {
+      setDefenseStatus('Loading defense models...');
+    });
+    const unlistenLoaded = listen('defense:loaded', (event: { payload: { deberta_loaded?: boolean; llama_guard_loaded?: boolean; status?: string } }) => {
+      const payload = event.payload;
+      if (payload.deberta_loaded || payload.llama_guard_loaded) {
+        setDefenseStatus('Defense models ready');
+      } else if (payload.status === 'degraded') {
+        setDefenseStatus('Defense running in degraded mode');
+      } else {
+        setDefenseStatus(null);
+        return;
+      }
+      // Auto-hide after 3 seconds
+      setTimeout(() => setDefenseStatus(null), 3000);
+    });
+
+    return () => {
+      unlistenLoading.then(f => f());
+      unlistenLoaded.then(f => f());
+    };
   }, []);
 
   const handleOpenInCanvas = useCallback((code: string, language: string) => {
@@ -260,6 +286,12 @@ function App() {
           </button>
         </div>
       </header>
+
+      {defenseStatus && (
+        <div className="defense-status-bar">
+          {defenseStatus}
+        </div>
+      )}
 
       <YoloApprovalBanner />
 

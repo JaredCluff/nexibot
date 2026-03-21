@@ -371,11 +371,35 @@ fn main() {
             };
             let defense_pipeline = Arc::new(RwLock::new(DefensePipeline::new(defense_config, guardrails_security_level)));
             let defense_clone = defense_pipeline.clone();
+            let defense_app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
                 info!("[DEFENSE] Initializing defense pipeline...");
+
+                // Notify frontend that defense models are loading
+                let _ = defense_app_handle.emit("defense:loading", serde_json::json!({
+                    "status": "loading",
+                    "message": "Loading defense models..."
+                }));
+
                 if let Err(e) = defense_clone.write().await.initialize().await {
                     tracing::warn!("[DEFENSE] Failed to initialize defense pipeline: {}", e);
                 }
+
+                // Notify frontend that defense initialization is complete
+                let status = defense_clone.read().await.get_status();
+                let loaded_status = if status.deberta_loaded || status.llama_guard_loaded {
+                    "ready"
+                } else if status.enabled {
+                    "degraded"
+                } else {
+                    "ready"
+                };
+                let _ = defense_app_handle.emit("defense:loaded", serde_json::json!({
+                    "status": loaded_status,
+                    "deberta_loaded": status.deberta_loaded,
+                    "llama_guard_loaded": status.llama_guard_loaded,
+                }));
             });
 
             // Initialize MCP manager

@@ -550,8 +550,8 @@ mod tests {
         assert_eq!(config.deberta_threshold, 0.85);
         assert!(!config.allow_remote_llama_guard);
         assert!(
-            !config.fail_open,
-            "fail_open should default to false (fail-closed) so requests are blocked when models fail to load"
+            config.fail_open,
+            "fail_open must default to true to prevent bricking the app"
         );
     }
 
@@ -605,6 +605,31 @@ mod tests {
         assert!(
             !pipeline2.initialized,
             "Enabling new model should set initialized=false for re-init"
+        );
+    }
+
+    #[test]
+    fn test_fail_open_defaults_to_true() {
+        let config = DefenseConfig::default();
+        assert!(
+            config.fail_open,
+            "fail_open must default to true to prevent bricking the app"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fail_open_true_allows_messages_without_models() {
+        let config = DefenseConfig {
+            enabled: true,
+            fail_open: true,
+            ..DefenseConfig::default()
+        };
+        let mut pipeline = DefensePipeline::new(config, SecurityLevel::Standard);
+        // Don't initialize (no models loaded)
+        let result = pipeline.check("hello world").await;
+        assert!(
+            result.allowed,
+            "fail_open=true must allow messages when no models are loaded"
         );
     }
 }
