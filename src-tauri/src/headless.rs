@@ -422,6 +422,16 @@ pub async fn run() {
     let dashboard_manager = Arc::new(dashboard::DashboardManager::new());
     let advanced_memory_manager = Arc::new(memory_advanced::AdvancedMemoryManager::new());
 
+    // Initialize network policy engine
+    let network_policy = Arc::new(
+        crate::security::network_policy::NetworkPolicyEngine::new(
+            config
+                .try_read()
+                .map(|c| c.network_policy.clone())
+                .unwrap_or_default(),
+        ),
+    );
+
     // -----------------------------------------------------------------
     // Build AppState (identical struct used by all commands)
     // -----------------------------------------------------------------
@@ -626,6 +636,8 @@ pub async fn run() {
         plugin_registry: std::sync::Arc::new(RwLock::new(crate::plugins::PluginRegistry::new())),
         // Per-agent workspace isolation
         workspace_manager: std::sync::Arc::new(std::sync::Mutex::new(crate::agent_workspace::WorkspaceManager::new())),
+        // Network policy engine
+        network_policy,
         log_state: None,
     };
 

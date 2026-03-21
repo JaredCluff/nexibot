@@ -6,6 +6,7 @@ use tracing::{info, warn};
 
 use crate::config::FetchConfig;
 use crate::security::external_content;
+use crate::security::network_policy::NetworkPolicyEngine;
 use crate::security::ssrf::{self, SsrfPolicy};
 
 /// Get the tool definition to pass to Claude.
@@ -45,7 +46,11 @@ pub fn nexibot_fetch_tool_definition() -> Value {
 }
 
 /// Execute the fetch tool.
-pub async fn execute_fetch_tool(input: &Value, config: &FetchConfig) -> String {
+pub async fn execute_fetch_tool(
+    input: &Value,
+    config: &FetchConfig,
+    network_policy: &NetworkPolicyEngine,
+) -> String {
     if !config.enabled {
         return "Error: Fetch tool is disabled in settings. Enable it under fetch.enabled in config.yaml.".to_string();
     }
@@ -90,6 +95,14 @@ pub async fn execute_fetch_tool(input: &Value, config: &FetchConfig) -> String {
         .and_then(|m| m.as_str())
         .unwrap_or("get")
         .to_lowercase();
+
+    // Check network policy
+    if let Err(denied) = network_policy.check_request(&url_str, &method_str).await {
+        return json!({
+            "error": format!("Blocked by network policy: {}", denied),
+        })
+        .to_string();
+    }
 
     let timeout = input
         .get("timeout_ms")
