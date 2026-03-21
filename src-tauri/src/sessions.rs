@@ -553,7 +553,8 @@ impl SessionManager {
         // Two concurrent truncations on the same session could both read N
         // entries, compute truncation, and overwrite each other's results.
         // We use OpenOptions::create_new as an atomic "lock acquire" — if the
-        // file already exists, another truncation is in progress.
+        // file already exists, another truncation is in progress (or a prior
+        // process crashed). Stale locks older than 60s are reclaimed.
         let lock_path = path.with_extension("jsonl.lock");
         let _lock_guard = match std::fs::OpenOptions::new()
             .write(true)
@@ -562,17 +563,50 @@ impl SessionManager {
         {
             Ok(f) => Some(f),
             Err(_) => {
-                // Lock file already exists — another truncation is in progress.
-                // Skip this truncation to avoid data races.
-                warn!(
-                    "[SESSIONS] Skipping truncation for '{}': another truncation in progress",
-                    session_id
-                );
-                return Ok(TruncationResult {
-                    entries_before: 0,
-                    entries_after: 0,
-                    truncated: false,
-                });
+                // Lock file exists — check if it's stale (older than 60 seconds)
+                let is_stale = std::fs::metadata(&lock_path)
+                    .and_then(|m| m.modified())
+                    .map(|mtime| {
+                        mtime.elapsed().map(|d| d.as_secs() > 60).unwrap_or(false)
+                    })
+                    .unwrap_or(true); // If we can't read metadata, treat as stale
+
+                if is_stale {
+                    warn!(
+                        "[SESSIONS] Removing stale truncation lock for '{}'",
+                        session_id
+                    );
+                    let _ = std::fs::remove_file(&lock_path);
+                    // Try to acquire again
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&lock_path)
+                    {
+                        Ok(f) => Some(f),
+                        Err(_) => {
+                            warn!(
+                                "[SESSIONS] Skipping truncation for '{}': cannot acquire lock",
+                                session_id
+                            );
+                            return Ok(TruncationResult {
+                                entries_before: 0,
+                                entries_after: 0,
+                                truncated: false,
+                            });
+                        }
+                    }
+                } else {
+                    warn!(
+                        "[SESSIONS] Skipping truncation for '{}': another truncation in progress",
+                        session_id
+                    );
+                    return Ok(TruncationResult {
+                        entries_before: 0,
+                        entries_after: 0,
+                        truncated: false,
+                    });
+                }
             }
         };
         // Ensure lock file is removed when we're done (even on error)

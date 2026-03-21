@@ -287,8 +287,11 @@ impl NetworkPolicyEngine {
 
 /// Check if a hostname looks like a private IP address.
 ///
-/// Handles IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) to prevent
-/// bypass of private IP checks via IPv6 encoding.
+/// Handles multiple IPv6 bypass vectors:
+/// - IPv4-mapped addresses (`::ffff:127.0.0.1`)
+/// - IPv4-compatible addresses (`::127.0.0.1`, deprecated but parseable)
+/// - IPv6 link-local addresses (`fe80::1`)
+/// - NAT64/DNS64 well-known prefix (`64:ff9b::` range)
 fn is_private_ip(host: &str) -> bool {
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         match ip {
@@ -300,6 +303,36 @@ fn is_private_ip(host: &str) -> bool {
                 // Check IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
                 if let Some(mapped_v4) = v6.to_ipv4_mapped() {
                     return is_private_v4(&mapped_v4);
+                }
+                // Check deprecated IPv4-compatible addresses (::x.x.x.x)
+                // These have the form 0:0:0:0:0:0:a.b.c.d
+                let segments = v6.segments();
+                if segments[0..5] == [0, 0, 0, 0, 0] && segments[5] == 0 {
+                    let hi = (segments[6] >> 8) as u8;
+                    let lo = (segments[6] & 0xff) as u8;
+                    let hi2 = (segments[7] >> 8) as u8;
+                    let lo2 = (segments[7] & 0xff) as u8;
+                    let v4 = std::net::Ipv4Addr::new(hi, lo, hi2, lo2);
+                    if is_private_v4(&v4) {
+                        return true;
+                    }
+                }
+                // Check IPv6 link-local (fe80::/10)
+                if (segments[0] & 0xffc0) == 0xfe80 {
+                    return true;
+                }
+                // Check NAT64/DNS64 well-known prefix (64:ff9b::/96)
+                if segments[0] == 0x0064 && segments[1] == 0xff9b
+                    && segments[2..6] == [0, 0, 0, 0]
+                {
+                    let hi = (segments[6] >> 8) as u8;
+                    let lo = (segments[6] & 0xff) as u8;
+                    let hi2 = (segments[7] >> 8) as u8;
+                    let lo2 = (segments[7] & 0xff) as u8;
+                    let v4 = std::net::Ipv4Addr::new(hi, lo, hi2, lo2);
+                    if is_private_v4(&v4) {
+                        return true;
+                    }
                 }
                 false
             }
@@ -567,5 +600,33 @@ mod tests {
         assert!(is_private_ip("::ffff:10.0.0.1"));
         assert!(is_private_ip("::ffff:192.168.1.1"));
         assert!(!is_private_ip("::ffff:8.8.8.8"));
+    }
+
+    #[test]
+    fn test_is_private_ip_link_local_v6() {
+        // fe80::/10 link-local addresses must be detected as private
+        assert!(is_private_ip("fe80::1"));
+        assert!(is_private_ip("fe80::aede:48ff:fe00:1122"));
+        // Non-link-local should pass
+        assert!(!is_private_ip("2001:db8::1"));
+    }
+
+    #[test]
+    fn test_is_private_ip_ipv4_compatible_v6() {
+        // Deprecated IPv4-compatible addresses (::x.x.x.x)
+        assert!(is_private_ip("::127.0.0.1"));
+        assert!(is_private_ip("::10.0.0.1"));
+        // Public IPs in compatible format should pass
+        assert!(!is_private_ip("::8.8.8.8"));
+    }
+
+    #[test]
+    fn test_is_private_ip_nat64() {
+        // NAT64 well-known prefix (64:ff9b::/96) embedding private IPs
+        assert!(is_private_ip("64:ff9b::127.0.0.1"));
+        assert!(is_private_ip("64:ff9b::10.0.0.1"));
+        assert!(is_private_ip("64:ff9b::192.168.1.1"));
+        // NAT64 with public IP should pass
+        assert!(!is_private_ip("64:ff9b::8.8.8.8"));
     }
 }
