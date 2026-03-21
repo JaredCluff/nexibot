@@ -15,6 +15,9 @@ vi.mock('../../../shared/useConfirm', () => ({
 }));
 vi.mock('../SettingsContext');
 vi.mock('../shared/InfoTip', () => ({ InfoTip: () => null }));
+vi.mock('../../SkillMarketplace', () => ({
+  SkillMarketplace: () => <div data-testid="skill-marketplace" />,
+}));
 // invoke is mocked globally via setup.ts
 
 // -------------------------------------------------------------------

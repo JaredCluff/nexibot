@@ -95,7 +95,7 @@ describe('Tool-approval request flow', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Approval required for nexibot_execute/i)).toBeInTheDocument();
+      expect(screen.getByText(/Approve:.*Execute Command/i)).toBeInTheDocument();
       expect(screen.getByText(/Run a shell command/i)).toBeInTheDocument();
     });
   });
@@ -155,13 +155,13 @@ describe('Tool-approval request flow', () => {
       });
     });
 
-    expect(await screen.findByText(/Approval required/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Approve:/i)).toBeInTheDocument();
 
     const approveButton = screen.getByRole('button', { name: /approve/i });
     await userEvent.click(approveButton);
 
     await waitFor(() => {
-      expect(screen.queryByText(/Approval required/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Approve:/i)).not.toBeInTheDocument();
     });
   });
 
@@ -176,14 +176,14 @@ describe('Tool-approval request flow', () => {
       });
     });
 
-    expect(await screen.findByText(/Approval required/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Approve:/i)).toBeInTheDocument();
 
     await act(async () => {
       dispatchTauriEvent('chat:tool-approval-expired', { request_id: 'req-5' });
     });
 
     await waitFor(() => {
-      expect(screen.queryByText(/Approval required/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Approve:/i)).not.toBeInTheDocument();
     });
   });
 });

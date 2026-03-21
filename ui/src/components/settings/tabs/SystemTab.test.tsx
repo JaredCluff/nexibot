@@ -232,8 +232,11 @@ describe('SystemTab', () => {
 
     it('shows alert on nexibot autostart error', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke).mockRejectedValueOnce(new Error('permission denied'));
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'set_nexibot_autostart') return Promise.reject(new Error('permission denied'));
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       await user.click(screen.getByRole('checkbox', { name: /Launch NexiBot at login/i }));
@@ -248,8 +251,11 @@ describe('SystemTab', () => {
 
     it('shows alert on k2k autostart error', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke).mockRejectedValueOnce(new Error('permission denied'));
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'set_k2k_agent_autostart') return Promise.reject(new Error('permission denied'));
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       await user.click(screen.getByRole('checkbox', { name: /Launch K2K Agent at login/i }));
@@ -280,12 +286,15 @@ describe('SystemTab', () => {
 
     it('shows update version info when update is available', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke).mockResolvedValueOnce({
-        version: '1.2.3',
-        date: '2026-01-01',
-        body: 'Bug fixes and improvements',
-      });
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'check_for_updates') return Promise.resolve({
+          version: '1.2.3',
+          date: '2026-01-01',
+          body: 'Bug fixes and improvements',
+        } as any);
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       await user.click(screen.getByRole('button', { name: /Check for Updates/i }));
@@ -315,12 +324,15 @@ describe('SystemTab', () => {
   describe('updates — install', () => {
     it('Install Update button is visible when update info is available', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke).mockResolvedValueOnce({
-        version: '1.2.3',
-        date: '2026-01-01',
-        body: null,
-      });
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'check_for_updates') return Promise.resolve({
+          version: '1.2.3',
+          date: '2026-01-01',
+          body: null,
+        } as any);
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       await user.click(screen.getByRole('button', { name: /Check for Updates/i }));
@@ -332,10 +344,15 @@ describe('SystemTab', () => {
 
     it('Install Update button calls install_update and shows alert', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke)
-        .mockResolvedValueOnce({ version: '1.2.3', date: null, body: null }) // check_for_updates
-        .mockResolvedValueOnce(undefined); // install_update
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'check_for_updates') return Promise.resolve({
+          version: '1.2.3',
+          date: null,
+          body: null,
+        } as any);
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       await user.click(screen.getByRole('button', { name: /Check for Updates/i }));
@@ -630,13 +647,16 @@ describe('SystemTab', () => {
     it('soul template select calls load_soul_template and setCurrentSoul', async () => {
       const user = userEvent.setup();
       const setCurrentSoul = vi.fn();
-      vi.mocked(invoke).mockResolvedValueOnce({ content: 'Template soul content' });
       setupSettings({
         settings: {
           soulTemplates: [{ name: 'friendly', description: 'A friendly assistant' }],
           currentSoul: '',
           setCurrentSoul,
         },
+      });
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'load_soul_template') return Promise.resolve({ content: 'Template soul content' } as any);
+        return Promise.resolve(undefined as any);
       });
       render(<SystemTab />);
 
@@ -915,8 +935,11 @@ describe('SystemTab', () => {
   describe('background tasks', () => {
     it('Refresh button calls list_background_tasks', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke).mockResolvedValueOnce([]);
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'list_background_tasks') return Promise.resolve([] as any);
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       const refreshButtons = screen.getAllByRole('button', { name: /Refresh/i });
@@ -938,18 +961,21 @@ describe('SystemTab', () => {
 
     it('shows task card with description after loading tasks', async () => {
       const user = userEvent.setup();
-      vi.mocked(invoke).mockResolvedValueOnce([
-        {
-          id: 'task-1',
-          description: 'Indexing documents',
-          status: 'Running',
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-01-01T00:01:00Z',
-          progress: null,
-          result_summary: null,
-        },
-      ]);
       setupSettings();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === 'list_background_tasks') return Promise.resolve([
+          {
+            id: 'task-1',
+            description: 'Indexing documents',
+            status: 'Running',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:01:00Z',
+            progress: null,
+            result_summary: null,
+          },
+        ] as any);
+        return Promise.resolve(undefined as any);
+      });
       render(<SystemTab />);
 
       const refreshButtons = screen.getAllByRole('button', { name: /Refresh/i });

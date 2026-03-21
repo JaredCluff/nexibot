@@ -724,11 +724,11 @@ describe('ChannelsTab', () => {
     it('renders ToolPolicySection for primary and extended security channels', () => {
       setupSettings();
       render(<ChannelsTab />);
-      // Primary cards: Telegram, WhatsApp, Discord, Slack, Signal, Teams, Matrix = 7
+      // Primary cards: Telegram, WhatsApp, Discord, Slack, Signal, Teams, Matrix, Email, Gmail = 9
       // Extended security list: BlueBubbles, Google Chat, Mattermost, Messenger,
       // Instagram, LINE, Twilio, Mastodon, Rocket.Chat, WebChat = 10
       const toolPolicySections = screen.getAllByTestId('tool-policy-section');
-      expect(toolPolicySections).toHaveLength(17);
+      expect(toolPolicySections).toHaveLength(19);
     });
   });
 
