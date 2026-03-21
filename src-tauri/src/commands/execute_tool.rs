@@ -7,8 +7,10 @@
 //! 2. DCG check via guardrails
 //! 3. Blocked command patterns
 //! 4. Allowed command whitelist (if configured)
-//! 5. Timeout enforcement (max 300s)
-//! 6. Output truncation
+//! 5. Execution approval check
+//! 6. Docker sandbox routing
+//! 7. Timeout enforcement (max 300s)
+//! 8. Output truncation
 
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
@@ -18,6 +20,8 @@ use tracing::{info, warn};
 use crate::config::ExecuteConfig;
 use crate::gated_shell::GatedShell;
 use crate::guardrails::Guardrails;
+use crate::sandbox::{SandboxConfig, SandboxFallback, docker::DockerSandbox};
+use crate::sandbox::policy::{SandboxPolicy, should_sandbox};
 use crate::security::credentials;
 use crate::security::env_sanitize::{build_safe_env, SanitizeOptions};
 use crate::security::exec_approval::ExecApprovalManager;
@@ -65,6 +69,7 @@ pub async fn execute_execute_tool(
     gated_shell: Option<&GatedShell>,
     session_key: &str,
     agent_id: &str,
+    sandbox_config: &SandboxConfig,
 ) -> String {
     // Gate 0: Skill runtime execution check
     if active_skill_env_vars.is_some() && !config.skill_runtime_exec_enabled {
@@ -183,6 +188,8 @@ pub async fn execute_execute_tool(
         }
     }
 
+    let start = Instant::now();
+
     info!(
         "[EXECUTE] Running ({}) with timeout {}ms: {}",
         action,
@@ -193,6 +200,79 @@ pub async fn execute_execute_tool(
             command.clone()
         }
     );
+
+    // Gate 6: Docker sandbox routing
+    if action == "run_command" && sandbox_config.enabled {
+        let policy = config.sandbox_policy.unwrap_or(SandboxPolicy::default());
+        if policy != SandboxPolicy::Never && should_sandbox(&command, &policy) {
+            if DockerSandbox::is_docker_available().await {
+                info!("[EXECUTE] Routing command through Docker sandbox");
+                let mut sandbox = DockerSandbox::new(sandbox_config.clone());
+                match sandbox.create_container().await {
+                    Ok(_) => {
+                        if let Err(e) = sandbox.start_container().await {
+                            warn!("[EXECUTE] Sandbox container start failed: {}", e);
+                            // Fall through to fallback check
+                        } else {
+                            let timeout = Duration::from_millis(timeout_ms);
+                            let result = sandbox.exec_in_container(&command, timeout).await;
+                            let _ = sandbox.stop_container().await;
+                            let _ = sandbox.remove_container().await;
+                            return match result {
+                                Ok(exec_result) => {
+                                    json!({
+                                        "stdout": exec_result.stdout,
+                                        "stderr": exec_result.stderr,
+                                        "exit_code": exec_result.exit_code,
+                                        "sandboxed": true,
+                                        "timed_out": exec_result.timed_out,
+                                        "duration_ms": start.elapsed().as_millis() as u64,
+                                    }).to_string()
+                                }
+                                Err(e) => {
+                                    json!({
+                                        "error": format!("Sandbox execution failed: {}", e),
+                                        "sandboxed": true,
+                                    }).to_string()
+                                }
+                            };
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[EXECUTE] Failed to create sandbox container: {}", e);
+                        // Fall through to fallback check
+                    }
+                }
+                // Docker failed — check fallback
+                match sandbox_config.fallback {
+                    SandboxFallback::Deny => {
+                        warn!("[EXECUTE] Docker unavailable and fallback=Deny, blocking command");
+                        return json!({
+                            "error": "Command requires sandbox but Docker is unavailable",
+                            "hint": "Install Docker or set sandbox.fallback_on_docker_unavailable: allow_host",
+                        }).to_string();
+                    }
+                    SandboxFallback::AllowHost => {
+                        info!("[EXECUTE] Docker unavailable, falling back to host execution");
+                        // Fall through to normal execution below
+                    }
+                }
+            } else {
+                // Docker not available at all
+                match sandbox_config.fallback {
+                    SandboxFallback::Deny => {
+                        return json!({
+                            "error": "Command requires sandbox but Docker is not installed",
+                            "hint": "Install Docker or set sandbox.fallback_on_docker_unavailable: allow_host",
+                        }).to_string();
+                    }
+                    SandboxFallback::AllowHost => {
+                        info!("[EXECUTE] Docker not available, falling back to host execution");
+                    }
+                }
+            }
+        }
+    }
 
     // NexiGate: route run_command through gated shell if enabled
     if action == "run_command" {
@@ -209,8 +289,6 @@ pub async fn execute_execute_tool(
             }
         }
     }
-
-    let start = Instant::now();
 
     // Build the process command with safe binary resolution
     #[cfg(windows)]
@@ -301,7 +379,7 @@ pub async fn execute_execute_tool(
         cmd.current_dir(wd);
     }
 
-    // Gate 5: Timeout enforcement
+    // Gate 7: Timeout enforcement
     let output = match tokio::time::timeout(Duration::from_millis(timeout_ms), cmd.output()).await {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
@@ -328,7 +406,7 @@ pub async fn execute_execute_tool(
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
-    // Gate 6: Output truncation
+    // Gate 8: Output truncation
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
@@ -440,6 +518,7 @@ mod tests {
             None,
             "test-session",
             "test-agent",
+            &SandboxConfig::default(),
         )
         .await;
 
@@ -479,6 +558,7 @@ mod tests {
             None,
             "test-session",
             "test-agent",
+            &SandboxConfig::default(),
         )
         .await;
 
@@ -504,6 +584,7 @@ mod tests {
             None,
             "test-session",
             "test-agent",
+            &SandboxConfig::default(),
         )
         .await;
 
@@ -530,6 +611,7 @@ mod tests {
             None,
             "test-session",
             "test-agent",
+            &SandboxConfig::default(),
         )
         .await;
 
@@ -555,6 +637,7 @@ mod tests {
             None,
             "test-session",
             "test-agent",
+            &SandboxConfig::default(),
         )
         .await;
 
@@ -580,6 +663,7 @@ mod tests {
             None,
             "test-session",
             "test-agent",
+            &SandboxConfig::default(),
         )
         .await;
 

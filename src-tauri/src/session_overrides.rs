@@ -467,6 +467,7 @@ mod tests {
             blocked_paths: vec!["/etc".to_string()],
             seccomp_profile: None,
             apparmor_profile: None,
+            fallback: crate::sandbox::SandboxFallback::default(),
         };
 
         // Tighter values should apply

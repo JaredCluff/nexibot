@@ -272,6 +272,41 @@ impl MemoryManager {
         Ok(id)
     }
 
+    /// Save facts extracted by the pre-compaction flush.
+    ///
+    /// Each fact is stored as a memory entry with type `Fact` and tagged
+    /// with "pre-compaction-flush" for provenance tracking. The session ID
+    /// is stored in the metadata HashMap for traceability.
+    pub fn save_extracted_facts(&mut self, facts: &[String], session_id: &str) -> usize {
+        let mut saved = 0;
+        for fact in facts {
+            let trimmed = fact.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let mut tags = vec!["pre-compaction-flush".to_string()];
+            // Include session_id as a tag for easy filtering
+            tags.push(format!("session:{}", session_id));
+
+            match self.add_memory(trimmed.to_string(), MemoryType::Fact, tags) {
+                Ok(_) => saved += 1,
+                Err(e) => {
+                    warn!("[MEMORY] Failed to save extracted fact: {}", e);
+                }
+            }
+        }
+
+        if saved > 0 {
+            info!(
+                "[MEMORY] Saved {} extracted facts from pre-compaction flush",
+                saved
+            );
+        }
+
+        saved
+    }
+
     /// Get a memory by ID (updates access tracking)
     pub fn get_memory(&mut self, memory_id: &str) -> Option<&MemoryEntry> {
         if let Some(memory) = self.memories.get_mut(memory_id) {

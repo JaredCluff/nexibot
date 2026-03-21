@@ -74,6 +74,17 @@ struct TranscriptEntry {
     channel_type: Option<String>,
 }
 
+/// Result of a transcript truncation operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TruncationResult {
+    /// Number of entries before truncation.
+    pub entries_before: usize,
+    /// Number of entries after truncation.
+    pub entries_after: usize,
+    /// Whether truncation actually occurred.
+    pub truncated: bool,
+}
+
 /// Session manager for named sessions and inter-session messaging.
 pub struct SessionManager {
     sessions: HashMap<String, NamedSession>,
@@ -512,6 +523,106 @@ impl SessionManager {
     #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<InterSessionMessage> {
         self.message_bus.subscribe()
+    }
+
+    /// Truncate a session transcript to the last `keep_entries` entries.
+    ///
+    /// If the transcript has fewer entries than `keep_entries`, this is a no-op.
+    /// Uses atomic write (temp file + rename) to prevent data loss on crash.
+    /// Prepends a `[TRUNCATED]` marker entry with the compaction summary.
+    pub fn truncate_transcript(
+        &self,
+        session_id: &str,
+        keep_entries: usize,
+        compaction_summary: &str,
+    ) -> Result<TruncationResult, String> {
+        let path = self
+            .transcript_path(session_id)
+            .ok_or("No sessions directory configured")?;
+
+        if !path.exists() {
+            return Ok(TruncationResult {
+                entries_before: 0,
+                entries_after: 0,
+                truncated: false,
+            });
+        }
+
+        // Read all lines
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read transcript: {}", e))?;
+
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+        let total = lines.len();
+
+        if total <= keep_entries {
+            return Ok(TruncationResult {
+                entries_before: total,
+                entries_after: total,
+                truncated: false,
+            });
+        }
+
+        info!(
+            "[SESSIONS] Truncating session '{}': {} -> {} entries",
+            session_id, total, keep_entries
+        );
+
+        // Build truncated content: marker + last N entries
+        let marker = TranscriptEntry {
+            entry_type: "truncated".to_string(),
+            from: "system".to_string(),
+            content: format!(
+                "[TRUNCATED] {} entries removed during compaction. Summary: {}",
+                total - keep_entries,
+                compaction_summary
+            ),
+            timestamp: Utc::now(),
+            channel_type: None,
+        };
+
+        let marker_json = serde_json::to_string(&marker)
+            .map_err(|e| format!("Failed to serialize marker: {}", e))?;
+        let marker_line = match self.encryptor.encrypt_line(&marker_json) {
+            Ok(enc) => enc,
+            Err(_) => marker_json,
+        };
+
+        let kept_lines = &lines[total - keep_entries..];
+
+        // Atomic write: write to temp file, then rename
+        let tmp_path = path.with_extension("jsonl.tmp");
+        {
+            let mut file = std::fs::File::create(&tmp_path)
+                .map_err(|e| format!("Failed to create temp file: {}", e))?;
+            writeln!(file, "{}", marker_line)
+                .map_err(|e| format!("Failed to write marker: {}", e))?;
+            for line in kept_lines {
+                writeln!(file, "{}", line)
+                    .map_err(|e| format!("Failed to write entry: {}", e))?;
+            }
+            file.sync_all()
+                .map_err(|e| format!("Failed to sync temp file: {}", e))?;
+        }
+
+        // Rename (atomic on same filesystem)
+        std::fs::rename(&tmp_path, &path)
+            .map_err(|e| format!("Failed to rename temp file: {}", e))?;
+
+        // Set restrictive permissions
+        let _ = crate::platform::file_security::restrict_file_permissions(&path);
+
+        let entries_after = keep_entries + 1; // +1 for the marker
+        info!(
+            "[SESSIONS] Truncation complete: {} -> {} entries",
+            total, entries_after
+        );
+
+        Ok(TruncationResult {
+            entries_before: total,
+            entries_after,
+            truncated: true,
+        })
     }
 
     /// Delete a session.
@@ -997,5 +1108,165 @@ mod tests {
         let inbox = mgr.get_inbox(&s2.id);
         assert!(inbox[0].content.contains("EXTERNAL_UNTRUSTED_CONTENT"));
         assert!(inbox[0].content.contains("whatsapp"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Transcript truncation tests
+    // -----------------------------------------------------------------------
+
+    /// Helper to create a manager with a real temp directory for truncation tests.
+    fn test_manager_with_dir(dir: &std::path::Path) -> SessionManager {
+        let (tx, _) = broadcast::channel::<InterSessionMessage>(64);
+        SessionManager {
+            sessions: HashMap::new(),
+            active_session: None,
+            message_bus: tx,
+            inbox: HashMap::new(),
+            sessions_dir: Some(dir.to_path_buf()),
+            encryptor: SessionEncryptor::disabled(),
+        }
+    }
+
+    /// Write N JSONL lines to a transcript file for testing.
+    fn write_test_transcript(path: &std::path::Path, n: usize) {
+        let mut file = std::fs::File::create(path).unwrap();
+        for i in 0..n {
+            let entry = TranscriptEntry {
+                entry_type: "message".to_string(),
+                from: "user".to_string(),
+                content: format!("message-{}", i),
+                timestamp: Utc::now(),
+                channel_type: None,
+            };
+            let json = serde_json::to_string(&entry).unwrap();
+            writeln!(file, "{}", json).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_truncate_transcript_no_op_when_below_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = test_manager_with_dir(tmp.path());
+
+        let session_id = "test-session";
+        let path = tmp.path().join(format!("{}.jsonl", session_id));
+        write_test_transcript(&path, 50);
+
+        let result = mgr.truncate_transcript(session_id, 200, "summary").unwrap();
+        assert!(!result.truncated);
+        assert_eq!(result.entries_before, 50);
+        assert_eq!(result.entries_after, 50);
+
+        // File should be unchanged
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 50);
+    }
+
+    #[test]
+    fn test_truncate_transcript_truncates_to_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = test_manager_with_dir(tmp.path());
+
+        let session_id = "test-session";
+        let path = tmp.path().join(format!("{}.jsonl", session_id));
+        write_test_transcript(&path, 300);
+
+        let result = mgr.truncate_transcript(session_id, 100, "test summary").unwrap();
+        assert!(result.truncated);
+        assert_eq!(result.entries_before, 300);
+        assert_eq!(result.entries_after, 101); // 100 kept + 1 marker
+
+        // Verify file contents
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 101);
+
+        // First line should be the truncation marker
+        let marker: TranscriptEntry = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(marker.entry_type, "truncated");
+        assert!(marker.content.contains("[TRUNCATED]"));
+        assert!(marker.content.contains("200 entries removed"));
+        assert!(marker.content.contains("test summary"));
+
+        // Last entry should be the last message from the original file
+        let last: TranscriptEntry = serde_json::from_str(lines[100]).unwrap();
+        assert_eq!(last.content, "message-299");
+    }
+
+    #[test]
+    fn test_truncate_transcript_nonexistent_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = test_manager_with_dir(tmp.path());
+
+        let result = mgr.truncate_transcript("nonexistent", 100, "summary").unwrap();
+        assert!(!result.truncated);
+        assert_eq!(result.entries_before, 0);
+        assert_eq!(result.entries_after, 0);
+    }
+
+    #[test]
+    fn test_truncate_transcript_no_sessions_dir() {
+        let mgr = test_manager(); // sessions_dir is None
+        let result = mgr.truncate_transcript("any", 100, "summary");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No sessions directory"));
+    }
+
+    #[test]
+    fn test_truncate_transcript_preserves_newest_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = test_manager_with_dir(tmp.path());
+
+        let session_id = "test-session";
+        let path = tmp.path().join(format!("{}.jsonl", session_id));
+        write_test_transcript(&path, 10);
+
+        let result = mgr.truncate_transcript(session_id, 5, "compact").unwrap();
+        assert!(result.truncated);
+        assert_eq!(result.entries_before, 10);
+        assert_eq!(result.entries_after, 6); // 5 kept + 1 marker
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+
+        // Verify the kept entries are the last 5 (messages 5-9)
+        for i in 1..=5 {
+            let entry: TranscriptEntry = serde_json::from_str(lines[i]).unwrap();
+            assert_eq!(entry.content, format!("message-{}", i + 4));
+        }
+    }
+
+    #[test]
+    fn test_truncate_transcript_exact_at_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = test_manager_with_dir(tmp.path());
+
+        let session_id = "test-session";
+        let path = tmp.path().join(format!("{}.jsonl", session_id));
+        write_test_transcript(&path, 200);
+
+        let result = mgr.truncate_transcript(session_id, 200, "summary").unwrap();
+        assert!(!result.truncated);
+        assert_eq!(result.entries_before, 200);
+        assert_eq!(result.entries_after, 200);
+    }
+
+    #[test]
+    fn test_truncate_transcript_temp_file_cleaned_up() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = test_manager_with_dir(tmp.path());
+
+        let session_id = "test-session";
+        let path = tmp.path().join(format!("{}.jsonl", session_id));
+        let tmp_path = tmp.path().join(format!("{}.jsonl.tmp", session_id));
+        write_test_transcript(&path, 50);
+
+        mgr.truncate_transcript(session_id, 10, "summary").unwrap();
+
+        // Temp file should not exist after successful truncation
+        assert!(!tmp_path.exists());
+        // Original file should still exist with truncated content
+        assert!(path.exists());
     }
 }

@@ -1226,6 +1226,29 @@ fn main() {
                 });
             }
 
+            // --- ContextManager: update thresholds and flush config on change ---
+            {
+                let reload_state = app_state.clone();
+                let mut rx = app_state.config_changed.subscribe();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        if rx.recv().await.is_err() { break; }
+                        let cfg = reload_state.config.read().await;
+                        let ctx_config = context_manager::ContextManagerConfig {
+                            enabled: cfg.claude.auto_compact_enabled,
+                            compaction_threshold: cfg.claude.auto_compact_threshold,
+                            approaching_threshold: 0.70,
+                            preserve_recent_messages: 20,
+                            archive_summaries: true,
+                            max_compactions_per_day: 5,
+                            ..Default::default()
+                        };
+                        drop(cfg);
+                        reload_state.context_manager.update_config(ctx_config);
+                    }
+                });
+            }
+
             // Key Vault → GatedShell: re-sync filter when vault entries change
             // Triggered by the same config_changed broadcast that fires after any
             // vault mutation (add/revoke), so new secrets are immediately masked.

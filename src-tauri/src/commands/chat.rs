@@ -1095,6 +1095,7 @@ pub(crate) async fn execute_tool_call<'obs>(
         }
         let config = state.config.read().await;
         let mut exec_config = config.execute.clone();
+        let sandbox_config = config.sandbox.clone();
         // Autonomous mode is authoritative: if it approved this call (we got past
         // the autonomy gate above), override the base enabled flag.
         if config.autonomous_mode.enabled {
@@ -1155,6 +1156,7 @@ pub(crate) async fn execute_tool_call<'obs>(
                 state.gated_shell.as_deref(),
                 session_key,
                 agent_id,
+                &sandbox_config,
             )
             .await;
         }
@@ -1214,6 +1216,7 @@ pub(crate) async fn execute_tool_call<'obs>(
             state.gated_shell.as_deref(),
             session_key,
             agent_id,
+            &sandbox_config,
         )
         .await;
     }

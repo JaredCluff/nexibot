@@ -78,6 +78,22 @@ impl NexiBotClient {
         self.put("/api/overrides", overrides).await
     }
 
+    /// Run security audit
+    pub async fn run_security_audit(&self, deep: bool, fix: bool) -> Result<Value, CliError> {
+        let mut endpoint = "/api/security/audit".to_string();
+        let mut params = Vec::new();
+        if deep {
+            params.push("deep=true");
+        }
+        if fix {
+            params.push("fix=true");
+        }
+        if !params.is_empty() {
+            endpoint = format!("{}?{}", endpoint, params.join("&"));
+        }
+        self.get(&endpoint).await
+    }
+
     /// Generic GET request
     async fn get(&self, path: &str) -> Result<Value, CliError> {
         let url = format!("{}{}", self.base_url, path);

@@ -20,6 +20,7 @@ pub struct PluginInfo {
 /// Registry of loaded plugins and their capabilities.
 pub struct PluginRegistry {
     plugins: Vec<Box<dyn NexiBotPlugin>>,
+    plugin_capability_counts: HashMap<String, usize>,
     tools: HashMap<String, Arc<dyn ToolPlugin>>,
     providers: HashMap<String, Arc<dyn ProviderPlugin>>,
     hooks: HashMap<HookPoint, Vec<Arc<dyn HookHandler>>>,
@@ -30,6 +31,7 @@ impl PluginRegistry {
     pub fn new() -> Self {
         Self {
             plugins: Vec::new(),
+            plugin_capability_counts: HashMap::new(),
             tools: HashMap::new(),
             providers: HashMap::new(),
             hooks: HashMap::new(),
@@ -40,8 +42,10 @@ impl PluginRegistry {
     pub fn register(&mut self, plugin: Box<dyn NexiBotPlugin>) {
         let id = plugin.id().to_string();
         let name = plugin.name().to_string();
+        let capabilities = plugin.capabilities();
+        let capability_count = capabilities.len();
 
-        for capability in plugin.capabilities() {
+        for capability in capabilities {
             match capability {
                 PluginCapability::Tool(tool) => {
                     let tool_name = tool.tool_name().to_string();
@@ -72,6 +76,8 @@ impl PluginRegistry {
                 }
             }
         }
+
+        self.plugin_capability_counts.insert(id.clone(), capability_count);
 
         info!(
             "[PLUGINS] Plugin loaded: {} v{} ({})",
@@ -111,11 +117,14 @@ impl PluginRegistry {
     pub fn list_plugins(&self) -> Vec<PluginInfo> {
         self.plugins
             .iter()
-            .map(|p| PluginInfo {
-                id: p.id().to_string(),
-                name: p.name().to_string(),
-                version: p.version().to_string(),
-                capability_count: p.capabilities().len(),
+            .map(|p| {
+                let id = p.id().to_string();
+                PluginInfo {
+                    id: id.clone(),
+                    name: p.name().to_string(),
+                    version: p.version().to_string(),
+                    capability_count: self.plugin_capability_counts.get(&id).copied().unwrap_or(0),
+                }
             })
             .collect()
     }
