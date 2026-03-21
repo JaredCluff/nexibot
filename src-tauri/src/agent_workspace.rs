@@ -355,7 +355,14 @@ mod tests {
     fn test_agent_id_path_traversal_rejected() {
         let config = WorkspaceConfig::default();
         assert!(AgentWorkspace::new("../../../etc", config.clone()).is_err());
-        assert!(AgentWorkspace::new("valid-agent_1", config.clone()).is_ok() || true); // May fail due to dir permissions in test
+        // Valid agent IDs pass validation (workspace creation may fail due to
+        // filesystem permissions in test environments, so we only verify the
+        // ID format check doesn't reject it — not that directory creation succeeds)
+        let valid_result = AgentWorkspace::new("valid-agent_1", config.clone());
+        assert!(
+            valid_result.is_ok() || valid_result.unwrap_err().to_string().contains("directory"),
+            "Valid agent ID should only fail on filesystem errors, not validation"
+        );
         assert!(AgentWorkspace::new("", config.clone()).is_err());
         assert!(AgentWorkspace::new("agent with spaces", config.clone()).is_err());
         assert!(AgentWorkspace::new("-leading-dash", config.clone()).is_err());
