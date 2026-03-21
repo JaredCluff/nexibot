@@ -9,6 +9,11 @@
  * working unchanged.
  */
 
+// Global registry of registered tool names to prevent collision/hijacking
+const _registeredToolNames = new Set();
+// Global registry of registered route paths to prevent shadowing
+const _registeredRoutes = new Set();
+
 class PluginSDK {
   /**
    * @param {import('express').Application} app - Express application
@@ -42,14 +47,27 @@ class PluginSDK {
       throw new Error(`registerProvider: name, streamEndpoint, and messageEndpoint are required`);
     }
 
+    // Prevent route shadowing across plugins
+    for (const route of [streamEndpoint, messageEndpoint]) {
+      if (_registeredRoutes.has(route)) {
+        this._context.logger?.warn?.(
+          `[SDK] Route '${route}' already registered — skipping provider '${name}' (plugin: ${this._pluginId})`
+        );
+        return;
+      }
+    }
+
     this._providers.push({ name, models: models || [] });
 
     // Mount routes
+    _registeredRoutes.add(streamEndpoint);
+    _registeredRoutes.add(messageEndpoint);
     this._app.post(streamEndpoint, streamHandler);
     this._app.post(messageEndpoint, messageHandler);
 
     if (modelsHandler) {
       const modelsPath = streamEndpoint.replace(/\/messages\/stream$/, '/models');
+      _registeredRoutes.add(modelsPath);
       this._app.get(modelsPath, modelsHandler);
     }
 
@@ -69,10 +87,21 @@ class PluginSDK {
       throw new Error(`registerTool: name and handler are required`);
     }
 
+    // Prevent tool name collision/hijacking across plugins
+    if (_registeredToolNames.has(name)) {
+      this._context.logger?.warn?.(
+        `[SDK] Tool '${name}' already registered by another plugin — skipping (plugin: ${this._pluginId})`
+      );
+      return;
+    }
+    _registeredToolNames.add(name);
+
     this._tools.push({ name, description, inputSchema, handler });
 
     // Mount tool execution endpoint
-    this._app.post(`/api/tools/${name}`, async (req, res) => {
+    const routePath = `/api/tools/${name}`;
+    _registeredRoutes.add(routePath);
+    this._app.post(routePath, async (req, res) => {
       try {
         const result = await handler(req.body);
         res.json({ result });
