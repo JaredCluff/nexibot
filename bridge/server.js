@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { normalizeMessages, validateAndRepairMessages } from './lib/normalize.js';
 import { keyFingerprint } from './lib/utils.js';
+import { PluginSDK } from './lib/plugin-sdk.js';
 import searchRouter from './lib/search.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,8 @@ app.use(express.json({ limit: '10mb' }));
 
 // Track loaded plugins
 const loadedPlugins = [];
+// Track SDK v2 plugin instances for health reporting
+const pluginSDKs = [];
 
 /**
  * Load plugins from a directory.
@@ -88,8 +91,9 @@ async function loadPluginsFromDir(pluginsDir, label) {
         continue;
       }
 
-      // Validate bridge API version
-      if (manifest.bridge_api_version !== '1') {
+      // Validate bridge API version (v1 and v2 supported)
+      const apiVersion = manifest.bridge_api_version || '1';
+      if (apiVersion !== '1' && apiVersion !== '2') {
         console.warn(`[Bridge] Skipping plugin '${manifest.name}': unsupported bridge_api_version '${manifest.bridge_api_version}'`);
         continue;
       }
@@ -119,15 +123,28 @@ async function loadPluginsFromDir(pluginsDir, label) {
         logger: console,
       };
 
-      // Register plugin routes
-      plugin.register(app, context);
+      // Register plugin routes (v1 or v2)
+      let sdk = null;
+      if (apiVersion === '2') {
+        sdk = new PluginSDK(app, context, manifest.name);
+        plugin.register(sdk);
+        pluginSDKs.push(sdk);
+      } else {
+        plugin.register(app, context);
+      }
 
       const info = {
         name: manifest.name,
         version: manifest.version,
         description: manifest.description,
         source: label,
+        bridge_api_version: apiVersion,
         health: typeof plugin.health === 'function' ? plugin.health() : null,
+        ...(sdk ? {
+          sdk_providers: sdk.providers.map(p => p.name),
+          sdk_tools: sdk.tools.map(t => t.name),
+          sdk_channels: sdk.channels.map(c => c.name),
+        } : {}),
       };
 
       loadedPlugins.push(info);
@@ -152,7 +169,11 @@ app.get('/health', (req, res) => {
       name: p.name,
       version: p.version,
       source: p.source,
+      bridge_api_version: p.bridge_api_version,
       health: p.health,
+      ...(p.sdk_providers ? { sdk_providers: p.sdk_providers } : {}),
+      ...(p.sdk_tools ? { sdk_tools: p.sdk_tools } : {}),
+      ...(p.sdk_channels ? { sdk_channels: p.sdk_channels } : {}),
     })),
   });
 });

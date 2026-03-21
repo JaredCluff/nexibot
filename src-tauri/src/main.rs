@@ -68,6 +68,7 @@ mod observability;
 mod orchestration;
 mod pairing;
 mod platform;
+mod plugins;
 mod providers;
 mod query_classifier;
 mod rate_limiter;
@@ -858,6 +859,8 @@ fn main() {
                 webchat_session_senders: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
                 // GUI tool approval flow
                 gui_pending_approvals: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+                // Native plugin registry
+                plugin_registry: Arc::new(RwLock::new(crate::plugins::PluginRegistry::new())),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

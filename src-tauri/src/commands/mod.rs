@@ -478,4 +478,7 @@ pub struct AppState {
     pub gui_pending_approvals: Arc<
         tokio::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<bool>>>,
     >,
+
+    // Native plugin registry
+    pub plugin_registry: Arc<RwLock<crate::plugins::PluginRegistry>>,
 }
