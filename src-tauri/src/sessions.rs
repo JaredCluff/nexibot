@@ -528,7 +528,8 @@ impl SessionManager {
     /// Truncate a session transcript to the last `keep_entries` entries.
     ///
     /// If the transcript has fewer entries than `keep_entries`, this is a no-op.
-    /// Uses atomic write (temp file + rename) to prevent data loss on crash.
+    /// Uses file-level locking to prevent concurrent truncation races, plus
+    /// atomic write (temp file + rename) to prevent data loss on crash.
     /// Prepends a `[TRUNCATED]` marker entry with the compaction summary.
     pub fn truncate_transcript(
         &self,
@@ -548,7 +549,42 @@ impl SessionManager {
             });
         }
 
-        // Read all lines
+        // Use a lock file to prevent concurrent truncation races.
+        // Two concurrent truncations on the same session could both read N
+        // entries, compute truncation, and overwrite each other's results.
+        // We use OpenOptions::create_new as an atomic "lock acquire" — if the
+        // file already exists, another truncation is in progress.
+        let lock_path = path.with_extension("jsonl.lock");
+        let _lock_guard = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(f) => Some(f),
+            Err(_) => {
+                // Lock file already exists — another truncation is in progress.
+                // Skip this truncation to avoid data races.
+                warn!(
+                    "[SESSIONS] Skipping truncation for '{}': another truncation in progress",
+                    session_id
+                );
+                return Ok(TruncationResult {
+                    entries_before: 0,
+                    entries_after: 0,
+                    truncated: false,
+                });
+            }
+        };
+        // Ensure lock file is removed when we're done (even on error)
+        struct LockGuard(std::path::PathBuf);
+        impl Drop for LockGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = LockGuard(lock_path);
+
+        // Read all lines (under lock)
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read transcript: {}", e))?;
 

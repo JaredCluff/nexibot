@@ -25,6 +25,10 @@ function sanitizeError(msg) {
     .replace(/\b(sk-[a-zA-Z0-9]{20,})\b/g, 'sk-***REDACTED***')
     .replace(/\b(key-[a-zA-Z0-9]{20,})\b/g, 'key-***REDACTED***')
     .replace(/\b(AIza[a-zA-Z0-9_-]{35})\b/g, '***GOOGLE_KEY_REDACTED***')
+    .replace(/\b(AKIA[A-Z0-9]{16})\b/g, '***AWS_KEY_REDACTED***')
+    .replace(/\b(ghp_[a-zA-Z0-9]{36})\b/g, '***GITHUB_TOKEN_REDACTED***')
+    .replace(/\b(gho_[a-zA-Z0-9]{36})\b/g, '***GITHUB_TOKEN_REDACTED***')
+    .replace(/\b(hf_[a-zA-Z0-9]{34})\b/g, '***HF_TOKEN_REDACTED***')
     .replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, 'Bearer ***REDACTED***');
 }
 
