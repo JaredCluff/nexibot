@@ -6,7 +6,7 @@
         "../target/aarch64-apple-darwin/release/deps/libonnxruntime.1.17.1.dylib",
         "../target/aarch64-apple-darwin/release/deps/libsherpa-onnx-c-api.dylib"
       ],
-      "signingIdentity": "Developer ID Application: JARED BENJAMIN CLUFF (QXZG66Y7MM)"
+      "signingIdentity": "53C9AC72F58FDFFDDFE9747E0173889D47FE9BD4"
     }
   }
 }
