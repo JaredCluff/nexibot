@@ -286,23 +286,35 @@ impl NetworkPolicyEngine {
 }
 
 /// Check if a hostname looks like a private IP address.
+///
+/// Handles IPv4-mapped IPv6 addresses (e.g., `::ffff:127.0.0.1`) to prevent
+/// bypass of private IP checks via IPv6 encoding.
 fn is_private_ip(host: &str) -> bool {
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         match ip {
-            std::net::IpAddr::V4(v4) => {
-                v4.is_loopback()      // 127.0.0.0/8
-                || v4.is_private()    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-                || v4.is_link_local() // 169.254.0.0/16
-                || v4.is_unspecified() // 0.0.0.0
-            }
+            std::net::IpAddr::V4(v4) => is_private_v4(&v4),
             std::net::IpAddr::V6(v6) => {
-                v6.is_loopback()      // ::1
-                || v6.is_unspecified() // ::
+                if v6.is_loopback() || v6.is_unspecified() {
+                    return true;
+                }
+                // Check IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+                if let Some(mapped_v4) = v6.to_ipv4_mapped() {
+                    return is_private_v4(&mapped_v4);
+                }
+                false
             }
         }
     } else {
         false // Not an IP address, it's a hostname — DNS rebinding handled by SSRF module
     }
+}
+
+/// Check if an IPv4 address is in a private/reserved range.
+fn is_private_v4(v4: &std::net::Ipv4Addr) -> bool {
+    v4.is_loopback()      // 127.0.0.0/8
+    || v4.is_private()    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    || v4.is_link_local() // 169.254.0.0/16
+    || v4.is_unspecified() // 0.0.0.0
 }
 
 impl Default for NetworkPolicyEngine {
@@ -525,5 +537,35 @@ mod tests {
             .check_request("http://127.0.0.1:18790/api/messages", "POST")
             .await
             .is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ipv4_mapped_ipv6_bypass_blocked() {
+        let mut policy = test_policy();
+        // Remove the localhost rule so ::ffff:127.0.0.1 has no explicit match
+        policy.endpoints.remove("local");
+        let engine = NetworkPolicyEngine::new(policy);
+
+        // IPv4-mapped IPv6 addresses must be detected as private
+        assert!(engine
+            .check_request("http://[::ffff:127.0.0.1]:8080/api", "GET")
+            .await
+            .is_err());
+        assert!(engine
+            .check_request("http://[::ffff:10.0.0.1]/internal", "GET")
+            .await
+            .is_err());
+        assert!(engine
+            .check_request("http://[::ffff:192.168.1.1]:3000/api", "GET")
+            .await
+            .is_err());
+    }
+
+    #[test]
+    fn test_is_private_ip_ipv4_mapped_v6() {
+        assert!(is_private_ip("::ffff:127.0.0.1"));
+        assert!(is_private_ip("::ffff:10.0.0.1"));
+        assert!(is_private_ip("::ffff:192.168.1.1"));
+        assert!(!is_private_ip("::ffff:8.8.8.8"));
     }
 }
