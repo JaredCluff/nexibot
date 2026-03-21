@@ -299,6 +299,10 @@ pub struct NexiBotConfig {
     #[serde(default)]
     pub sandbox: crate::sandbox::SandboxConfig,
 
+    /// Network policy configuration
+    #[serde(default)]
+    pub network_policy: crate::security::network_policy::NetworkPolicy,
+
     /// URL of the backend agent-engine service.
     /// Used when delegating long-running or remote-capability workflows.
     /// Defaults to "http://agent-engine:8019" (Docker Compose DNS) when None.
@@ -328,6 +332,14 @@ pub struct NexiBotConfig {
     /// Knowledge Nexus Central Management configuration.
     #[serde(default)]
     pub managed_policy: ManagedPolicyConfig,
+
+    /// External skill directories to scan for skill definitions.
+    #[serde(default)]
+    pub external_skill_dirs: Vec<String>,
+
+    /// Skill formats to auto-discover (e.g., "openclaw", "codex", "claude").
+    #[serde(default = "default_auto_discover_formats")]
+    pub auto_discover_formats: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -386,6 +398,14 @@ fn default_conversation_timeout() -> u64 {
 
 fn default_config_version() -> u32 {
     2
+}
+
+fn default_auto_discover_formats() -> Vec<String> {
+    vec![
+        "openclaw".to_string(),
+        "codex".to_string(),
+        "claude".to_string(),
+    ]
 }
 
 /// Current config version
@@ -450,6 +470,7 @@ impl Default for NexiBotConfig {
             webchat: crate::webchat::WebChatConfig::default(),
             gateway: crate::gateway::GatewayConfig::default(),
             sandbox: crate::sandbox::SandboxConfig::default(),
+            network_policy: crate::security::network_policy::NetworkPolicy::default(),
             agent_engine_url: None,
             routing: RoutingConfig::default(),
             key_vault: KeyVaultConfig::default(),
@@ -457,6 +478,8 @@ impl Default for NexiBotConfig {
             yolo_mode: YoloModeConfig::default(),
             session_encryption: crate::security::session_encryption::SessionEncryptionConfig::default(),
             managed_policy: ManagedPolicyConfig::default(),
+            external_skill_dirs: Vec::new(),
+            auto_discover_formats: default_auto_discover_formats(),
         }
     }
 }

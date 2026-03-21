@@ -344,6 +344,142 @@ impl SkillsManager {
         Ok(())
     }
 
+    /// Discover and import skills from external directories.
+    ///
+    /// Scans the given directories for OpenClaw, Codex, and Claude skill formats
+    /// and converts them into NexiBot's native SKILL.md format. Converted skills
+    /// are written to the skills directory and loaded into the manager.
+    ///
+    /// Only formats listed in `allowed_formats` are considered. Skills whose
+    /// IDs already exist in the loaded skills map are skipped.
+    pub fn discover_external_skills(
+        &mut self,
+        external_dirs: &[String],
+        allowed_formats: &[String],
+    ) -> Result<Vec<String>> {
+        let mut imported = Vec::new();
+
+        if external_dirs.is_empty() {
+            return Ok(imported);
+        }
+
+        let all_adapters = crate::skill_format_adapters::all_adapters();
+        let adapters: Vec<_> = all_adapters
+            .into_iter()
+            .filter(|a| allowed_formats.iter().any(|f| f == a.format_name()))
+            .collect();
+
+        if adapters.is_empty() {
+            warn!("[SKILLS] No format adapters enabled for external skill discovery");
+            return Ok(imported);
+        }
+
+        info!(
+            "[SKILLS] Scanning {} external directories for skills ({} formats enabled)",
+            external_dirs.len(),
+            adapters.len()
+        );
+
+        for dir_str in external_dirs {
+            let dir = Path::new(dir_str);
+            if !dir.exists() || !dir.is_dir() {
+                warn!(
+                    "[SKILLS] External skill directory does not exist: {:?}",
+                    dir
+                );
+                continue;
+            }
+
+            let converted =
+                crate::skill_format_adapters::discover_and_convert(dir);
+
+            for skill in converted {
+                // Filter by allowed formats
+                if !allowed_formats.iter().any(|f| f == &skill.source_format) {
+                    continue;
+                }
+
+                // Skip if already loaded
+                if self.loaded_skills.contains_key(&skill.name) {
+                    info!(
+                        "[SKILLS] Skipping external skill '{}' — already loaded",
+                        skill.name
+                    );
+                    continue;
+                }
+
+                // Write the converted SKILL.md to the skills directory
+                let target_dir = self.skills_dir.join(&skill.name);
+                if target_dir.exists() {
+                    info!(
+                        "[SKILLS] Skipping external skill '{}' — directory already exists",
+                        skill.name
+                    );
+                    continue;
+                }
+
+                match fs::create_dir_all(&target_dir) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        warn!(
+                            "[SKILLS] Failed to create directory for external skill '{}': {}",
+                            skill.name, e
+                        );
+                        continue;
+                    }
+                }
+
+                let skill_md_path = target_dir.join("SKILL.md");
+                if let Err(e) = fs::write(&skill_md_path, &skill.skill_md) {
+                    warn!(
+                        "[SKILLS] Failed to write SKILL.md for external skill '{}': {}",
+                        skill.name, e
+                    );
+                    // Clean up the directory on failure
+                    let _ = fs::remove_dir_all(&target_dir);
+                    continue;
+                }
+
+                // Write a source marker so we know this was auto-imported
+                let marker = serde_json::json!({
+                    "source_format": skill.source_format,
+                    "source_path": skill.source_path.to_string_lossy(),
+                    "imported_at": chrono::Utc::now().to_rfc3339(),
+                });
+                let _ = fs::write(
+                    target_dir.join(".import_info.json"),
+                    serde_json::to_string_pretty(&marker).unwrap_or_default(),
+                );
+
+                // Load the newly created skill through the normal pipeline
+                match self.load_skill(&target_dir) {
+                    Ok(loaded) => {
+                        info!(
+                            "[SKILLS] Imported external {} skill: {}",
+                            skill.source_format, loaded.id
+                        );
+                        imported.push(loaded.id.clone());
+                        self.loaded_skills.insert(loaded.id.clone(), loaded);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[SKILLS] External skill '{}' converted but failed security scan: {}",
+                            skill.name, e
+                        );
+                        // Clean up on load failure
+                        let _ = fs::remove_dir_all(&target_dir);
+                    }
+                }
+            }
+        }
+
+        info!(
+            "[SKILLS] External skill discovery complete: {} skills imported",
+            imported.len()
+        );
+        Ok(imported)
+    }
+
     /// Load a single skill from a directory.
     ///
     /// Tries loading in order: SKILL.md, skill.yaml, skill.toml.

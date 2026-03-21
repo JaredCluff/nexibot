@@ -81,6 +81,7 @@ mod session_overrides;
 mod sessions;
 mod shared_workspace;
 mod signal;
+mod skill_format_adapters;
 mod skill_security;
 mod skills;
 mod slack;
