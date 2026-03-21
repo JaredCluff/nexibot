@@ -1,0 +1,7 @@
+{
+  "name": "deepseek",
+  "version": "0.1.0",
+  "description": "DeepSeek API bridge plugin (OpenAI-compatible)",
+  "bridge_api_version": "2",
+  "entry": "index.js"
+}

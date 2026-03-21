@@ -1,0 +1,6 @@
+{
+  "name": "nexibot-bridge-google",
+  "version": "0.1.0",
+  "description": "Google Gemini bridge plugin for NexiBot",
+  "type": "module"
+}

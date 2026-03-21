@@ -1,0 +1,7 @@
+{
+  "name": "google",
+  "version": "0.1.0",
+  "description": "Google Gemini API bridge plugin",
+  "bridge_api_version": "2",
+  "entry": "index.js"
+}

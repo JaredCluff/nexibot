@@ -19,6 +19,10 @@ pub struct GoogleGeminiClient {
     api_key: String,
     http_client: reqwest::Client,
     max_tokens: usize,
+    /// Whether to route requests through the bridge for logging and credential isolation.
+    use_bridge: bool,
+    /// Bridge URL (default: http://127.0.0.1:18790).
+    bridge_url: String,
 }
 
 impl GoogleGeminiClient {
@@ -31,6 +35,23 @@ impl GoogleGeminiClient {
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
             max_tokens,
+            use_bridge: false,
+            bridge_url: String::new(),
+        }
+    }
+
+    /// Create a client that routes through the NexiBot bridge.
+    pub fn via_bridge(model_id: &str, api_key: &str, bridge_url: &str, max_tokens: usize) -> Self {
+        Self {
+            model_id: model_id.to_string(),
+            api_key: api_key.to_string(),
+            http_client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(600))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
+            max_tokens,
+            use_bridge: true,
+            bridge_url: bridge_url.to_string(),
         }
     }
 
@@ -59,6 +80,88 @@ impl GoogleGeminiClient {
 
         (system_instruction, contents)
     }
+
+    /// Send a request through the NexiBot bridge instead of directly to the Gemini API.
+    async fn send_via_bridge(
+        &self,
+        messages: &[Message],
+        _tools: &[serde_json::Value],
+        system_prompt: &str,
+        _streaming: bool,
+    ) -> Result<LlmMessageResult> {
+        let request_body = json!({
+            "apiKey": self.api_key,
+            "model": self.model_id,
+            "max_tokens": self.max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+        });
+
+        // TODO: Forward tools in Anthropic format — the bridge Google plugin
+        // handles conversion to Gemini format internally.
+
+        let endpoint = format!("{}/api/google/messages", self.bridge_url);
+        info!("[GOOGLE] Sending request via bridge (model: {})", self.model_id);
+
+        let response = self
+            .http_client
+            .post(&endpoint)
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to bridge")?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await?;
+            anyhow::bail!("Bridge error (HTTP {}): {}", status, error_text);
+        }
+
+        let resp: serde_json::Value = response.json().await?;
+        let content = resp["content"].as_array().cloned().unwrap_or_default();
+
+        let text = content
+            .iter()
+            .filter_map(|b| {
+                if b["type"].as_str() == Some("text") {
+                    b["text"].as_str().map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        let tool_uses = content
+            .iter()
+            .filter_map(|b| {
+                if b["type"].as_str() == Some("tool_use") {
+                    Some(LlmToolUse {
+                        id: b["id"].as_str().unwrap_or("").to_string(),
+                        name: b["name"].as_str().unwrap_or("").to_string(),
+                        input: b["input"].clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let stop_reason = resp["stop_reason"]
+            .as_str()
+            .unwrap_or("end_turn")
+            .to_string();
+
+        Ok(LlmMessageResult {
+            text,
+            tool_uses,
+            stop_reason,
+            raw_content: content,
+            usage: None,
+            model_used: self.model_id.clone(),
+        })
+    }
 }
 
 #[async_trait]
@@ -86,6 +189,13 @@ impl LlmClient for GoogleGeminiClient {
         system_prompt: &str,
         _overrides: &SessionOverrides,
     ) -> Result<LlmMessageResult> {
+        // Route through bridge if configured
+        if self.use_bridge {
+            return self
+                .send_via_bridge(messages, tools, system_prompt, false)
+                .await;
+        }
+
         let (system_instruction, contents) = Self::build_gemini_contents(system_prompt, messages);
 
         let mut request_body = json!({
@@ -187,6 +297,15 @@ impl LlmClient for GoogleGeminiClient {
         _overrides: &SessionOverrides,
         on_chunk: Box<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>,
     ) -> Result<LlmMessageResult> {
+        // Route through bridge if configured
+        // TODO: Implement bridge streaming for Google provider.
+        // For now, bridge routing falls back to non-streaming.
+        if self.use_bridge {
+            return self
+                .send_via_bridge(messages, tools, system_prompt, true)
+                .await;
+        }
+
         let (system_instruction, contents) = Self::build_gemini_contents(system_prompt, messages);
 
         let mut request_body = json!({

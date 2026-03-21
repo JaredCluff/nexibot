@@ -1,0 +1,6 @@
+{
+  "name": "nexibot-bridge-deepseek",
+  "version": "0.1.0",
+  "description": "DeepSeek bridge plugin for NexiBot",
+  "type": "module"
+}

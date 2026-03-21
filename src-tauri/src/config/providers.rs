@@ -66,6 +66,9 @@ pub struct OpenAIConfig {
     /// OpenAI organization ID (optional)
     #[serde(default)]
     pub organization_id: Option<String>,
+    /// Route requests through the bridge for logging and credential isolation.
+    #[serde(default)]
+    pub use_bridge: bool,
 }
 
 impl Default for OpenAIConfig {
@@ -75,6 +78,7 @@ impl Default for OpenAIConfig {
             model: default_openai_model(),
             max_tokens: default_openai_max_tokens(),
             organization_id: None,
+            use_bridge: false,
         }
     }
 }
@@ -112,6 +116,9 @@ pub struct GoogleConfig {
     /// Default Gemini model.
     #[serde(default = "default_google_model")]
     pub default_model: String,
+    /// Route requests through the bridge for logging and credential isolation.
+    #[serde(default)]
+    pub use_bridge: bool,
 }
 
 /// DeepSeek API configuration.
@@ -126,6 +133,9 @@ pub struct DeepSeekConfig {
     /// Default DeepSeek model.
     #[serde(default = "default_deepseek_model")]
     pub default_model: String,
+    /// Route requests through the bridge for logging and credential isolation.
+    #[serde(default)]
+    pub use_bridge: bool,
 }
 
 /// GitHub Copilot configuration.

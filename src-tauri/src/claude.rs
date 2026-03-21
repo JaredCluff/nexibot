@@ -1414,6 +1414,19 @@ impl ClaudeClient {
         max_tokens: usize,
         provider: LlmProvider,
     ) -> Result<ClaudeMessageResult> {
+        // Check if DeepSeek should be routed through the bridge
+        if provider == LlmProvider::DeepSeek {
+            let config = self.config.read().await;
+            let use_bridge = config.deepseek.as_ref().map_or(false, |d| d.use_bridge);
+            drop(config);
+
+            if use_bridge {
+                return self
+                    .send_message_via_deepseek_bridge(model, system_prompt, messages, tools, max_tokens)
+                    .await;
+            }
+        }
+
         let api_key = self.get_provider_api_key(provider).await?;
         let (url, prefix) = self.get_cloud_openai_compat_config(provider).await?;
 
@@ -1748,12 +1761,19 @@ impl ClaudeClient {
         let api_key = self.get_provider_api_key(LlmProvider::Google).await?;
         let config = self.config.read().await;
         let max_tokens = Self::effective_max_tokens(model, config.claude.max_tokens);
+        let use_bridge = config.google.as_ref().map_or(false, |g| g.use_bridge);
         drop(config);
 
         // Strip "google/" prefix if present
         let model_id = model.strip_prefix("google/").unwrap_or(model);
 
-        let client = crate::providers::google::GoogleGeminiClient::new(model_id, &api_key, max_tokens);
+        let client = if use_bridge {
+            let bridge_url = std::env::var("ANTHROPIC_BRIDGE_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:18790".to_string());
+            crate::providers::google::GoogleGeminiClient::via_bridge(model_id, &api_key, &bridge_url, max_tokens)
+        } else {
+            crate::providers::google::GoogleGeminiClient::new(model_id, &api_key, max_tokens)
+        };
 
         use crate::providers::LlmClient;
         let overrides = crate::session_overrides::SessionOverrides::default();
@@ -1791,11 +1811,18 @@ impl ClaudeClient {
         let api_key = self.get_provider_api_key(LlmProvider::Google).await?;
         let config = self.config.read().await;
         let max_tokens = Self::effective_max_tokens(model, config.claude.max_tokens);
+        let use_bridge = config.google.as_ref().map_or(false, |g| g.use_bridge);
         drop(config);
 
         let model_id = model.strip_prefix("google/").unwrap_or(model);
 
-        let client = crate::providers::google::GoogleGeminiClient::new(model_id, &api_key, max_tokens);
+        let client = if use_bridge {
+            let bridge_url = std::env::var("ANTHROPIC_BRIDGE_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:18790".to_string());
+            crate::providers::google::GoogleGeminiClient::via_bridge(model_id, &api_key, &bridge_url, max_tokens)
+        } else {
+            crate::providers::google::GoogleGeminiClient::new(model_id, &api_key, max_tokens)
+        };
 
         use crate::providers::LlmClient;
         let overrides = crate::session_overrides::SessionOverrides::default();
@@ -1822,6 +1849,99 @@ impl ClaudeClient {
                 .collect(),
             stop_reason: result.stop_reason,
             raw_content: result.raw_content,
+            tool_calls_made: 0,
+        })
+    }
+
+    /// Send a DeepSeek request through the bridge for centralized logging.
+    async fn send_message_via_deepseek_bridge(
+        &self,
+        model: &str,
+        system_prompt: &str,
+        messages: &[Message],
+        _tools: &[serde_json::Value],
+        max_tokens: usize,
+    ) -> Result<ClaudeMessageResult> {
+        let api_key = self.get_provider_api_key(LlmProvider::DeepSeek).await?;
+        let bridge_url = std::env::var("ANTHROPIC_BRIDGE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:18790".to_string());
+
+        let stripped_model = model.strip_prefix("deepseek/").unwrap_or(model);
+
+        let request_body = serde_json::json!({
+            "apiKey": api_key,
+            "model": stripped_model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+        });
+
+        // TODO: Forward tools in Anthropic format — the bridge DeepSeek plugin
+        // handles conversion to OpenAI format internally.
+
+        info!(
+            "[DEEPSEEK] Sending request via bridge (model: {})",
+            stripped_model
+        );
+
+        let response = self
+            .http_client
+            .post(format!("{}/api/deepseek/messages", bridge_url))
+            .header("content-type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to bridge (DeepSeek)")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await?;
+            anyhow::bail!("Bridge error (DeepSeek, HTTP {}): {}", status, error_text);
+        }
+
+        let resp: serde_json::Value = response
+            .json()
+            .await
+            .context("Failed to parse bridge DeepSeek response")?;
+
+        let content = resp["content"].as_array().cloned().unwrap_or_default();
+        let text = content
+            .iter()
+            .filter_map(|b| {
+                if b["type"].as_str() == Some("text") {
+                    b["text"].as_str().map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        let tool_uses: Vec<ToolUseBlock> = content
+            .iter()
+            .filter_map(|b| {
+                if b["type"].as_str() == Some("tool_use") {
+                    Some(ToolUseBlock {
+                        id: b["id"].as_str().unwrap_or("").to_string(),
+                        name: b["name"].as_str().unwrap_or("").to_string(),
+                        input: b["input"].clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let stop_reason = resp["stop_reason"]
+            .as_str()
+            .unwrap_or("end_turn")
+            .to_string();
+
+        Ok(ClaudeMessageResult {
+            text,
+            tool_uses,
+            stop_reason,
+            raw_content: content,
             tool_calls_made: 0,
         })
     }
