@@ -629,4 +629,61 @@ mod tests {
         // NAT64 with public IP should pass
         assert!(!is_private_ip("64:ff9b::8.8.8.8"));
     }
+
+    #[tokio::test]
+    async fn test_empty_policy_denies_all() {
+        let policy = NetworkPolicy {
+            version: 1,
+            default_action: DefaultAction::Deny,
+            endpoints: HashMap::new(),
+        };
+        let engine = NetworkPolicyEngine::new(policy);
+        assert!(engine.check_request("https://example.com", "GET").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_empty_ports_allows_any_port() {
+        let mut endpoints = HashMap::new();
+        endpoints.insert("any_port".to_string(), EndpointRule {
+            hosts: vec!["example.com".to_string()],
+            ports: vec![], // empty = any port
+            allowed_methods: vec!["*".to_string()],
+        });
+        let policy = NetworkPolicy {
+            version: 1,
+            default_action: DefaultAction::Deny,
+            endpoints,
+        };
+        let engine = NetworkPolicyEngine::new(policy);
+        assert!(engine.check_request("https://example.com:8443/api", "GET").await.is_ok());
+        assert!(engine.check_request("http://example.com:3000/api", "GET").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_method_case_insensitive() {
+        let engine = NetworkPolicyEngine::new(test_policy());
+        // "api" rule allows GET and POST
+        assert!(engine.check_request("https://api.example.com/v1", "get").await.is_ok());
+        assert!(engine.check_request("https://api.example.com/v1", "Get").await.is_ok());
+        assert!(engine.check_request("https://api.example.com/v1", "POST").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_url_denied() {
+        let engine = NetworkPolicyEngine::new(test_policy());
+        assert!(engine.check_request("not-a-url", "GET").await.is_err());
+        assert!(engine.check_request("", "GET").await.is_err());
+    }
+
+    #[test]
+    fn test_network_policy_denied_display() {
+        let denied = NetworkPolicyDenied {
+            url: "https://evil.com".to_string(),
+            method: "GET".to_string(),
+            reason: "No matching rule".to_string(),
+        };
+        let display = format!("{}", denied);
+        assert!(display.contains("GET"));
+        assert!(display.contains("evil.com"));
+    }
 }

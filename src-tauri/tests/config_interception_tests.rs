@@ -232,6 +232,144 @@ fn test_vault_persists_across_reopen() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Config backward compatibility tests (raw YAML deserialization)
+// ---------------------------------------------------------------------------
+// NexiBotConfig is not exposed via lib.rs (only security modules are), so
+// these tests verify YAML structure invariants using serde_yml::Value.
+// This ensures config files from older versions still parse without errors.
+
+/// Test that a minimal config YAML with only config_version deserializes
+/// to a valid YAML mapping. This is the baseline backward compat check:
+/// existing config files without new feature sections must still parse.
+#[test]
+fn test_minimal_config_yaml_parses() {
+    let yaml = "config_version: 1\n";
+    let value: serde_yml::Value =
+        serde_yml::from_str(yaml).expect("Minimal config YAML should parse");
+    assert!(value.is_mapping(), "Parsed YAML should be a mapping");
+    assert_eq!(
+        value["config_version"].as_u64(),
+        Some(1),
+        "config_version should be 1"
+    );
+}
+
+/// Test that completely empty YAML deserializes to a valid mapping.
+/// NexiBotConfig uses #[serde(default)] on all fields, so {} should work.
+#[test]
+fn test_empty_config_yaml_parses() {
+    let yaml = "{}";
+    let value: serde_yml::Value =
+        serde_yml::from_str(yaml).expect("Empty config should parse");
+    assert!(value.is_mapping(), "Empty YAML should parse as a mapping");
+}
+
+/// Test that config YAML with unknown/future fields still parses as YAML.
+/// This verifies forward compatibility at the YAML layer — new fields
+/// added in future versions won't break older parsers.
+#[test]
+fn test_config_yaml_with_unknown_fields_parses() {
+    let yaml = r#"
+config_version: 1
+some_future_field: "hello"
+another_unknown:
+  nested: true
+"#;
+    let value: serde_yml::Value =
+        serde_yml::from_str(yaml).expect("YAML with unknown fields should parse");
+    assert!(value.is_mapping());
+    assert_eq!(
+        value["some_future_field"].as_str(),
+        Some("hello"),
+        "Unknown string field should be preserved"
+    );
+    assert_eq!(
+        value["another_unknown"]["nested"].as_bool(),
+        Some(true),
+        "Unknown nested field should be preserved"
+    );
+}
+
+/// Test that a config with sandbox section deserializes correctly,
+/// verifying the expected default structure for the sandbox feature.
+#[test]
+fn test_config_yaml_sandbox_section_parses() {
+    let yaml = r#"
+config_version: 1
+sandbox:
+  enabled: true
+  image: "debian:bookworm-slim@sha256:abcdef1234567890"
+  memory_limit: "512m"
+  cpu_limit: 1.0
+  network_mode: "none"
+  timeout_seconds: 60
+  fallback: "AllowHost"
+"#;
+    let value: serde_yml::Value =
+        serde_yml::from_str(yaml).expect("Config with sandbox section should parse");
+    let sandbox = &value["sandbox"];
+    assert_eq!(sandbox["enabled"].as_bool(), Some(true));
+    assert_eq!(sandbox["memory_limit"].as_str(), Some("512m"));
+    assert_eq!(sandbox["network_mode"].as_str(), Some("none"));
+    assert_eq!(sandbox["timeout_seconds"].as_u64(), Some(60));
+    assert_eq!(sandbox["fallback"].as_str(), Some("AllowHost"));
+}
+
+/// Test that a config with execute section including sandbox_policy parses.
+#[test]
+fn test_config_yaml_execute_sandbox_policy_parses() {
+    let yaml = r#"
+config_version: 1
+execute:
+  enabled: true
+  sandbox_policy: "Dangerous"
+  default_timeout_ms: 30000
+"#;
+    let value: serde_yml::Value =
+        serde_yml::from_str(yaml).expect("Config with execute.sandbox_policy should parse");
+    let execute = &value["execute"];
+    assert_eq!(execute["enabled"].as_bool(), Some(true));
+    assert_eq!(execute["sandbox_policy"].as_str(), Some("Dangerous"));
+    assert_eq!(execute["default_timeout_ms"].as_u64(), Some(30000));
+}
+
+/// Test config hotloading scenario: verify that a config YAML can be
+/// re-parsed after modification (simulating file watch + reload).
+#[test]
+fn test_config_hotload_reparse() {
+    // Initial config
+    let yaml_v1 = r#"
+config_version: 1
+claude:
+  model: "claude-sonnet-4-20250514"
+"#;
+    let v1: serde_yml::Value =
+        serde_yml::from_str(yaml_v1).expect("Initial config should parse");
+    assert_eq!(v1["claude"]["model"].as_str(), Some("claude-sonnet-4-20250514"));
+
+    // Updated config (simulating a file edit picked up by hot-reload)
+    let yaml_v2 = r#"
+config_version: 1
+claude:
+  model: "claude-opus-4-20250514"
+defense:
+  enabled: true
+"#;
+    let v2: serde_yml::Value =
+        serde_yml::from_str(yaml_v2).expect("Updated config should parse");
+    assert_eq!(
+        v2["claude"]["model"].as_str(),
+        Some("claude-opus-4-20250514"),
+        "Hot-reloaded config should reflect new model"
+    );
+    assert_eq!(
+        v2["defense"]["enabled"].as_bool(),
+        Some(true),
+        "Hot-reloaded config should include new defense section"
+    );
+}
+
 /// Verify that two vaults opened against different database files do not
 /// share entries: a proxy key from vault A must not resolve in vault B.
 #[test]

@@ -387,4 +387,26 @@ mod tests {
         assert!(CommandRisk::Safe < CommandRisk::Moderate);
         assert!(CommandRisk::Moderate < CommandRisk::Dangerous);
     }
+
+    #[test]
+    fn test_empty_command() {
+        assert_eq!(assess_command_risk(""), CommandRisk::Moderate);
+    }
+
+    #[test]
+    fn test_whitespace_only_command() {
+        assert_eq!(assess_command_risk("   "), CommandRisk::Moderate);
+    }
+
+    #[test]
+    fn test_case_insensitive_dangerous() {
+        assert_eq!(assess_command_risk("RM -RF /"), CommandRisk::Dangerous);
+        assert_eq!(assess_command_risk("SUDO apt-get"), CommandRisk::Dangerous);
+    }
+
+    #[test]
+    fn test_safe_commands_with_paths() {
+        assert_eq!(assess_command_risk("/usr/bin/ls -la"), CommandRisk::Safe);
+        assert_eq!(assess_command_risk("/bin/cat /tmp/file"), CommandRisk::Safe);
+    }
 }

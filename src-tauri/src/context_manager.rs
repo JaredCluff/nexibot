@@ -568,4 +568,106 @@ mod tests {
         manager.update_usage(180000, 200000).unwrap();
         assert!(!manager.should_compact()); // Should not compact even at 90%
     }
+
+    #[test]
+    fn test_flush_config_enabled() {
+        let config = ContextManagerConfig {
+            pre_compaction_flush: true,
+            flush_message_window: 30,
+            flush_timeout_seconds: 15,
+            flush_model: Some("claude-haiku".to_string()),
+            ..Default::default()
+        };
+        let manager = ContextManager::new(config);
+        let flush = manager.flush_config();
+        assert!(flush.is_some());
+        let fc = flush.unwrap();
+        assert_eq!(fc.message_window, 30);
+        assert_eq!(fc.timeout_seconds, 15);
+        assert_eq!(fc.model, Some("claude-haiku".to_string()));
+    }
+
+    #[test]
+    fn test_flush_config_disabled() {
+        let config = ContextManagerConfig {
+            pre_compaction_flush: false,
+            ..Default::default()
+        };
+        let manager = ContextManager::new(config);
+        assert!(manager.flush_config().is_none());
+    }
+
+    #[test]
+    fn test_pre_compact_flush_state_transitions() {
+        let manager = ContextManager::new(ContextManagerConfig::default());
+
+        // Start in Normal
+        assert_eq!(manager.get_state(), ContextState::Normal);
+
+        // Move to Approaching (75%)
+        manager.update_usage(150000, 200000).unwrap();
+        assert_eq!(manager.get_state(), ContextState::Approaching);
+
+        // Set flush in progress
+        manager.set_flush_in_progress();
+        assert_eq!(manager.get_state(), ContextState::PreCompactFlush);
+
+        // Complete flush -> Compact
+        manager.set_flush_complete();
+        assert_eq!(manager.get_state(), ContextState::Compact);
+    }
+
+    #[test]
+    fn test_flush_in_progress_only_from_approaching_or_compact() {
+        let manager = ContextManager::new(ContextManagerConfig::default());
+
+        // Normal state should NOT transition to PreCompactFlush
+        assert_eq!(manager.get_state(), ContextState::Normal);
+        manager.set_flush_in_progress();
+        assert_eq!(manager.get_state(), ContextState::Normal); // unchanged
+    }
+
+    #[test]
+    fn test_update_config_changes_thresholds() {
+        let manager = ContextManager::new(ContextManagerConfig::default());
+
+        // Default: 85% threshold -> 80% usage is Approaching
+        let usage = manager.update_usage(160000, 200000).unwrap();
+        assert_eq!(usage.state, ContextState::Approaching);
+
+        // Update to lower threshold: 75% -> 80% usage is now Compact
+        let new_config = ContextManagerConfig {
+            compaction_threshold: 0.75,
+            ..Default::default()
+        };
+        manager.update_config(new_config);
+
+        let usage = manager.update_usage(160000, 200000).unwrap();
+        assert_eq!(usage.state, ContextState::Compact);
+    }
+
+    #[test]
+    fn test_truncation_config() {
+        let config = ContextManagerConfig {
+            truncate_after_compaction: true,
+            max_transcript_entries: 150,
+            ..Default::default()
+        };
+        let manager = ContextManager::new(config);
+        let tc = manager.truncation_config();
+        assert!(tc.is_some());
+        let (max_entries, enabled) = tc.unwrap();
+        assert_eq!(max_entries, 150);
+        assert!(enabled);
+    }
+
+    #[test]
+    fn test_truncation_config_disabled() {
+        let config = ContextManagerConfig {
+            truncate_after_compaction: false,
+            ..Default::default()
+        };
+        let manager = ContextManager::new(config);
+        assert!(manager.truncation_config().is_none());
+    }
 }

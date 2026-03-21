@@ -1,0 +1,206 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Rust workspace tests (all crates)
+  # ──────────────────────────────────────────────────────────────────────────
+  rust-tests:
+    name: Rust Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust build cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libglib2.0-dev \
+            libopus-dev \
+            protobuf-compiler \
+            libasound2-dev
+
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
+
+      - name: Run workspace tests
+        run: cargo test --workspace -- --test-threads=1
+
+      - name: Run Clippy lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: UI unit tests (Vitest + coverage)
+  # ──────────────────────────────────────────────────────────────────────────
+  ui-tests:
+    name: UI Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Run unit tests
+        run: npm run test
+        working-directory: ui
+
+      - name: Run tests with coverage
+        run: npx vitest run --coverage
+        working-directory: ui
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-coverage
+          path: ui/coverage/
+          retention-days: 14
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 3: E2E tests (Playwright)
+  # ──────────────────────────────────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: ui-tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            ui/package-lock.json
+            tests/e2e/package-lock.json
+            tests/mock-llm/package-lock.json
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Install UI dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Install E2E test dependencies
+        run: npm ci
+        working-directory: tests/e2e
+
+      - name: Install mock LLM server dependencies
+        run: npm ci
+        working-directory: tests/mock-llm
+
+      - name: Start mock LLM server
+        run: node server.js &
+        working-directory: tests/mock-llm
+        env:
+          MOCK_MODE: replay
+          MOCK_PORT: "18799"
+
+      - name: Wait for mock LLM server
+        run: |
+          for i in $(seq 1 15); do
+            if curl -s http://127.0.0.1:18799/health > /dev/null 2>&1; then
+              echo "Mock LLM server is ready"
+              break
+            fi
+            echo "Waiting for mock LLM server... ($i/15)"
+            sleep 1
+          done
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: tests/e2e
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            tests/e2e/test-results/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 4: CLI crate tests (isolated)
+  # ──────────────────────────────────────────────────────────────────────────
+  cli-tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust build cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
+
+      - name: Run CLI tests
+        run: cargo test -p nexibot-cli
+
+      - name: Run CLI Clippy lint
+        run: cargo clippy -p nexibot-cli -- -D warnings
