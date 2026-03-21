@@ -1241,11 +1241,159 @@ impl NexiBotConfig {
         }
     }
 
+    /// Warn if credential fields are being cleared (potential data loss).
+    /// This is a non-blocking warning — saves still proceed, but the log
+    /// provides a breadcrumb for diagnosing credential loss incidents.
+    fn warn_if_credentials_cleared(config: &NexiBotConfig) {
+        let credential_checks: &[(&str, &str)] = &[
+            ("claude.api_key", config.claude.api_key.as_deref().unwrap_or("")),
+            ("telegram.bot_token", &config.telegram.bot_token),
+            ("whatsapp.access_token", &config.whatsapp.access_token),
+            ("discord.bot_token", &config.discord.bot_token),
+            ("slack.bot_token", &config.slack.bot_token),
+            ("slack.app_token", &config.slack.app_token),
+            ("teams.app_password", &config.teams.app_password),
+            ("matrix.access_token", &config.matrix.access_token),
+            ("email.imap_password", &config.email.imap_password),
+            ("email.smtp_password", &config.email.smtp_password),
+            ("mattermost.bot_token", &config.mattermost.bot_token),
+            ("mastodon.access_token", &config.mastodon.access_token),
+        ];
+
+        for (field, value) in credential_checks {
+            if value.is_empty() {
+                tracing::warn!(
+                    "[CONFIG] Credential field '{}' is empty — this may indicate credential loss. \
+                     If this is unexpected, restore from config.yaml.bak",
+                    field
+                );
+            }
+        }
+    }
+
+    /// Preserve in-memory credential values during hot-reload.
+    ///
+    /// When the config file is modified externally (e.g. by `sed`, a script, or
+    /// a manual edit), credential fields may end up empty in the file while the
+    /// in-memory config still holds the real values. This function copies
+    /// non-empty in-memory credentials into the newly loaded config wherever the
+    /// file had them as empty, preventing credential loss.
+    ///
+    /// **IMPORTANT**: Never directly edit credential fields in config.yaml with
+    /// sed or similar tools. Use the Settings UI or the `update_config` command
+    /// which preserves credentials through the restore_if_masked logic.
+    pub(crate) fn preserve_credentials_on_reload(
+        current: &NexiBotConfig,
+        incoming: &mut NexiBotConfig,
+    ) {
+        // Helper: restore Option<String> credential if incoming is empty/None
+        fn restore_opt(current: &Option<String>, incoming: &mut Option<String>, field: &str) {
+            match incoming {
+                Some(ref val) if val.is_empty() => {
+                    if current.as_ref().map(|v| !v.is_empty()).unwrap_or(false) {
+                        tracing::warn!(
+                            "[HOT_RELOAD] CREDENTIAL PRESERVED: '{}' was empty in file but \
+                             had a value in memory — keeping in-memory value",
+                            field
+                        );
+                        *incoming = current.clone();
+                    }
+                }
+                None => {
+                    if current.is_some() {
+                        tracing::warn!(
+                            "[HOT_RELOAD] CREDENTIAL PRESERVED: '{}' was missing in file but \
+                             had a value in memory — keeping in-memory value",
+                            field
+                        );
+                        *incoming = current.clone();
+                    }
+                }
+                _ => {} // incoming has a non-empty value — keep it
+            }
+        }
+
+        // Helper: restore String credential if incoming is empty
+        fn restore_str(current: &str, incoming: &mut String, field: &str) {
+            if incoming.is_empty() && !current.is_empty() {
+                tracing::warn!(
+                    "[HOT_RELOAD] CREDENTIAL PRESERVED: '{}' was empty in file but \
+                     had a value in memory — keeping in-memory value",
+                    field
+                );
+                *incoming = current.to_string();
+            }
+        }
+
+        // Option<String> credential fields
+        restore_opt(&current.claude.api_key, &mut incoming.claude.api_key, "claude.api_key");
+        restore_opt(&current.openai.api_key, &mut incoming.openai.api_key, "openai.api_key");
+        restore_opt(&current.cerebras.api_key, &mut incoming.cerebras.api_key, "cerebras.api_key");
+        if let (Some(cur_g), Some(new_g)) = (current.google.as_ref(), incoming.google.as_mut()) {
+            restore_opt(&cur_g.api_key, &mut new_g.api_key, "google.api_key");
+        }
+        if let (Some(cur_d), Some(new_d)) = (current.deepseek.as_ref(), incoming.deepseek.as_mut()) {
+            restore_opt(&cur_d.api_key, &mut new_d.api_key, "deepseek.api_key");
+        }
+        if let (Some(cur_c), Some(new_c)) = (current.github_copilot.as_ref(), incoming.github_copilot.as_mut()) {
+            restore_opt(&cur_c.token, &mut new_c.token, "github_copilot.token");
+        }
+        if let (Some(cur_m), Some(new_m)) = (current.minimax.as_ref(), incoming.minimax.as_mut()) {
+            restore_opt(&cur_m.api_key, &mut new_m.api_key, "minimax.api_key");
+        }
+        if let (Some(cur_q), Some(new_q)) = (current.qwen.as_ref(), incoming.qwen.as_mut()) {
+            restore_opt(&cur_q.api_key, &mut new_q.api_key, "qwen.api_key");
+        }
+        restore_opt(&current.k2k.private_key_pem, &mut incoming.k2k.private_key_pem, "k2k.private_key_pem");
+        restore_opt(&current.search.brave_api_key, &mut incoming.search.brave_api_key, "search.brave_api_key");
+        restore_opt(&current.search.tavily_api_key, &mut incoming.search.tavily_api_key, "search.tavily_api_key");
+        restore_opt(&current.stt.deepgram_api_key, &mut incoming.stt.deepgram_api_key, "stt.deepgram_api_key");
+        restore_opt(&current.stt.openai_api_key, &mut incoming.stt.openai_api_key, "stt.openai_api_key");
+        restore_opt(&current.tts.elevenlabs_api_key, &mut incoming.tts.elevenlabs_api_key, "tts.elevenlabs_api_key");
+        restore_opt(&current.tts.cartesia_api_key, &mut incoming.tts.cartesia_api_key, "tts.cartesia_api_key");
+        restore_opt(&current.webhooks.auth_token, &mut incoming.webhooks.auth_token, "webhooks.auth_token");
+        restore_opt(&current.webchat.api_key, &mut incoming.webchat.api_key, "webchat.api_key");
+
+        // Plain String credential fields
+        restore_str(&current.telegram.bot_token, &mut incoming.telegram.bot_token, "telegram.bot_token");
+        restore_str(&current.discord.bot_token, &mut incoming.discord.bot_token, "discord.bot_token");
+        restore_str(&current.whatsapp.access_token, &mut incoming.whatsapp.access_token, "whatsapp.access_token");
+        restore_str(&current.whatsapp.verify_token, &mut incoming.whatsapp.verify_token, "whatsapp.verify_token");
+        restore_str(&current.whatsapp.app_secret, &mut incoming.whatsapp.app_secret, "whatsapp.app_secret");
+        restore_str(&current.slack.bot_token, &mut incoming.slack.bot_token, "slack.bot_token");
+        restore_str(&current.slack.app_token, &mut incoming.slack.app_token, "slack.app_token");
+        restore_str(&current.slack.signing_secret, &mut incoming.slack.signing_secret, "slack.signing_secret");
+        restore_str(&current.teams.app_password, &mut incoming.teams.app_password, "teams.app_password");
+        restore_str(&current.matrix.access_token, &mut incoming.matrix.access_token, "matrix.access_token");
+        restore_str(&current.email.imap_password, &mut incoming.email.imap_password, "email.imap_password");
+        restore_str(&current.email.smtp_password, &mut incoming.email.smtp_password, "email.smtp_password");
+        restore_str(&current.gmail.client_secret, &mut incoming.gmail.client_secret, "gmail.client_secret");
+        restore_str(&current.gmail.refresh_token, &mut incoming.gmail.refresh_token, "gmail.refresh_token");
+        restore_str(&current.bluebubbles.password, &mut incoming.bluebubbles.password, "bluebubbles.password");
+        restore_str(&current.mattermost.bot_token, &mut incoming.mattermost.bot_token, "mattermost.bot_token");
+        restore_str(&current.google_chat.verification_token, &mut incoming.google_chat.verification_token, "google_chat.verification_token");
+        restore_str(&current.google_chat.incoming_webhook_url, &mut incoming.google_chat.incoming_webhook_url, "google_chat.incoming_webhook_url");
+        restore_str(&current.messenger.page_access_token, &mut incoming.messenger.page_access_token, "messenger.page_access_token");
+        restore_str(&current.messenger.verify_token, &mut incoming.messenger.verify_token, "messenger.verify_token");
+        restore_str(&current.messenger.app_secret, &mut incoming.messenger.app_secret, "messenger.app_secret");
+        restore_str(&current.instagram.access_token, &mut incoming.instagram.access_token, "instagram.access_token");
+        restore_str(&current.instagram.verify_token, &mut incoming.instagram.verify_token, "instagram.verify_token");
+        restore_str(&current.instagram.app_secret, &mut incoming.instagram.app_secret, "instagram.app_secret");
+        restore_str(&current.line.channel_access_token, &mut incoming.line.channel_access_token, "line.channel_access_token");
+        restore_str(&current.line.channel_secret, &mut incoming.line.channel_secret, "line.channel_secret");
+        restore_str(&current.twilio.auth_token, &mut incoming.twilio.auth_token, "twilio.auth_token");
+        restore_str(&current.mastodon.access_token, &mut incoming.mastodon.access_token, "mastodon.access_token");
+        restore_str(&current.rocketchat.password, &mut incoming.rocketchat.password, "rocketchat.password");
+    }
+
     /// Save configuration to file (atomic write)
     pub fn save(&self) -> Result<()> {
         // Reject saves with critical validation errors
         self.validate_for_save()
             .context("Refusing to save config with critical validation errors")?;
+
+        // Warn if credential fields are being cleared (potential data loss)
+        Self::warn_if_credentials_cleared(self);
 
         let config_path = Self::config_path()?;
 
@@ -1253,11 +1401,22 @@ impl NexiBotConfig {
             std::fs::create_dir_all(parent)?;
         }
 
-        // Backup existing config before overwriting
+        // Backup existing config before overwriting — this is the last-resort
+        // recovery point if credentials are lost. The backup MUST succeed before
+        // we proceed with the write.
         if config_path.exists() {
             let bak_path = config_path.with_extension("yaml.bak");
-            if let Err(e) = std::fs::copy(&config_path, &bak_path) {
-                tracing::warn!("[CONFIG] Failed to create backup before save: {}", e);
+            match std::fs::copy(&config_path, &bak_path) {
+                Ok(_) => {
+                    tracing::debug!("[CONFIG] Backup created at {:?}", bak_path);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "[CONFIG] CRITICAL: Failed to create backup before save: {}. \
+                         Proceeding anyway, but credential recovery may not be possible.",
+                        e
+                    );
+                }
             }
         }
 
@@ -1948,12 +2107,23 @@ pub fn start_config_watcher(config: Arc<RwLock<NexiBotConfig>>) -> Result<broadc
                         info!("[HOT_RELOAD] Config file changed, reloading...");
 
                         match NexiBotConfig::load() {
-                            Ok(new_config) => {
+                            Ok(mut new_config) => {
                                 let config_clone = config.clone();
                                 let tx_inner = tx_clone.clone();
                                 // tauri::async_runtime::spawn works from any thread,
                                 // unlike tokio::spawn which requires a runtime context.
                                 tauri::async_runtime::spawn(async move {
+                                    let current = config_clone.read().await;
+                                    // Preserve in-memory credentials that would be
+                                    // cleared by the file reload. This guards against
+                                    // external tools (sed, etc.) that strip credential
+                                    // values from config.yaml.
+                                    NexiBotConfig::preserve_credentials_on_reload(
+                                        &current,
+                                        &mut new_config,
+                                    );
+                                    drop(current);
+
                                     let mut cfg = config_clone.write().await;
                                     *cfg = new_config;
                                     drop(cfg);

@@ -685,19 +685,102 @@ fn is_masked(s: &str) -> bool {
     s.contains("***")
 }
 
-/// If the incoming Option<String> contains a masked value, restore the real
-/// value from the current runtime config.
+/// If the incoming Option<String> contains a masked value OR is empty when the
+/// current value is non-empty, restore the real value from the current runtime
+/// config. This prevents credential loss when the frontend sends back empty
+/// strings (e.g. from a cleared form field or a `sed` edit).
 fn restore_if_masked(current: &Option<String>, incoming: &mut Option<String>) {
     if let Some(ref val) = incoming {
-        if is_masked(val) {
+        // Restore if masked OR if empty (prevent credential wipe)
+        if is_masked(val) || val.is_empty() {
             *incoming = current.clone();
         }
+    }
+    // Also restore if incoming is None but current has a value
+    if incoming.is_none() && current.is_some() {
+        *incoming = current.clone();
     }
 }
 
 /// Same as `restore_if_masked` but for plain String fields.
+/// Restores when incoming is masked OR when incoming is empty but current has
+/// a real credential value.
 fn restore_str_if_masked(current: &str, incoming: &mut String) {
-    if is_masked(incoming) {
+    // Restore if masked OR if empty (prevent credential wipe)
+    if is_masked(incoming) || (incoming.is_empty() && !current.is_empty()) {
         *incoming = current.to_string();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_restore_str_if_masked_empty_incoming() {
+        let mut incoming = String::new();
+        restore_str_if_masked("real-token", &mut incoming);
+        assert_eq!(incoming, "real-token");
+    }
+
+    #[test]
+    fn test_restore_str_if_masked_masked_incoming() {
+        let mut incoming = "sk-a***xyz".to_string();
+        restore_str_if_masked("sk-actual-secret-key", &mut incoming);
+        assert_eq!(incoming, "sk-actual-secret-key");
+    }
+
+    #[test]
+    fn test_restore_str_if_masked_new_value() {
+        let mut incoming = "brand-new-token".to_string();
+        restore_str_if_masked("old-token", &mut incoming);
+        assert_eq!(incoming, "brand-new-token");
+    }
+
+    #[test]
+    fn test_restore_str_if_masked_both_empty() {
+        let mut incoming = String::new();
+        restore_str_if_masked("", &mut incoming);
+        assert_eq!(incoming, "");
+    }
+
+    #[test]
+    fn test_restore_if_masked_empty_incoming() {
+        let current = Some("real-key".to_string());
+        let mut incoming = Some(String::new());
+        restore_if_masked(&current, &mut incoming);
+        assert_eq!(incoming, Some("real-key".to_string()));
+    }
+
+    #[test]
+    fn test_restore_if_masked_none_incoming_some_current() {
+        let current = Some("real-key".to_string());
+        let mut incoming: Option<String> = None;
+        restore_if_masked(&current, &mut incoming);
+        assert_eq!(incoming, Some("real-key".to_string()));
+    }
+
+    #[test]
+    fn test_restore_if_masked_masked_incoming() {
+        let current = Some("sk-actual-secret".to_string());
+        let mut incoming = Some("sk-a***cret".to_string());
+        restore_if_masked(&current, &mut incoming);
+        assert_eq!(incoming, Some("sk-actual-secret".to_string()));
+    }
+
+    #[test]
+    fn test_restore_if_masked_new_value() {
+        let current = Some("old-key".to_string());
+        let mut incoming = Some("brand-new-key".to_string());
+        restore_if_masked(&current, &mut incoming);
+        assert_eq!(incoming, Some("brand-new-key".to_string()));
+    }
+
+    #[test]
+    fn test_restore_if_masked_both_none() {
+        let current: Option<String> = None;
+        let mut incoming: Option<String> = None;
+        restore_if_masked(&current, &mut incoming);
+        assert_eq!(incoming, None);
     }
 }
