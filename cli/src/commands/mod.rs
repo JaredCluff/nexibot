@@ -8,6 +8,7 @@ pub mod completion;
 pub mod config;
 pub mod help;
 pub mod memory;
+pub mod security;
 pub mod session;
 pub mod skills;
 pub mod status;

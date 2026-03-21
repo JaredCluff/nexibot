@@ -120,6 +120,9 @@ enum Commands {
     /// Batch operations and scripting
     Batch(commands::batch::BatchArgs),
 
+    /// Run security audits and checks
+    Security(commands::security::SecurityArgs),
+
     /// Server health and status
     Status(commands::status::StatusArgs),
 
@@ -182,6 +185,7 @@ async fn run_command(command: Commands, client: NexiBotClient) -> Result<(), Cli
         Commands::Config(args) => commands::config::handle(args, &client).await?,
         Commands::Auth(args) => commands::auth::handle(args, &client).await?,
         Commands::Batch(args) => commands::batch::handle(args, &client).await?,
+        Commands::Security(args) => commands::security::handle(args, &client).await?,
         Commands::Status(args) => commands::status::handle(args, &client).await?,
         Commands::Completion(args) => commands::completion::handle(args).await?,
         Commands::Help2(args) => commands::help::handle(args)?,

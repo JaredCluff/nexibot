@@ -9,9 +9,30 @@ import { appendFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
+// Validate LOG_DIR doesn't contain path traversal sequences
+function validateLogDir(dir) {
+  if (dir.includes('..')) {
+    console.warn('[INFERENCE_LOG] LOG_DIR contains path traversal, using default');
+    return join(homedir(), '.config', 'nexibot', 'logs');
+  }
+  return dir;
+}
+
+// Sanitize error messages to remove potential API key leaks
+function sanitizeError(msg) {
+  if (!msg) return msg;
+  return msg
+    .replace(/\b(sk-[a-zA-Z0-9]{20,})\b/g, 'sk-***REDACTED***')
+    .replace(/\b(key-[a-zA-Z0-9]{20,})\b/g, 'key-***REDACTED***')
+    .replace(/\b(AIza[a-zA-Z0-9_-]{35})\b/g, '***GOOGLE_KEY_REDACTED***')
+    .replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, 'Bearer ***REDACTED***');
+}
+
 // Default log directory
-const LOG_DIR = process.env.NEXIBOT_INFERENCE_LOG_DIR ||
-  join(homedir(), '.config', 'nexibot', 'logs');
+const LOG_DIR = validateLogDir(
+  process.env.NEXIBOT_INFERENCE_LOG_DIR ||
+    join(homedir(), '.config', 'nexibot', 'logs')
+);
 
 // Ensure log directory exists
 if (!existsSync(LOG_DIR)) {
@@ -39,6 +60,7 @@ export function logInference(entry) {
   const logEntry = {
     timestamp: new Date().toISOString(),
     ...entry,
+    error: entry.error ? sanitizeError(entry.error) : undefined,
   };
 
   try {

@@ -16,6 +16,7 @@ pub mod key_interceptor;
 pub mod key_vault;
 pub mod log_redactor;
 pub mod merge_safety;
+pub mod network_policy;
 pub mod path_validation;
 pub mod rate_limit;
 pub mod safe_bins;

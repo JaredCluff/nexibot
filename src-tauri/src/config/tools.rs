@@ -232,6 +232,9 @@ pub struct ExecuteConfig {
     /// When false, skill-initiated tool calls to nexibot_execute are blocked
     #[serde(default)]
     pub skill_runtime_exec_enabled: bool,
+    /// Sandbox policy override for this tool (default: uses global sandbox.policy)
+    #[serde(default)]
+    pub sandbox_policy: Option<crate::sandbox::policy::SandboxPolicy>,
 }
 
 impl Default for ExecuteConfig {
@@ -245,6 +248,7 @@ impl Default for ExecuteConfig {
             working_directory: None,
             use_dcg: true,
             skill_runtime_exec_enabled: false,
+            sandbox_policy: None,
         }
     }
 }

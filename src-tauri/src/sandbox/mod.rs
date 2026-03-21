@@ -11,6 +11,16 @@ pub mod validate;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// Behavior when sandbox is requested but Docker is unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SandboxFallback {
+    /// Allow command to execute on the host without sandboxing.
+    #[default]
+    AllowHost,
+    /// Deny command execution entirely.
+    Deny,
+}
+
 /// Configuration for the Docker sandbox environment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxConfig {
@@ -34,12 +44,15 @@ pub struct SandboxConfig {
     pub seccomp_profile: Option<String>,
     /// Optional AppArmor profile name for mandatory access control.
     pub apparmor_profile: Option<String>,
+    /// Behavior when Docker is unavailable.
+    #[serde(default)]
+    pub fallback: SandboxFallback,
 }
 
 impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             // Full 64-character SHA-256 digest required.
             // The previous value ("98f4b71de414932") was only 16 hex chars (64-bit security),
             // which is insufficient for collision resistance. Use the complete digest.
@@ -68,6 +81,7 @@ impl Default for SandboxConfig {
             ]),
             seccomp_profile: None,
             apparmor_profile: None,
+            fallback: SandboxFallback::default(),
         }
     }
 }
@@ -120,7 +134,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = SandboxConfig::default();
-        assert!(!config.enabled);
+        assert!(config.enabled);
 
         // Image must contain a full 64-character SHA-256 digest.
         assert!(

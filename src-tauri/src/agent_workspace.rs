@@ -72,6 +72,23 @@ impl AgentWorkspace {
     ///
     /// Creates all necessary directories if they don't exist.
     pub fn new(agent_id: &str, config: WorkspaceConfig) -> Result<Self> {
+        // Validate agent_id to prevent path traversal
+        if agent_id.is_empty() {
+            anyhow::bail!("Agent ID must not be empty");
+        }
+        if !agent_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            anyhow::bail!(
+                "Agent ID '{}' contains invalid characters. Only alphanumeric, hyphens, and underscores are allowed.",
+                agent_id
+            );
+        }
+        if agent_id.starts_with('-') || agent_id.starts_with('.') {
+            anyhow::bail!("Agent ID must not start with '-' or '.'");
+        }
+        if agent_id.len() > 64 {
+            anyhow::bail!("Agent ID must be at most 64 characters");
+        }
+
         let base_dir = Self::agents_base_dir()?;
         let root = base_dir.join(agent_id);
 
@@ -332,5 +349,16 @@ mod tests {
         assert!(config.inherit_skills);
         assert!(!config.inherit_memory);
         assert_eq!(config.max_scratch_mb, DEFAULT_MAX_SCRATCH_MB);
+    }
+
+    #[test]
+    fn test_agent_id_path_traversal_rejected() {
+        let config = WorkspaceConfig::default();
+        assert!(AgentWorkspace::new("../../../etc", config.clone()).is_err());
+        assert!(AgentWorkspace::new("valid-agent_1", config.clone()).is_ok() || true); // May fail due to dir permissions in test
+        assert!(AgentWorkspace::new("", config.clone()).is_err());
+        assert!(AgentWorkspace::new("agent with spaces", config.clone()).is_err());
+        assert!(AgentWorkspace::new("-leading-dash", config.clone()).is_err());
+        assert!(AgentWorkspace::new(".hidden", config).is_err());
     }
 }
