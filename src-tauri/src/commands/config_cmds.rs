@@ -447,6 +447,12 @@ pub async fn update_config(
         gs.update_config(runtime_config.gated_shell.clone()).await;
     }
 
+    // Keep network policy engine in sync with persisted config.
+    state
+        .network_policy
+        .reload(runtime_config.network_policy.clone())
+        .await;
+
     // Update the shared config (all services read from this via state.config.read().await)
     let mut config = state.config.write().await;
     *config = runtime_config;
