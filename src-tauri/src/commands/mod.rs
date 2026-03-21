@@ -481,4 +481,7 @@ pub struct AppState {
 
     // Native plugin registry
     pub plugin_registry: Arc<RwLock<crate::plugins::PluginRegistry>>,
+
+    // Per-agent workspace isolation
+    pub workspace_manager: Arc<std::sync::Mutex<crate::agent_workspace::WorkspaceManager>>,
 }

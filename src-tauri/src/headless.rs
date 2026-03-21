@@ -621,6 +621,10 @@ pub async fn run() {
         gui_pending_approvals: std::sync::Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        // Native plugin registry
+        plugin_registry: std::sync::Arc::new(RwLock::new(crate::plugins::PluginRegistry::new())),
+        // Per-agent workspace isolation
+        workspace_manager: std::sync::Arc::new(std::sync::Mutex::new(crate::agent_workspace::WorkspaceManager::new())),
         log_state: None,
     };
 

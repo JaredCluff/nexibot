@@ -85,6 +85,9 @@ pub struct AgentConfig {
     /// Agent capabilities for task delegation
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Per-agent workspace isolation configuration
+    #[serde(default)]
+    pub workspace: crate::agent_workspace::WorkspaceConfig,
 }
 
 /// Configuration for a single agent capability.

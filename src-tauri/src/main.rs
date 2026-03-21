@@ -15,6 +15,7 @@ mod agent;
 mod agent_control;
 mod agent_engine;
 mod agent_team;
+mod agent_workspace;
 mod api_server;
 mod bluebubbles;
 mod bridge;
@@ -862,6 +863,8 @@ fn main() {
                 gui_pending_approvals: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
                 // Native plugin registry
                 plugin_registry: Arc::new(RwLock::new(crate::plugins::PluginRegistry::new())),
+                // Per-agent workspace isolation
+                workspace_manager: Arc::new(std::sync::Mutex::new(crate::agent_workspace::WorkspaceManager::new())),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.
