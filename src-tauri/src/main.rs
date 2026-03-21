@@ -424,6 +424,7 @@ fn main() {
                     preserve_recent_messages: 20,
                     archive_summaries: true,
                     max_compactions_per_day: 5,
+                    ..Default::default()
                 };
                 Arc::new(context_manager::ContextManager::new(ctx_config))
             };

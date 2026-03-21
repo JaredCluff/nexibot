@@ -2279,6 +2279,7 @@ mod tests {
             api_key: Some("deepseek-test-key".into()),
             api_url: "https://api.deepseek.com/v1".into(),
             default_model: "deepseek-chat".into(),
+            use_bridge: false,
         });
         assert!(check_api_key_presence(&config).is_none());
 
@@ -3384,6 +3385,7 @@ mod tests {
             api_key: Some("deepseek-secret-token".to_string()),
             api_url: "https://api.deepseek.com/v1".to_string(),
             default_model: "deepseek-chat".to_string(),
+            use_bridge: false,
         });
         config.github_copilot = Some(crate::config::GitHubCopilotConfig {
             token: Some("ghu_copilot_secret_token_value".to_string()),

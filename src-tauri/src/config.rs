@@ -2864,6 +2864,7 @@ admin_bypass: false
             is_default: false,
             channel_bindings: Vec::new(),
             capabilities: Vec::new(),
+            workspace: Default::default(),
         });
         let warnings = config.validate();
         assert!(warnings.iter().any(|w| w.contains("path traversal")));

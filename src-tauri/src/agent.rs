@@ -70,6 +70,7 @@ impl AgentManager {
                         is_default: true,
                         channel_bindings: Vec::new(),
                         capabilities: Vec::new(),
+                        workspace: Default::default(),
                     },
                     claude_client: client,
                     soul,
