@@ -384,6 +384,7 @@ mod tests {
                 category: "skill".to_string(),
                 description: "Run tests".to_string(),
             }],
+            workspace: Default::default(),
         };
 
         let prompt = executor.build_system_prompt(&agent, "Run all tests", Some("ws-123"));

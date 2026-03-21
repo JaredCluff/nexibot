@@ -586,6 +586,7 @@ mod tests {
             description: "Reviews code for bugs and style".to_string(),
             input_schema: None,
             version: "1.0".to_string(),
+            min_protocol_version: None,
         };
 
         let query = tokenize("code review");
@@ -602,6 +603,7 @@ mod tests {
             description: "Search the web and compile research reports".to_string(),
             input_schema: None,
             version: "1.0".to_string(),
+            min_protocol_version: None,
         };
 
         let query = tokenize("research current trends in AI");
@@ -622,6 +624,7 @@ mod tests {
             description: "Prepare recipes and meal plans".to_string(),
             input_schema: None,
             version: "1.0".to_string(),
+            min_protocol_version: None,
         };
 
         let query = tokenize("review my Rust code");
@@ -642,6 +645,7 @@ mod tests {
             description: "Reviews code".to_string(),
             input_schema: None,
             version: "1.0".to_string(),
+            min_protocol_version: None,
         };
         let generic_cap = AgentCapability {
             id: "test:general".to_string(),
@@ -651,6 +655,7 @@ mod tests {
                 .to_string(),
             input_schema: None,
             version: "1.0".to_string(),
+            min_protocol_version: None,
         };
 
         let query = tokenize("code review");
