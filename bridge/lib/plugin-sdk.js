@@ -125,12 +125,19 @@ class PluginSDK {
       throw new Error(`registerChannel: name is required`);
     }
 
-    this._channels.push({ name, outbound });
-
     if (inbound) {
-      this._app.post(`/api/channels/${name}/inbound`, inbound);
+      const routePath = `/api/channels/${name}/inbound`;
+      if (_registeredRoutes.has(routePath)) {
+        this._context.logger?.warn?.(
+          `[SDK] Channel route '${routePath}' already registered — skipping (plugin: ${this._pluginId})`
+        );
+        return;
+      }
+      _registeredRoutes.add(routePath);
+      this._app.post(routePath, inbound);
     }
 
+    this._channels.push({ name, outbound });
     this._context.logger?.info?.(`[SDK] Registered channel: ${name}`);
   }
 
@@ -146,10 +153,25 @@ class PluginSDK {
       throw new Error(`registerSpeechProvider: name is required`);
     }
 
+    // Check route collisions for STT and TTS endpoints
+    const routes = [];
+    if (stt) routes.push(`/api/speech/${name}/stt`);
+    if (tts) routes.push(`/api/speech/${name}/tts`);
+    for (const route of routes) {
+      if (_registeredRoutes.has(route)) {
+        this._context.logger?.warn?.(
+          `[SDK] Speech route '${route}' already registered — skipping (plugin: ${this._pluginId})`
+        );
+        return;
+      }
+    }
+
     this._speechProviders.push({ name, stt, tts });
 
     if (stt) {
-      this._app.post(`/api/speech/${name}/stt`, async (req, res) => {
+      const sttRoute = `/api/speech/${name}/stt`;
+      _registeredRoutes.add(sttRoute);
+      this._app.post(sttRoute, async (req, res) => {
         try {
           const result = await stt(req.body.audio, req.body.options);
           res.json(result);
@@ -160,7 +182,9 @@ class PluginSDK {
     }
 
     if (tts) {
-      this._app.post(`/api/speech/${name}/tts`, async (req, res) => {
+      const ttsRoute = `/api/speech/${name}/tts`;
+      _registeredRoutes.add(ttsRoute);
+      this._app.post(ttsRoute, async (req, res) => {
         try {
           const audioBuffer = await tts(req.body.text, req.body.options);
           res.set('Content-Type', 'audio/wav');
