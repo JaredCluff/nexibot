@@ -154,3 +154,76 @@ impl Default for PluginRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugins::trait_def::*;
+    use async_trait::async_trait;
+    use serde_json::Value;
+
+    struct TestPlugin {
+        id: String,
+    }
+
+    #[async_trait]
+    impl NexiBotPlugin for TestPlugin {
+        fn id(&self) -> &str { &self.id }
+        fn name(&self) -> &str { "Test Plugin" }
+        fn version(&self) -> &str { "1.0.0" }
+        fn capabilities(&self) -> Vec<PluginCapability> {
+            // Return empty since capabilities are consumed during register
+            Vec::new()
+        }
+        async fn initialize(&mut self, _config: &PluginConfig) -> anyhow::Result<()> { Ok(()) }
+        async fn shutdown(&self) -> anyhow::Result<()> { Ok(()) }
+    }
+
+    #[test]
+    fn test_registry_new_is_empty() {
+        let registry = PluginRegistry::new();
+        assert!(registry.is_empty());
+        assert!(registry.tool_names().is_empty());
+        assert!(registry.provider_names().is_empty());
+    }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = PluginRegistry::default();
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn test_register_plugin() {
+        let mut registry = PluginRegistry::new();
+        let plugin = Box::new(TestPlugin {
+            id: "test-1".to_string(),
+        });
+        registry.register(plugin);
+        assert!(!registry.is_empty());
+        let plugins = registry.list_plugins();
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0].id, "test-1");
+        assert_eq!(plugins[0].name, "Test Plugin");
+        assert_eq!(plugins[0].version, "1.0.0");
+    }
+
+    #[test]
+    fn test_get_nonexistent_tool() {
+        let registry = PluginRegistry::new();
+        assert!(registry.get_tool("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_get_nonexistent_provider() {
+        let registry = PluginRegistry::new();
+        assert!(registry.get_provider("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_get_hooks_empty() {
+        let registry = PluginRegistry::new();
+        let hooks = registry.get_hooks(&HookPoint::BeforeMessage);
+        assert!(hooks.is_empty());
+    }
+}

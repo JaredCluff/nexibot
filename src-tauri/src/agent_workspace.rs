@@ -368,4 +368,39 @@ mod tests {
         assert!(AgentWorkspace::new("-leading-dash", config.clone()).is_err());
         assert!(AgentWorkspace::new(".hidden", config).is_err());
     }
+
+    #[test]
+    fn test_agent_id_max_length() {
+        let config = WorkspaceConfig::default();
+        let long_id = "a".repeat(64);
+        // 64 chars should be accepted (validation only fails on filesystem)
+        let result = AgentWorkspace::new(&long_id, config.clone());
+        assert!(
+            result.is_ok() || result.unwrap_err().to_string().contains("directory"),
+            "64-char ID should pass validation"
+        );
+
+        let too_long = "a".repeat(65);
+        assert!(AgentWorkspace::new(&too_long, config).is_err());
+    }
+
+    #[test]
+    fn test_workspace_config_isolated_flags() {
+        let config = WorkspaceConfig {
+            isolated: true,
+            inherit_skills: false,
+            inherit_memory: false,
+            max_scratch_mb: 50,
+        };
+        assert!(config.isolated);
+        assert!(!config.inherit_skills);
+        assert!(!config.inherit_memory);
+        assert_eq!(config.max_scratch_mb, 50);
+    }
+
+    #[test]
+    fn test_workspace_manager_get_nonexistent() {
+        let manager = WorkspaceManager::new();
+        assert!(manager.get("nonexistent").is_none());
+    }
 }
