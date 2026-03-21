@@ -75,9 +75,10 @@ pub struct DefenseConfig {
     #[serde(default)]
     pub allow_remote_llama_guard: bool,
 
-    /// When true, allow requests through if no defense models are loaded (fail-open / degraded mode).
-    /// When false (default), block all requests if pipeline is enabled but no models loaded (fail-closed).
-    #[serde(default)]
+    /// When true (default), allow requests through if no defense models are loaded (degraded mode).
+    /// When false, block all requests if pipeline is enabled but no models loaded (fail-closed).
+    /// Defaults to true to prevent bricking the app when models haven't been downloaded yet.
+    #[serde(default = "default_true")]
     pub fail_open: bool,
 }
 
@@ -92,9 +93,13 @@ impl Default for DefenseConfig {
             llama_guard_mode: "api".to_string(),
             llama_guard_api_url: "http://localhost:11434".to_string(),
             allow_remote_llama_guard: false,
-            fail_open: false,
+            fail_open: true,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Result from a single defense layer
