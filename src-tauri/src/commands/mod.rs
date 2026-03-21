@@ -484,4 +484,7 @@ pub struct AppState {
 
     // Per-agent workspace isolation
     pub workspace_manager: Arc<std::sync::Mutex<crate::agent_workspace::WorkspaceManager>>,
+
+    // Network policy engine
+    pub network_policy: Arc<crate::security::network_policy::NetworkPolicyEngine>,
 }

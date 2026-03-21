@@ -694,6 +694,16 @@ fn main() {
             );
             info!("[MANAGED_POLICY] Manager initialized");
 
+            // Initialize network policy engine
+            let network_policy = Arc::new(
+                crate::security::network_policy::NetworkPolicyEngine::new(
+                    config
+                        .try_read()
+                        .map(|c| c.network_policy.clone())
+                        .unwrap_or_default(),
+                ),
+            );
+
             // Register databases with maintenance manager (spawned async)
             {
                 let db_mgr = db_maintenance_manager.clone();
@@ -866,6 +876,8 @@ fn main() {
                 plugin_registry: Arc::new(RwLock::new(crate::plugins::PluginRegistry::new())),
                 // Per-agent workspace isolation
                 workspace_manager: Arc::new(std::sync::Mutex::new(crate::agent_workspace::WorkspaceManager::new())),
+                // Network policy engine
+                network_policy,
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

@@ -815,7 +815,7 @@ pub(crate) async fn execute_tool_call<'obs>(
             }
         }
         let config = state.config.read().await;
-        return fetch_tool::execute_fetch_tool(tool_input, &config.fetch).await;
+        return fetch_tool::execute_fetch_tool(tool_input, &config.fetch, &state.network_policy).await;
     }
 
     // Handle built-in nexibot_filesystem tool
@@ -1801,6 +1801,18 @@ pub(crate) async fn maybe_auto_compact(
     // Check if compaction should be triggered
     if !state.context_manager.should_compact() {
         return;
+    }
+
+    // Pre-compaction memory flush
+    if let Some(flush_cfg) = state.context_manager.flush_config() {
+        state.context_manager.set_flush_in_progress();
+        info!(
+            "[CHAT] Pre-compaction flush: analyzing last {} messages (timeout: {}s)",
+            flush_cfg.message_window, flush_cfg.timeout_seconds
+        );
+        // TODO: Invoke LLM with memory tools for fact extraction
+        // For now, transition directly to Compact
+        state.context_manager.set_flush_complete();
     }
 
     info!(
