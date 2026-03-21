@@ -5,7 +5,14 @@ import { InfoTip } from '../shared/InfoTip';
 import { CollapsibleSection } from '../shared/CollapsibleSection';
 
 const getDefaultMaxTokens = (modelId: string): number => {
-  if (modelId.startsWith('claude-opus') || modelId.startsWith('claude-sonnet')) return 8192;
+  if (modelId.startsWith('claude-opus') || modelId.startsWith('claude-sonnet-4')) return 16384;
+  if (modelId.startsWith('claude-')) return 8192;
+  if (modelId.startsWith('gpt-4o')) return 16384;
+  if (modelId.startsWith('gpt-4')) return 8192;
+  if (modelId.startsWith('gpt-3.5')) return 4096;
+  if (modelId.startsWith('gemini-')) return 8192;
+  if (modelId.startsWith('deepseek-')) return 8192;
+  if (modelId.includes('llama')) return 4096;
   return 4096;
 };
 
@@ -171,7 +178,7 @@ export function ModelsTab() {
           })}
           placeholder="sk-..."
         />
-        {config.openai?.organization_id !== undefined && (
+        {config.openai?.api_key && (
           <input
             type="text"
             value={config.openai?.organization_id || ''}
