@@ -1513,6 +1513,15 @@ fn main() {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                                // Activate the app so the window comes to foreground on macOS
+                                #[cfg(target_os = "macos")]
+                                {
+                                    use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicy};
+                                    unsafe {
+                                        let app_instance = NSApp();
+                                        app_instance.activateIgnoringOtherApps_(true);
+                                    }
+                                }
                             } else {
                                 tracing::warn!("[TRAY] Could not find main window for show action");
                             }
@@ -1557,11 +1566,21 @@ fn main() {
                                 } else {
                                     let _ = window.show();
                                     let _ = window.set_focus();
+                                    #[cfg(target_os = "macos")]
+                                    unsafe {
+                                        use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicy};
+                                        NSApp().activateIgnoringOtherApps_(true);
+                                    }
                                 }
                             } else {
                                 // If we can't check visibility, just show it
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                                #[cfg(target_os = "macos")]
+                                unsafe {
+                                    use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicy};
+                                    NSApp().activateIgnoringOtherApps_(true);
+                                }
                             }
                         } else {
                             tracing::warn!("[TRAY] Could not find main window");
