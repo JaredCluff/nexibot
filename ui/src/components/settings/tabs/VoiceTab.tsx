@@ -368,9 +368,9 @@ export function VoiceTab() {
                   checked={config.wakeword.voice_response_enabled}
                   onChange={async (e) => {
                     const enabled = e.target.checked;
-                    setConfig({ ...config, wakeword: { ...config.wakeword, voice_response_enabled: enabled } });
                     try {
                       await invoke('set_voice_response_enabled', { enabled });
+                      setConfig({ ...config, wakeword: { ...config.wakeword, voice_response_enabled: enabled } });
                     } catch (err) {
                       notifyError('Voice', `Failed to set voice response: ${err}`);
                     }

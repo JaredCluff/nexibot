@@ -79,6 +79,12 @@ export function GatedShellTab() {
   const handleAddPattern = () => {
     const { name, pattern, format } = patternDraft;
     if (!name.trim() || !pattern.trim() || !format.trim()) return;
+    try {
+      new RegExp(pattern);
+    } catch (e) {
+      alert(`Invalid regex pattern: ${(e as Error).message}`);
+      return;
+    }
     updateDiscovery({
       extra_patterns: [
         ...gs.discovery.extra_patterns,
