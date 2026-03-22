@@ -132,9 +132,18 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 /// Get the models directory path.
 fn get_models_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join(".config/nexibot/models")
+    #[cfg(windows)]
+    {
+        dirs::data_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("nexibot/models")
+    }
+    #[cfg(not(windows))]
+    {
+        dirs::home_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join(".config/nexibot/models")
+    }
 }
 
 /// Embedding model using ONNX Runtime.

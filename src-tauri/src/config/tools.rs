@@ -36,13 +36,18 @@ fn default_fetch_timeout() -> u64 {
 fn default_blocked_paths() -> Vec<String> {
     #[cfg(windows)]
     {
-        vec![
+        let mut paths = vec![
             r"C:\Windows".to_string(),
             r"C:\Windows\System32".to_string(),
             r"C:\Program Files".to_string(),
             r"C:\Program Files (x86)".to_string(),
             r"C:\ProgramData".to_string(),
-        ]
+        ];
+        if let Some(data) = dirs::data_dir() {
+            // Block NexiBot config/auth directories — contain API keys, tokens, secrets
+            paths.push(data.join("nexibot").to_string_lossy().to_string());
+        }
+        paths
     }
     #[cfg(target_os = "macos")]
     {
