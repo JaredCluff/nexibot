@@ -4,7 +4,7 @@
 //! On Windows: uses `icacls` to restrict ACLs to the current user.
 
 use std::path::Path;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Restrict a file to owner-only read/write (Unix: 0o600, Windows: icacls current user only).
 pub fn restrict_file_permissions(path: &Path) -> anyhow::Result<()> {
