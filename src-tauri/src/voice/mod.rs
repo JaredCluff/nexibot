@@ -459,6 +459,20 @@ impl VoiceService {
     pub async fn start(&mut self) -> anyhow::Result<()> {
         info!("[VOICE] Starting voice service");
 
+        // Pre-request microphone permission ONCE before any subsystem initialization.
+        // This consolidates what would otherwise be 3-5 separate TCC prompts
+        // (audio capture, wake word, VAD, STT, push-to-talk) into a single prompt.
+        #[cfg(target_os = "macos")]
+        {
+            use cpal::traits::HostTrait;
+            let host = cpal::default_host();
+            if host.default_input_device().is_none() {
+                warn!("[VOICE] No input audio device available — microphone permission may be denied");
+            } else {
+                info!("[VOICE] Microphone access confirmed");
+            }
+        }
+
         let config = self.config.read().await;
 
         // Initialize STT backends (platform-conditional)
