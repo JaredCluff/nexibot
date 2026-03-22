@@ -527,9 +527,18 @@ impl NexiBotConfig {
     /// Uses ~/.config/nexibot/ which is separate from the
     /// ~/Library/Application Support/ directory that macOS may clean on uninstall.
     fn backup_dir() -> Result<PathBuf> {
-        let home =
-            dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
-        Ok(home.join(".config/nexibot"))
+        #[cfg(windows)]
+        {
+            let data = dirs::data_dir()
+                .ok_or_else(|| anyhow::anyhow!("Failed to get data directory"))?;
+            Ok(data.join("nexibot"))
+        }
+        #[cfg(not(windows))]
+        {
+            let home =
+                dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
+            Ok(home.join(".config/nexibot"))
+        }
     }
 
     /// Path to the durable backup config (survives reinstalls).

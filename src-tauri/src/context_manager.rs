@@ -366,9 +366,15 @@ impl ContextManager {
         // Archive summary to dated memory file when configured to do so.
         if should_archive {
             let archive_block = self.archive_summary(summary, "context-manager");
-            if let Some(home) = dirs::home_dir() {
+            let memory_base = {
+                #[cfg(windows)]
+                { dirs::data_dir() }
+                #[cfg(not(windows))]
+                { dirs::home_dir().map(|h| h.join(".config")) }
+            };
+            if let Some(base) = memory_base {
                 let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-                let memory_dir = home.join(".config/nexibot/memory");
+                let memory_dir = base.join("nexibot/memory");
                 let _ = std::fs::create_dir_all(&memory_dir);
                 let memory_file = memory_dir.join(format!("{}.md", date_str));
                 use std::io::Write;

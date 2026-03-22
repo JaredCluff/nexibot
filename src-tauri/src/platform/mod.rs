@@ -4,9 +4,12 @@ use std::process::Command;
 
 /// Augment PATH with common runtime directories that GUI apps miss.
 ///
-/// macOS apps launched from Finder/Dock only receive /usr/bin:/bin:/usr/sbin:/sbin.
+/// macOS/Linux apps launched from Finder/Dock only receive /usr/bin:/bin:/usr/sbin:/sbin.
 /// This adds Homebrew, nvm, volta, asdf, and ~/.cargo/bin so that `node`, `npm`,
 /// and other tools are found regardless of how the app was started.
+///
+/// On Windows, adds cargo/bin and other common tool paths using USERPROFILE.
+#[cfg(not(windows))]
 fn augmented_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
     let home = std::env::var("HOME").unwrap_or_default();
@@ -43,6 +46,30 @@ fn augmented_path() -> String {
     parts.join(":")
 }
 
+/// Windows version of augmented_path using USERPROFILE and `;` separator.
+#[cfg(windows)]
+fn augmented_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("USERPROFILE").unwrap_or_default();
+
+    let home_extras = if home.is_empty() {
+        vec![]
+    } else {
+        vec![
+            format!("{home}\\.cargo\\bin"),
+            format!("{home}\\.volta\\bin"),
+            format!("{home}\\AppData\\Roaming\\npm"),
+        ]
+    };
+
+    let mut parts: Vec<String> = home_extras;
+    if !current.is_empty() {
+        parts.push(current);
+    }
+
+    parts.join(";")
+}
+
 /// Create a Command that doesn't flash a console window on Windows and
 /// has an augmented PATH so that Homebrew/nvm/volta tools are found on macOS.
 pub fn hidden_command(program: &str) -> Command {
@@ -53,10 +80,7 @@ pub fn hidden_command(program: &str) -> Command {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        cmd.env("PATH", augmented_path());
-    }
+    cmd.env("PATH", augmented_path());
     cmd
 }
 
