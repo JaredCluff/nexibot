@@ -374,82 +374,6 @@ impl SkillLifecycleManager {
 
     // ── Background task ──────────────────────────────────────────────────────
 
-    /// Consume the receiver and start the background processing loop.
-    ///
-    /// `claude_client` and `skills_manager` are needed for LLM sub-calls and
-    /// writing generated skills to disk.  Both are Arc<RwLock<_>> so we can hold
-    /// them for the lifetime of the task without blocking the main thread.
-    pub fn start_background_task(
-        mut self,
-        claude_client: Arc<RwLock<crate::claude::ClaudeClient>>,
-        skills_manager: Arc<RwLock<SkillsManager>>,
-    ) -> Arc<mpsc::Sender<TurnSummary>> {
-        let tx = Arc::new(self.tx.clone());
-        let rx = self.rx.take().expect("receiver already consumed");
-        let threshold = self.creation_threshold;
-        let improvement_uses = self.improvement_uses;
-
-        // We need the manager fields accessible in the async task.
-        // Move the manager into a Mutex so the task can call &self methods.
-        let manager = Arc::new(tokio::sync::Mutex::new(self));
-
-        tokio::spawn(async move {
-            let mut rx = rx;
-            while let Some(summary) = rx.recv().await {
-                let mgr = manager.lock().await;
-                mgr.process_turn(
-                    &summary,
-                    threshold,
-                    improvement_uses,
-                    &claude_client,
-                    &skills_manager,
-                )
-                .await;
-            }
-        });
-
-        tx
-    }
-
-    /// Process one incoming `TurnSummary`.
-    async fn process_turn(
-        &self,
-        summary: &TurnSummary,
-        threshold: f32,
-        improvement_uses: i64,
-        claude_client: &Arc<RwLock<crate::claude::ClaudeClient>>,
-        skills_manager: &Arc<RwLock<SkillsManager>>,
-    ) {
-        // Store turn tools for future recurrence detection
-        self.store_recent_turn(&summary.turn_id, &summary.tools_used);
-        let recent = self.load_recent_tool_sets();
-
-        // Score the turn
-        let score = score_turn(summary, &recent);
-        info!(
-            "[SKILL_LIFECYCLE] Turn {} scored {:.2} (threshold {:.2})",
-            summary.turn_id, score, threshold
-        );
-
-        if score < threshold {
-            return;
-        }
-
-        // Queue the creation
-        if let Err(e) = self.queue_creation(summary, score) {
-            warn!("[SKILL_LIFECYCLE] Failed to queue creation: {}", e);
-            return;
-        }
-
-        // Fire the creation sub-call
-        self.run_creation_job(summary, claude_client, skills_manager)
-            .await;
-
-        // Check all skills for pending improvement
-        self.run_improvement_jobs(improvement_uses, claude_client, skills_manager)
-            .await;
-    }
-
     fn queue_creation(&self, summary: &TurnSummary, score: f32) -> Result<()> {
         self.conn.execute(
             "INSERT INTO skill_creation_queue
@@ -466,104 +390,182 @@ impl SkillLifecycleManager {
         Ok(())
     }
 
-    // ── LLM sub-calls ────────────────────────────────────────────────────────
-
-    async fn run_creation_job(
-        &self,
-        summary: &TurnSummary,
-        claude_client: &Arc<RwLock<crate::claude::ClaudeClient>>,
-        skills_manager: &Arc<RwLock<SkillsManager>>,
-    ) {
-        let name_hint = summary.name_hint.as_deref().unwrap_or("").to_string();
-        let prompt = build_creation_prompt(&summary.conversation_text, &name_hint, &summary.tools_used);
-
-        let response = {
-            let client = claude_client.read().await;
-            match client.send_simple_message(&prompt).await {
-                Ok(r) => r,
-                Err(e) => {
-                    warn!("[SKILL_LIFECYCLE] Creation LLM call failed: {}", e);
-                    return;
-                }
-            }
+    fn get_improvement_candidates(&self, improvement_uses: i64) -> Vec<(String, i64)> {
+        let mut stmt = match self.conn.prepare(
+            "SELECT skill_id, COUNT(*) as cnt
+             FROM skill_usage_log
+             GROUP BY skill_id
+             HAVING cnt >= ?1 AND cnt % ?1 = 0",
+        ) {
+            Ok(s) => s,
+            Err(_) => return vec![],
         };
-
-        match parse_and_write_skill(&response, skills_manager, false).await {
-            Ok(skill_id) => {
-                info!("[SKILL_LIFECYCLE] Auto-created skill: {}", skill_id);
-                // Update queue status
-                let _ = self.conn.execute(
-                    "UPDATE skill_creation_queue
-                     SET status = 'created', generated_skill_id = ?1
-                     WHERE turn_id = ?2 AND status = 'pending'",
-                    params![skill_id, summary.turn_id],
-                );
-            }
-            Err(e) => {
-                warn!("[SKILL_LIFECYCLE] Failed to write skill: {}", e);
-                let _ = self.conn.execute(
-                    "UPDATE skill_creation_queue SET status = 'failed'
-                     WHERE turn_id = ?1 AND status = 'pending'",
-                    params![summary.turn_id],
-                );
-            }
-        }
+        stmt.query_map(params![improvement_uses], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .ok()
+        .map(|rows| rows.flatten().collect())
+        .unwrap_or_default()
     }
 
-    async fn run_improvement_jobs(
-        &self,
-        improvement_uses: i64,
-        claude_client: &Arc<RwLock<crate::claude::ClaudeClient>>,
-        skills_manager: &Arc<RwLock<SkillsManager>>,
-    ) {
-        // Find agent-generated skills that hit the improvement threshold
-        let candidates: Vec<(String, i64)> = {
-            let mut stmt = match self.conn.prepare(
-                "SELECT skill_id, COUNT(*) as cnt
-                 FROM skill_usage_log
-                 GROUP BY skill_id
-                 HAVING cnt >= ?1 AND cnt % ?1 = 0",
-            ) {
-                Ok(s) => s,
-                Err(_) => return,
-            };
-            stmt.query_map(params![improvement_uses], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })
-            .ok()
-            .map(|rows| rows.flatten().collect())
-            .unwrap_or_default()
-        };
+    fn mark_creation_created(&self, turn_id: &str, skill_id: &str) {
+        let _ = self.conn.execute(
+            "UPDATE skill_creation_queue
+             SET status = 'created', generated_skill_id = ?1
+             WHERE turn_id = ?2 AND status = 'pending'",
+            params![skill_id, turn_id],
+        );
+    }
 
-        for (skill_id, _count) in candidates {
-            let usage_log = self.recent_usage(&skill_id, 10);
-            let skill_content = {
-                let mgr = skills_manager.read().await;
-                mgr.get_skill_content(&skill_id)
-            };
-            let Some(current_content) = skill_content else {
-                continue;
-            };
+    fn mark_creation_failed(&self, turn_id: &str) {
+        let _ = self.conn.execute(
+            "UPDATE skill_creation_queue SET status = 'failed'
+             WHERE turn_id = ?1 AND status = 'pending'",
+            params![turn_id],
+        );
+    }
 
-            let prompt = build_improvement_prompt(&skill_id, &current_content, &usage_log);
+    /// Consume the receiver and start the background processing loop.
+    ///
+    /// `claude_client` and `skills_manager` are needed for LLM sub-calls and
+    /// writing generated skills to disk.  Both are Arc<RwLock<_>> so we can hold
+    /// them for the lifetime of the task without blocking the main thread.
+    ///
+    /// `rusqlite::Connection` is `Send` but not `Sync`, so we wrap the manager
+    /// in `std::sync::Mutex` and only lock it in synchronous (non-await) blocks
+    /// to keep the spawned future `Send`.
+    pub fn start_background_task(
+        mut self,
+        claude_client: Arc<RwLock<crate::claude::ClaudeClient>>,
+        skills_manager: Arc<RwLock<SkillsManager>>,
+    ) -> Arc<mpsc::Sender<TurnSummary>> {
+        let tx = Arc::new(self.tx.clone());
+        let rx = self.rx.take().expect("receiver already consumed");
+        let threshold = self.creation_threshold;
+        let improvement_uses = self.improvement_uses;
 
-            let response = {
-                let client = claude_client.read().await;
-                match client.send_simple_message(&prompt).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        warn!("[SKILL_LIFECYCLE] Improvement LLM call for '{}' failed: {}", skill_id, e);
-                        continue;
+        // std::sync::Mutex<T>: Send + Sync when T: Send.
+        // We must never hold this guard across an .await point.
+        let manager = Arc::new(std::sync::Mutex::new(self));
+
+        tokio::spawn(async move {
+            let mut rx = rx;
+            while let Some(summary) = rx.recv().await {
+                // ── Phase 1: sync SQLite work ──────────────────────────────
+                // Build everything we need for the LLM call, then drop the lock
+                // BEFORE any .await.
+                let creation_work = {
+                    let mgr = manager.lock().unwrap();
+                    mgr.store_recent_turn(&summary.turn_id, &summary.tools_used);
+                    let recent = mgr.load_recent_tool_sets();
+                    let score = score_turn(&summary, &recent);
+                    info!(
+                        "[SKILL_LIFECYCLE] Turn {} scored {:.2} (threshold {:.2})",
+                        summary.turn_id, score, threshold
+                    );
+                    if score >= threshold {
+                        match mgr.queue_creation(&summary, score) {
+                            Ok(()) => {
+                                let name_hint =
+                                    summary.name_hint.as_deref().unwrap_or("").to_string();
+                                let prompt = build_creation_prompt(
+                                    &summary.conversation_text,
+                                    &name_hint,
+                                    &summary.tools_used,
+                                );
+                                Some((summary.turn_id.clone(), prompt))
+                            }
+                            Err(e) => {
+                                warn!("[SKILL_LIFECYCLE] Failed to queue creation: {}", e);
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                }; // lock released here — safe to .await below
+
+                // ── Phase 2: async LLM call for creation ──────────────────
+                if let Some((turn_id, prompt)) = creation_work {
+                    let llm_result = {
+                        let client = claude_client.read().await;
+                        client.send_message(&prompt).await
+                    };
+
+                    match llm_result {
+                        Ok(response) => {
+                            match parse_and_write_skill(&response, &skills_manager, false).await {
+                                Ok(skill_id) => {
+                                    info!("[SKILL_LIFECYCLE] Auto-created skill: {}", skill_id);
+                                    let mgr = manager.lock().unwrap();
+                                    mgr.mark_creation_created(&turn_id, &skill_id);
+                                } // lock released
+                                Err(e) => {
+                                    warn!("[SKILL_LIFECYCLE] Failed to write skill: {}", e);
+                                    let mgr = manager.lock().unwrap();
+                                    mgr.mark_creation_failed(&turn_id);
+                                } // lock released
+                            }
+                        }
+                        Err(e) => {
+                            warn!("[SKILL_LIFECYCLE] Creation LLM call failed: {}", e);
+                        }
+                    }
+
+                    // ── Phase 3: improvement jobs ──────────────────────────
+                    // Collect candidates synchronously, then do async LLM work.
+                    let candidates = {
+                        let mgr = manager.lock().unwrap();
+                        mgr.get_improvement_candidates(improvement_uses)
+                    }; // lock released
+
+                    for (skill_id, _count) in candidates {
+                        let usage_log = {
+                            let mgr = manager.lock().unwrap();
+                            mgr.recent_usage(&skill_id, 10)
+                        }; // lock released
+
+                        let skill_content = {
+                            let mgr = skills_manager.read().await;
+                            mgr.get_skill_content(&skill_id)
+                        };
+                        let Some(current_content) = skill_content else {
+                            continue;
+                        };
+
+                        let prompt =
+                            build_improvement_prompt(&skill_id, &current_content, &usage_log);
+
+                        let response = {
+                            let client = claude_client.read().await;
+                            match client.send_message(&prompt).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    warn!(
+                                        "[SKILL_LIFECYCLE] Improvement LLM call for '{}' failed: {}",
+                                        skill_id, e
+                                    );
+                                    continue;
+                                }
+                            }
+                        };
+
+                        if let Err(e) =
+                            apply_skill_improvement(&skill_id, &response, &skills_manager).await
+                        {
+                            warn!(
+                                "[SKILL_LIFECYCLE] Failed to apply improvement to '{}': {}",
+                                skill_id, e
+                            );
+                        } else {
+                            info!("[SKILL_LIFECYCLE] Improved skill: {}", skill_id);
+                        }
                     }
                 }
-            };
-
-            if let Err(e) = apply_skill_improvement(&skill_id, &response, skills_manager).await {
-                warn!("[SKILL_LIFECYCLE] Failed to apply improvement to '{}': {}", skill_id, e);
-            } else {
-                info!("[SKILL_LIFECYCLE] Improved skill: {}", skill_id);
             }
-        }
+        });
+
+        tx
     }
 }
 

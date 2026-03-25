@@ -638,6 +638,11 @@ pub async fn run() {
         workspace_manager: std::sync::Arc::new(std::sync::Mutex::new(crate::agent_workspace::WorkspaceManager::new())),
         // Network policy engine
         network_policy,
+        // Skill lifecycle channel (headless: drop messages since no manager is started)
+        skill_lifecycle_tx: {
+            let (tx, _rx) = tokio::sync::mpsc::channel(1);
+            std::sync::Arc::new(tx)
+        },
         log_state: None,
     };
 

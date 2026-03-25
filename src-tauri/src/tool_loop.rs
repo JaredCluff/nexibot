@@ -1448,7 +1448,7 @@ pub async fn execute_tool_loop(
                 prepared.push(PreparedCall {
                     idx,
                     session_key: String::new(),
-                    agent_id: agent_id.clone(),
+                    agent_id: agent_id.to_string(),
                     restored_input: serde_json::Value::Null,
                     early_result: Some(denied_msg),
                 });
@@ -1471,7 +1471,7 @@ pub async fn execute_tool_loop(
                     prepared.push(PreparedCall {
                         idx,
                         session_key: String::new(),
-                        agent_id: agent_id.clone(),
+                        agent_id: agent_id.to_string(),
                         restored_input: serde_json::Value::Null,
                         early_result: Some(blocked_msg),
                     });
@@ -1514,7 +1514,7 @@ pub async fn execute_tool_loop(
             prepared.push(PreparedCall {
                 idx,
                 session_key,
-                agent_id: agent_id.clone(),
+                agent_id: agent_id.to_string(),
                 restored_input,
                 early_result: None,
             });
