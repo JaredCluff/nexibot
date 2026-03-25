@@ -408,6 +408,69 @@ pub(crate) async fn collect_all_tools(
         }
     }
 
+    // Agent skill management tools — allow the LLM to create or update skills
+    // mid-conversation without requiring a slash command.
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_create_skill",
+        "description": "Create a new reusable skill and write it to the skills library. Use after completing a multi-step task that would benefit from being captured as a repeatable pattern. The skill will be immediately available for future conversations via hot-reload.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Unique skill identifier (lowercase, hyphens OK, e.g. 'summarize-pdf')"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Human-readable skill name"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "One-sentence description of what the skill does"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full SKILL.md content (YAML frontmatter + markdown instructions)"
+                },
+                "user_invocable": {
+                    "type": "boolean",
+                    "description": "Whether the skill can be invoked via slash command (default: true)"
+                }
+            },
+            "required": ["id", "name", "description", "content"]
+        }
+    }));
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_update_skill",
+        "description": "Update an existing skill's content, description, or settings. Use to improve a skill based on new learnings or to fix incorrect instructions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Skill identifier to update"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "New human-readable name (omit to keep existing)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "New description (omit to keep existing)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "New SKILL.md content (omit to keep existing)"
+                },
+                "user_invocable": {
+                    "type": "boolean",
+                    "description": "Update user-invocable flag (omit to keep existing)"
+                }
+            },
+            "required": ["id"]
+        }
+    }));
+
     let mcp_count = mcp_tools.len();
     (all_tools, mcp_count, computer_use_enabled, browser_enabled)
 }
@@ -1303,6 +1366,45 @@ pub(crate) async fn execute_tool_call<'obs>(
     }
 
     // Yolo mode request — model-facing, never auto-approved
+    // ── Agent skill management ────────────────────────────────────────────────
+    if tool_name == "nexibot_create_skill" {
+        let id = tool_input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let name = tool_input.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let description = tool_input.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let content = tool_input.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let user_invocable = tool_input.get("user_invocable").and_then(|v| v.as_bool()).unwrap_or(true);
+        if id.is_empty() || content.is_empty() {
+            return "Error: 'id' and 'content' are required.".to_string();
+        }
+        let mut skills_mgr = state.skills_manager.write().await;
+        return match skills_mgr.create_skill(&id, &name, &description, &content, user_invocable) {
+            Ok(_) => format!("Skill '{}' created successfully.", id),
+            Err(e) => format!("Error creating skill '{}': {}", id, e),
+        };
+    }
+
+    if tool_name == "nexibot_update_skill" {
+        let id = tool_input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if id.is_empty() {
+            return "Error: 'id' is required.".to_string();
+        }
+        let name = tool_input.get("name").and_then(|v| v.as_str()).map(String::from);
+        let description = tool_input.get("description").and_then(|v| v.as_str()).map(String::from);
+        let content = tool_input.get("content").and_then(|v| v.as_str()).map(String::from);
+        let user_invocable = tool_input.get("user_invocable").and_then(|v| v.as_bool());
+        let mut skills_mgr = state.skills_manager.write().await;
+        return match skills_mgr.update_skill(
+            &id,
+            name.as_deref(),
+            description.as_deref(),
+            content.as_deref(),
+            user_invocable,
+        ) {
+            Ok(_) => format!("Skill '{}' updated successfully.", id),
+            Err(e) => format!("Error updating skill '{}': {}", id, e),
+        };
+    }
+
     if tool_name == "nexibot_request_yolo_mode" {
         let reason = tool_input
             .get("reason")

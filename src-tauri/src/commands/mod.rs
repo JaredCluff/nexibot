@@ -487,4 +487,8 @@ pub struct AppState {
 
     // Network policy engine
     pub network_policy: Arc<crate::security::network_policy::NetworkPolicyEngine>,
+
+    // Skill lifecycle channel — send a TurnSummary after each completed turn
+    // to trigger the autonomous skill creation / improvement pipeline.
+    pub skill_lifecycle_tx: Arc<tokio::sync::mpsc::Sender<crate::skill_lifecycle::TurnSummary>>,
 }
