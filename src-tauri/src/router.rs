@@ -210,6 +210,17 @@ pub async fn route_message(
         }
     };
 
+    // 0.6. PII redaction — replace emails, phones, SSNs, credit-card numbers, and
+    // IP addresses with typed tokens before the text reaches the LLM provider.
+    // Runs after key-vault interception so proxy keys are not re-scanned.
+    let safe_text = if crate::pii_redactor::contains_pii(&safe_text) {
+        let redacted = crate::pii_redactor::redact(&safe_text);
+        tracing::debug!("[PII] Redacted PII from outbound message");
+        redacted
+    } else {
+        safe_text
+    };
+
     // 1. Safety check — run on the ORIGINAL message text, not the wrapped version.
     // The boundary markers added by external_content::wrap_external_content can
     // trigger DeBERTa's prompt injection detector (false positive), which would
@@ -347,7 +358,33 @@ pub async fn route_message(
         chat::auto_save_message(state, "assistant", &response_text).await;
     }
 
-    // 10. Persist full Claude history for the active session (enables /resume across channels).
+    // 10. Feed the completed turn to the skill lifecycle pipeline (fire-and-forget).
+    // The pipeline scores the turn and may auto-create or improve skills asynchronously.
+    {
+        let session_id = state
+            .memory_manager
+            .read()
+            .await
+            .get_current_session_id()
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let summary = crate::skill_lifecycle::TurnSummary {
+            turn_id: uuid::Uuid::new_v4().to_string(),
+            session_id,
+            // tool_calls_made counts loop iterations; each iteration may have
+            // multiple tool calls. Use it as a lower-bound proxy.
+            tools_used: Vec::new(),
+            assistant_message_count: result.tool_calls_made + 1,
+            conversation_text: format!("{}\n{}", message.text, response_text),
+            score_override: None,
+            name_hint: None,
+        };
+        // Non-blocking send — if the channel is full, we drop the summary rather
+        // than blocking the response path.
+        let _ = state.skill_lifecycle_tx.try_send(summary);
+    }
+
+    // 11. Persist full Claude history for the active session (enables /resume across channels).
     // Best-effort: failure is logged but does not abort the response.
     {
         let session_id = state.memory_manager.read().await.get_current_session_id();
@@ -358,7 +395,7 @@ pub async fn route_message(
         }
     }
 
-    // 11. Supermemory sync + local fact extraction
+    // 12. Supermemory sync + local fact extraction
     if options.sync_supermemory {
         chat::try_sync_supermemory(state).await;
         chat::try_extract_session_facts(state).await;

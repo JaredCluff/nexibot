@@ -82,7 +82,9 @@ mod session_overrides;
 mod sessions;
 mod shared_workspace;
 mod signal;
+mod pii_redactor;
 mod skill_format_adapters;
+mod skill_lifecycle;
 mod skill_security;
 mod skills;
 mod slack;
@@ -302,6 +304,28 @@ fn main() {
             if let Err(e) = skills::start_skills_watcher(skills_manager.clone()) {
                 tracing::warn!("[SKILLS] Failed to start skills file watcher: {}", e);
             }
+
+            // Initialize skill lifecycle manager (self-learning skills pipeline)
+            let skill_lifecycle_tx = match skill_lifecycle::SkillLifecycleManager::new() {
+                Ok(mgr) => {
+                    info!("[SKILL_LIFECYCLE] Skill lifecycle manager initialized");
+                    let tx = mgr.start_background_task(
+                        claude_client.clone(),
+                        skills_manager.clone(),
+                    );
+                    tx
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[SKILL_LIFECYCLE] Failed to initialize skill lifecycle manager: {}. \
+                         Self-learning skills disabled.",
+                        e
+                    );
+                    // Provide a no-op sender so the rest of the app compiles cleanly.
+                    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+                    Arc::new(tx)
+                }
+            };
 
             // Initialize memory manager (graceful degradation — no panic)
             let memory_manager = match MemoryManager::new() {
@@ -902,6 +926,8 @@ fn main() {
                 workspace_manager: Arc::new(std::sync::Mutex::new(crate::agent_workspace::WorkspaceManager::new())),
                 // Network policy engine
                 network_policy,
+                // Skill lifecycle channel
+                skill_lifecycle_tx,
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

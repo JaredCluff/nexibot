@@ -4,6 +4,28 @@ All notable changes to NexiBot will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.1] - 2026-03-24
+
+### Added
+
+- **Self-learning skills**: Agent autonomously writes new skills after completing complex tasks
+  (score-based heuristic: tool diversity, turn length, recurrence patterns)
+- **`/save-as-skill` command**: Explicit user-triggered skill capture from any conversation turn
+- **Skill improvement loop**: Skills track usage outcomes; after 5 uses the agent proposes
+  an improved version via async LLM sub-call and rewrites the SKILL.md automatically
+- **`nexibot_create_skill` / `nexibot_update_skill` as LLM tools**: Agent can explicitly
+  create or update skills mid-conversation without a slash command
+- **Parallel tool execution**: Independent tool calls within a batch now execute concurrently
+  via `tokio::task::JoinSet`, reducing multi-tool turn latency
+- **PII redaction**: User messages and tool results are scanned for email addresses, phone
+  numbers, SSNs, credit card numbers, and IP addresses before being sent to LLM providers;
+  replaced with typed tokens (`[EMAIL]`, `[PHONE]`, etc.)
+- **GAPS.md**: Living document tracking competitor feature gaps and their closure status
+
+### Fixed
+
+- `skill_lifecycle` SQLite DB correctly inherits WAL mode and 0600 permissions from memory store conventions
+
 ## [0.8.0] - 2026-03-18
 
 Initial open source release.

@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use futures_util::future::join_all;
 use tracing::{debug, error, info, warn};
 
 use crate::channel::ChannelSource;
@@ -1375,15 +1376,35 @@ pub async fn execute_tool_loop(
 
         total_tool_calls += result.tool_uses.len();
 
-        // Execute each tool call
-        for tool_use in &result.tool_uses {
+        // Execute tool calls with parallel I/O for multi-tool batches.
+        //
+        // Phase 1 (serial): MCP dynamic lookup, observer notification, policy checks,
+        //   input restoration, and session-key derivation.
+        // Phase 2 (parallel): concurrent execution via join_all — independent tool
+        //   I/O (web fetches, file reads, etc.) overlaps across all calls in the batch.
+        // Phase 3 (serial): cumulative-output accounting, defense pipeline, key-vault
+        //   interception, truncation, detach-sentinel handling, and client mutations.
+
+        struct PreparedCall {
+            idx:            usize,
+            session_key:    String,
+            agent_id:       String,
+            restored_input: serde_json::Value,
+            /// Pre-computed result for policy-blocked calls — skips Phase 2.
+            early_result:   Option<String>,
+        }
+
+        let agent_id = config.channel_label();
+        let mut prepared: Vec<PreparedCall> = Vec::with_capacity(result.tool_uses.len());
+
+        // ── Phase 1: serial preparation ───────────────────────────────────
+        for (idx, tool_use) in result.tool_uses.iter().enumerate() {
             info!(
-                "[{}] Executing tool: {} (id: {})",
+                "[{}] Preparing tool: {} (id: {})",
                 label, tool_use.name, tool_use.id
             );
 
-            // Dynamic tool addition: if LLM requests a tool not in active_tools,
-            // look it up in the MCP manager and add it for this and future iterations.
+            // Dynamic MCP tool addition (mutates active_tools — must be serial).
             if !active_tools
                 .iter()
                 .any(|t| t.get("name").and_then(|n| n.as_str()) == Some(&tool_use.name))
@@ -1398,17 +1419,18 @@ pub async fn execute_tool_loop(
                 }
             }
 
-            // Notify observer
+            // Notify observer that a tool is starting.
             observer.on_tool_start(&tool_use.name, &tool_use.id).await;
 
-            // Check dangerous tools registry — log for audit trail
+            // Audit log for dangerous tools.
             if dangerous_tools::is_dangerous_tool(&tool_use.name) {
                 warn!(
                     "[{}] Executing dangerous tool: {} — logged for audit",
                     label, tool_use.name
                 );
             }
-            // Check per-channel tool policy (replaces hardcoded GATEWAY_DENIED_TOOLS)
+
+            // Per-channel policy check.
             let channel_denied = {
                 let app_config = state.config.read().await;
                 check_channel_tool_policy(&app_config, config, &tool_use.name)
@@ -1423,38 +1445,41 @@ pub async fn execute_tool_loop(
                      An admin can change this in config.yaml under the channel's tool_policy section.",
                     tool_use.name
                 );
-                client.add_tool_result(&tool_use.id, &denied_msg).await;
-                observer
-                    .on_tool_result(&tool_use.name, &tool_use.id, false)
-                    .await;
+                prepared.push(PreparedCall {
+                    idx,
+                    session_key: String::new(),
+                    agent_id: agent_id.clone(),
+                    restored_input: serde_json::Value::Null,
+                    early_result: Some(denied_msg),
+                });
                 continue;
             }
 
-            // Check per-agent tool policy (yolo mode bypasses)
-            let tool_policy_mgr = state.tool_policy_manager.read().await;
-            let agent_id = config.channel_label();
-            let yolo_active = state.yolo_manager.is_active().await;
-            if !yolo_active && !tool_policy_mgr.is_tool_allowed(&agent_id, &tool_use.name) {
-                warn!(
-                    "[{}] Tool '{}' denied by agent tool policy",
-                    label, tool_use.name
-                );
-                observer
-                    .on_tool_result(&tool_use.name, &tool_use.id, false)
-                    .await;
-                let blocked_msg = format!(
-                    "BLOCKED: Tool '{}' is not permitted for agent '{}' by tool policy.",
-                    tool_use.name, agent_id
-                );
-                client.add_tool_result(&tool_use.id, &blocked_msg).await;
-                drop(tool_policy_mgr);
-                continue;
+            // Per-agent policy check (yolo mode bypasses).
+            {
+                let tool_policy_mgr = state.tool_policy_manager.read().await;
+                let yolo_active = state.yolo_manager.is_active().await;
+                if !yolo_active && !tool_policy_mgr.is_tool_allowed(&agent_id, &tool_use.name) {
+                    warn!(
+                        "[{}] Tool '{}' denied by agent tool policy",
+                        label, tool_use.name
+                    );
+                    let blocked_msg = format!(
+                        "BLOCKED: Tool '{}' is not permitted for agent '{}' by tool policy.",
+                        tool_use.name, agent_id
+                    );
+                    prepared.push(PreparedCall {
+                        idx,
+                        session_key: String::new(),
+                        agent_id: agent_id.clone(),
+                        restored_input: serde_json::Value::Null,
+                        early_result: Some(blocked_msg),
+                    });
+                    continue;
+                }
             }
-            drop(tool_policy_mgr);
 
-            // Restore proxy keys in tool input JSON before execution.
-            // If the model generated a proxy key (e.g., from a key it saw in
-            // an earlier turn), restore it to the real key so the tool works.
+            // Restore proxy keys in tool input before execution.
             let restored_input = {
                 let kv_config = {
                     let cfg = state.config.read().await;
@@ -1469,11 +1494,7 @@ pub async fn execute_tool_loop(
                 }
             };
 
-            // Derive a sanitised session key from sender_id so NexiGate can
-            // maintain per-conversation PTY sessions.  Restrict characters to
-            // alphanumeric, underscore, and hyphen — external channel senders
-            // (Telegram IDs, Matrix room IDs, etc.) can contain arbitrary bytes
-            // that would otherwise break session isolation.
+            // Sanitised session key for NexiGate PTY isolation.
             let session_key: String = {
                 let raw = config.sender_id.as_deref().unwrap_or("default");
                 let s: String = raw
@@ -1487,76 +1508,105 @@ pub async fn execute_tool_loop(
                     })
                     .take(64)
                     .collect();
-                if s.is_empty() {
-                    "default".to_string()
-                } else {
-                    s
-                }
-            };
-            // ── Retry loop ──────────────────────────────────────────────────
-            // Execute the tool, retrying transient errors with backoff.
-            let tool_result = {
-                let mut attempt: u32 = 1;
-                #[allow(unused_assignments)]
-                let mut last_result = String::new();
-                loop {
-                    let raw = chat::execute_tool_call(
-                        &tool_use.name,
-                        &tool_use.id,
-                        &restored_input,
-                        state,
-                        observer.get_window(),
-                        &session_key,
-                        &agent_id,
-                        Some(observer),
-                        config.channel.as_ref(),
-                        config.sender_id.as_deref(),
-                    )
-                    .await;
-
-                    // A result starting with "BLOCKED" is a policy block — not an error to retry.
-                    let is_error = raw.starts_with("Error") && !raw.starts_with("BLOCKED");
-                    if !is_error {
-                        last_result = raw;
-                        break;
-                    }
-
-                    let kind = tool_retry::classify_error(&raw);
-                    let max = tool_retry::max_attempts(&kind);
-                    let retry_after = tool_retry::parse_retry_after(&raw);
-                    let message = tool_retry::plain_english_message(&kind, &raw, attempt, max);
-                    let wait = tool_retry::backoff_secs(attempt + 1, &kind, retry_after);
-
-                    let error_info = ToolErrorInfo {
-                        kind: kind.clone(),
-                        message: message.clone(),
-                        retry_after_secs: wait,
-                        attempt,
-                        max_attempts: max,
-                    };
-                    observer.on_tool_error(&tool_use.name, &tool_use.id, &error_info).await;
-
-                    if attempt >= max || kind == ToolErrorKind::AuthFailed || kind == ToolErrorKind::Other {
-                        last_result = raw;
-                        break;
-                    }
-
-                    warn!(
-                        "[{}] Tool '{}' failed (attempt {}/{}), retrying in {}s: {}",
-                        label, tool_use.name, attempt, max, wait, &raw[..raw.len().min(200)]
-                    );
-
-                    if wait > 0 {
-                        tokio::time::sleep(Duration::from_secs(wait)).await;
-                    }
-                    attempt += 1;
-                }
-                last_result
+                if s.is_empty() { "default".to_string() } else { s }
             };
 
-            let success = !tool_result.starts_with("BLOCKED") && !tool_result.starts_with("Error");
+            prepared.push(PreparedCall {
+                idx,
+                session_key,
+                agent_id: agent_id.clone(),
+                restored_input,
+                early_result: None,
+            });
+        }
 
-            // Check cumulative output
+        // ── Phase 2: parallel execution ───────────────────────────────────
+        // All futures share immutable borrows of `state` and `observer`, which
+        // is safe because join_all drives them from the same async task without
+        // spawning new threads.
+        let exec_results: Vec<String> = {
+            let futs: Vec<_> = prepared.iter().map(|call| {
+                let tool_use = &result.tool_uses[call.idx];
+                async {
+                    if let Some(ref early) = call.early_result {
+                        return early.clone();
+                    }
+
+                    let mut attempt: u32 = 1;
+                    #[allow(unused_assignments)]
+                    let mut last_result = String::new();
+                    loop {
+                        let raw = chat::execute_tool_call(
+                            &tool_use.name,
+                            &tool_use.id,
+                            &call.restored_input,
+                            state,
+                            observer.get_window(),
+                            &call.session_key,
+                            &call.agent_id,
+                            Some(observer),
+                            config.channel.as_ref(),
+                            config.sender_id.as_deref(),
+                        )
+                        .await;
+
+                        // "BLOCKED" is a policy result — not a transient error.
+                        let is_error = raw.starts_with("Error") && !raw.starts_with("BLOCKED");
+                        if !is_error {
+                            last_result = raw;
+                            break;
+                        }
+
+                        let kind = tool_retry::classify_error(&raw);
+                        let max = tool_retry::max_attempts(&kind);
+                        let retry_after = tool_retry::parse_retry_after(&raw);
+                        let message = tool_retry::plain_english_message(&kind, &raw, attempt, max);
+                        let wait = tool_retry::backoff_secs(attempt + 1, &kind, retry_after);
+
+                        observer
+                            .on_tool_error(
+                                &tool_use.name,
+                                &tool_use.id,
+                                &ToolErrorInfo {
+                                    kind: kind.clone(),
+                                    message: message.clone(),
+                                    retry_after_secs: wait,
+                                    attempt,
+                                    max_attempts: max,
+                                },
+                            )
+                            .await;
+
+                        if attempt >= max
+                            || kind == ToolErrorKind::AuthFailed
+                            || kind == ToolErrorKind::Other
+                        {
+                            last_result = raw;
+                            break;
+                        }
+
+                        warn!(
+                            "[tool] '{}' failed (attempt {}/{}), retrying in {}s",
+                            tool_use.name, attempt, max, wait
+                        );
+                        if wait > 0 {
+                            tokio::time::sleep(Duration::from_secs(wait)).await;
+                        }
+                        attempt += 1;
+                    }
+                    last_result
+                }
+            }).collect();
+            join_all(futs).await
+        };
+
+        // ── Phase 3: serial result processing ────────────────────────────
+        for (call, tool_result) in prepared.iter().zip(exec_results.into_iter()) {
+            let tool_use = &result.tool_uses[call.idx];
+            let success =
+                !tool_result.starts_with("BLOCKED") && !tool_result.starts_with("Error");
+
+            // Cumulative output gate.
             cumulative_output_bytes += tool_result.len();
             if cumulative_output_bytes > config.max_output_bytes {
                 warn!(
@@ -1573,7 +1623,7 @@ pub async fn execute_tool_loop(
                 break;
             }
 
-            // Defense check on tool results (if enabled)
+            // Defense pipeline check.
             let final_result = if config.run_defense_checks {
                 let mut defense = state.defense_pipeline.write().await;
                 let defense_result = defense.check(&tool_result).await;
@@ -1590,9 +1640,7 @@ pub async fn execute_tool_loop(
                 tool_result
             };
 
-            // Key vault interception on tool result — if the tool output
-            // contains any real API key (e.g., from a file read or env dump),
-            // replace it with a proxy key before the model sees it.
+            // Key vault interception on tool result.
             let final_result = {
                 let kv_config = {
                     let cfg = state.config.read().await;
@@ -1605,29 +1653,20 @@ pub async fn execute_tool_loop(
                 }
             };
 
-            // Truncate large results if configured (e.g., Telegram 8KB limit).
-            // Walk back from max_bytes to find a valid UTF-8 char boundary, then
-            // snap to the previous newline for a clean break.
+            // Truncate large results if configured.
             let history_result = if let Some(max_bytes) = config.max_tool_result_bytes {
                 if final_result.len() > max_bytes {
                     let total = final_result.len();
-                    // Build the suffix first so we know its length, then reserve
-                    // the remaining budget for actual content.  This prevents the
-                    // suffix itself from pushing the output beyond `max_bytes`.
                     let suffix_template = format!(
                         "\n\n[... truncated: {} total bytes, showing first ",
                         total
                     );
-                    // Worst-case suffix length: template + max digits for break_at + "]"
                     let suffix_overhead = suffix_template.len() + 20 + 1;
                     let max_content = max_bytes.saturating_sub(suffix_overhead);
-
-                    // Find the nearest UTF-8 char boundary at or before max_content.
                     let safe_end = (0..=max_content.min(final_result.len()))
                         .rev()
                         .find(|&i| final_result.is_char_boundary(i))
                         .unwrap_or(0);
-                    // Prefer breaking at a newline for readability.
                     let break_at = final_result[..safe_end].rfind('\n').unwrap_or(safe_end);
                     format!(
                         "{}\n\n[... truncated: {} total bytes, showing first {}]",
@@ -1643,12 +1682,7 @@ pub async fn execute_tool_loop(
             };
 
             // Detect detach sentinel from nexibot_background_task.
-            // Format: "NEXIBOT_DETACH:{task_id}:{acknowledgment}"
             let history_result = if history_result.starts_with("NEXIBOT_DETACH:") {
-                // Extract acknowledgment (everything after the second ':').
-                // Use splitn(2, ':') so that colons inside task_id don't cause
-                // a mis-split — we only care about the first colon separating
-                // task_id from acknowledgment.
                 let without_prefix = &history_result["NEXIBOT_DETACH:".len()..];
                 let mut parts = without_prefix.splitn(2, ':');
                 let _task_id = parts.next().unwrap_or("");
@@ -1658,25 +1692,15 @@ pub async fn execute_tool_loop(
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "Got it, working on it in the background.".to_string());
                 detach_text = Some(ack);
-                // Store a clean result in history (so the conversation stays valid)
                 "Background task started successfully.".to_string()
             } else {
                 history_result
             };
 
             client.add_tool_result(&tool_use.id, &history_result).await;
-
-            // Notify observer
             observer
                 .on_tool_result(&tool_use.name, &tool_use.id, success)
                 .await;
-
-            // Sequential delay between tool calls in the same batch.
-            // Prevents rapid back-to-back history mutations that can trigger
-            // "unexpected tool_use_id" 400 errors on the next API call.
-            if config.between_tool_delay_ms > 0 {
-                tokio::time::sleep(Duration::from_millis(config.between_tool_delay_ms)).await;
-            }
         }
 
         // All tool results for this batch have been added. Trim the history
