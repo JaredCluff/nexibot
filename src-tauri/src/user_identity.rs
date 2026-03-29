@@ -412,5 +412,6 @@ fn channel_key(source: &ChannelSource) -> (String, String) {
         ChannelSource::WebChat { session_id } => ("webchat".to_string(), session_id.clone()),
         ChannelSource::Email { thread_id } => ("email".to_string(), thread_id.clone()),
         ChannelSource::Gmail { thread_id } => ("gmail".to_string(), thread_id.clone()),
+        ChannelSource::Nats { sender } => ("nats".to_string(), sender.clone()),
     }
 }

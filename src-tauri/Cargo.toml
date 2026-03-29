@@ -156,6 +156,9 @@ lru = "0.12"
 # Browser automation via Chrome DevTools Protocol
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 
+# NATS messaging bus
+async-nats = "0.38"
+
 # Telegram bot
 teloxide = { version = "0.13", features = ["macros"] }
 

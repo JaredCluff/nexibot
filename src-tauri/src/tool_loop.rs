@@ -465,6 +465,7 @@ impl ToolLoopConfig {
             Some(ChannelSource::WebChat { .. }) => "WEBCHAT",
             Some(ChannelSource::Email { .. }) => "EMAIL",
             Some(ChannelSource::Gmail { .. }) => "GMAIL",
+            Some(ChannelSource::Nats { .. }) => "NATS",
             None => "BACKGROUND",
         }
     }

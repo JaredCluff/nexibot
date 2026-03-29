@@ -473,6 +473,9 @@ async fn resolve_agent_id(message: &IncomingMessage, state: &AppState) -> String
         ChannelSource::Gmail { thread_id } => {
             agent_mgr.resolve_agent("gmail", thread_id).to_string()
         }
+        ChannelSource::Nats { sender } => {
+            agent_mgr.resolve_agent("nats", sender).to_string()
+        }
     }
 }
 

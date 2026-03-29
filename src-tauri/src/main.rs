@@ -56,6 +56,7 @@ mod matrix;
 mod mattermost;
 mod mcp;
 mod memory;
+mod nats;
 mod memory_advanced;
 mod memory_store;
 mod messenger;
@@ -977,6 +978,14 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = signal::start_signal_listener(signal_state).await {
                     tracing::warn!("[SIGNAL] Failed to start Signal listener: {}", e);
+                }
+            });
+
+            // Start NATS listener if enabled
+            let nats_state = app_state.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = nats::start_nats_listener(nats_state).await {
+                    tracing::warn!("[NATS] Failed to start NATS listener: {}", e);
                 }
             });
 

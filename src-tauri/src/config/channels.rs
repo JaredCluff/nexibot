@@ -1,4 +1,4 @@
-//! Channel integration configurations: Telegram, WhatsApp, Discord, Slack, Signal, Teams, Matrix.
+//! Channel integration configurations: Telegram, WhatsApp, Discord, Slack, Signal, Teams, Matrix, NATS.
 
 use super::ChannelToolPolicy;
 use serde::{Deserialize, Serialize};
@@ -244,6 +244,38 @@ impl Default for MatrixConfig {
             admin_user_ids: Vec::new(),
             dm_policy: crate::pairing::DmPolicy::default(),
             tool_policy: ChannelToolPolicy::default(),
+        }
+    }
+}
+
+fn default_nats_url() -> String {
+    "nats://localhost:14222".to_string()
+}
+
+fn default_nats_inbound_subject() -> String {
+    "nexibot.in.>".to_string()
+}
+
+/// NATS messaging bus configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NatsConfig {
+    /// Whether NATS integration is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    /// NATS server URL
+    #[serde(default = "default_nats_url")]
+    pub url: String,
+    /// Inbound subject pattern (messages addressed to this agent)
+    #[serde(default = "default_nats_inbound_subject")]
+    pub inbound_subject: String,
+}
+
+impl Default for NatsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            url: default_nats_url(),
+            inbound_subject: default_nats_inbound_subject(),
         }
     }
 }
