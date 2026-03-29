@@ -7,8 +7,8 @@ pub use autonomy::{
 
 pub mod channels;
 pub use channels::{
-    DiscordConfig, MatrixConfig, SignalConfig, SlackConfig, TeamsConfig, TelegramConfig,
-    WhatsAppConfig,
+    DiscordConfig, MatrixConfig, NatsConfig, SignalConfig, SlackConfig, TeamsConfig,
+    TelegramConfig, WhatsAppConfig,
 };
 
 pub mod voice;
@@ -190,6 +190,10 @@ pub struct NexiBotConfig {
     /// Matrix messaging configuration
     #[serde(default)]
     pub matrix: MatrixConfig,
+
+    /// NATS messaging bus configuration
+    #[serde(default)]
+    pub nats: NatsConfig,
 
     /// Web search tool configuration
     #[serde(default)]

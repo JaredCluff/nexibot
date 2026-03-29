@@ -62,6 +62,8 @@ pub enum ChannelSource {
     Email { thread_id: String },
     /// Gmail via Google Gmail API
     Gmail { thread_id: String },
+    /// NATS message bus (inter-agent communication)
+    Nats { sender: String },
     /// Voice interaction (wake word or push-to-talk)
     Voice,
 }
