@@ -471,6 +471,133 @@ pub(crate) async fn collect_all_tools(
         }
     }));
 
+    // Filesystem search tools — glob and grep for model-driven file discovery
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_glob",
+        "description": "Find files matching a glob pattern (e.g. **/*.rs, src/**/*.ts). Returns absolute paths sorted by most recently modified first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Glob pattern to match (e.g. **/*.rs, src/**/*.ts)"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Base directory to search from (must be absolute)"
+                }
+            },
+            "required": ["pattern", "path"]
+        }
+    }));
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_grep",
+        "description": "Search files for a regex pattern. Supports output modes: 'files' (default, paths with matches), 'content' (matching lines), 'count' (match counts per file).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Directory to search (must be absolute)"
+                },
+                "glob": {
+                    "type": "string",
+                    "description": "File filter glob (e.g. *.rs, *.ts)"
+                },
+                "output_mode": {
+                    "type": "string",
+                    "description": "Output mode: 'files_with_matches' (default, paths only), 'content' (matching lines), or 'count' (match counts per file)",
+                    "enum": ["files_with_matches", "content", "count"]
+                },
+                "context": {
+                    "type": "integer",
+                    "description": "Lines of context around each match (content mode only, default: 0)"
+                }
+            },
+            "required": ["pattern", "path"]
+        }
+    }));
+
+    // Task management tools — list, inspect, and update background tasks
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_task_list",
+        "description": "List all background tasks with their current status, progress, and results.",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    }));
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_task_get",
+        "description": "Get details of a specific background task by ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "Task ID returned when the task was created"
+                }
+            },
+            "required": ["task_id"]
+        }
+    }));
+    all_tools.push(serde_json::json!({
+        "name": "nexibot_task_update",
+        "description": "Update a background task: report progress, mark it complete, or mark it failed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "Task ID to update"
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["progress", "complete", "fail"],
+                    "description": "'progress' to set a progress message, 'complete' to mark done, 'fail' to mark failed"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Progress message, completion summary, or failure reason"
+                }
+            },
+            "required": ["task_id", "action", "message"]
+        }
+    }));
+
+    // NATS publish tool — only when NATS is enabled
+    {
+        let config = state.config.read().await;
+        if config.nats.enabled {
+            all_tools.push(serde_json::json!({
+                "name": "nats_publish",
+                "description": "Publish a message to a NATS subject for inter-agent communication. Subject convention: '{target}.in.nexibot' for outbound (e.g. 'agent.task.cto', 'agent.result.nexibot'). Requires Autonomous autonomy level when autonomous mode is enabled.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "subject": {
+                            "type": "string",
+                            "description": "NATS subject to publish to. Follow convention: '{target}.in.nexibot' for outbound messages (e.g. 'agent.task.cto', 'agent.result.nexibot')"
+                        },
+                        "payload": {
+                            "type": "string",
+                            "description": "Message payload (JSON string recommended)"
+                        },
+                        "reply_subject": {
+                            "type": "string",
+                            "description": "Optional reply-to subject for request-reply patterns"
+                        }
+                    },
+                    "required": ["subject", "payload"]
+                }
+            }));
+        }
+    }
+
     let mcp_count = mcp_tools.len();
     (all_tools, mcp_count, computer_use_enabled, browser_enabled)
 }
@@ -1456,6 +1583,293 @@ pub(crate) async fn execute_tool_call<'obs>(
             }
             Err(e) => serde_json::json!({ "ok": false, "error": e }).to_string(),
         };
+    }
+
+    // NATS publish tool
+    if tool_name == "nats_publish" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        {
+            let config = state.config.read().await;
+            if config.autonomous_mode.enabled {
+                let level = config.autonomous_mode.nats_publish.level;
+                drop(config);
+                match level {
+                    AutonomyLevel::Blocked if !yolo_active => {
+                        return "BLOCKED: NATS publish is disabled in autonomous mode.".to_string();
+                    }
+                    AutonomyLevel::AskUser if !yolo_active => {
+                        if let Err(blocked) = require_tool_approval_or_block(
+                            tool_name,
+                            "Publish a message to NATS (inter-agent communication) — confirm?",
+                            None,
+                            observer,
+                        )
+                        .await
+                        {
+                            return blocked;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let subject = match tool_input.get("subject").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "Error: 'subject' is required.".to_string(),
+        };
+        let payload = match tool_input.get("payload").and_then(|v| v.as_str()) {
+            Some(p) => p.to_string(),
+            None => return "Error: 'payload' is required.".to_string(),
+        };
+        let reply_subject = tool_input.get("reply_subject").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let client_guard = state.nats_publish_client.lock().await;
+        let Some(ref client) = *client_guard else {
+            return "Error: NATS is not connected.".to_string();
+        };
+        let result = if let Some(ref reply) = reply_subject {
+            client.publish_with_reply(subject.clone(), reply.clone(), payload.into()).await
+        } else {
+            client.publish(subject.clone(), payload.into()).await
+        };
+        return match result {
+            Ok(_) => format!("Published to '{}'.", subject),
+            Err(e) => format!("Error publishing to '{}': {}", subject, e),
+        };
+    }
+
+    // Glob file search
+    if tool_name == "nexibot_glob" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        let pattern = match tool_input.get("pattern").and_then(|v| v.as_str()) {
+            Some(p) => p.to_string(),
+            None => return "Error: 'pattern' is required.".to_string(),
+        };
+        let base_path = match tool_input.get("path").and_then(|v| v.as_str()) {
+            Some(p) => p.to_string(),
+            None => return "Error: 'path' is required.".to_string(),
+        };
+        if !std::path::Path::new(&base_path).is_absolute() {
+            return "Error: 'path' must be an absolute path (e.g. '/Users/me/project').".to_string();
+        }
+        if pattern.split('/').any(|seg| seg == "..") {
+            return "Error: pattern must not contain '..' path components.".to_string();
+        }
+        let full_pattern = format!("{}/{}", base_path.trim_end_matches('/'), pattern);
+        const MAX_GLOB_RESULTS: usize = 500;
+        return match glob::glob(&full_pattern) {
+            Err(e) => format!("Error: invalid glob pattern: {}", e),
+            Ok(paths) => {
+                let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> = paths
+                    .filter_map(|e| e.ok())
+                    .take(MAX_GLOB_RESULTS + 1)
+                    .filter_map(|p| {
+                        let mtime = std::fs::metadata(&p)
+                            .and_then(|m| m.modified())
+                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                        Some((p, mtime))
+                    })
+                    .collect();
+                let truncated = entries.len() > MAX_GLOB_RESULTS;
+                if truncated { entries.truncate(MAX_GLOB_RESULTS); }
+                entries.sort_by(|a, b| b.1.cmp(&a.1));
+                if entries.is_empty() {
+                    format!("No files matched pattern: {}", pattern)
+                } else {
+                    let mut out = entries.iter().map(|(p, _)| p.display().to_string()).collect::<Vec<_>>().join("\n");
+                    if truncated { out.push_str(&format!("\n[truncated at {} results]", MAX_GLOB_RESULTS)); }
+                    out
+                }
+            }
+        };
+    }
+
+    // Grep content search
+    if tool_name == "nexibot_grep" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        let pattern_str = match tool_input.get("pattern").and_then(|v| v.as_str()) {
+            Some(p) => p,
+            None => return "Error: 'pattern' is required.".to_string(),
+        };
+        let search_dir = match tool_input.get("path").and_then(|v| v.as_str()) {
+            Some(p) => std::path::PathBuf::from(p),
+            None => return "Error: 'path' is required.".to_string(),
+        };
+        if !search_dir.is_absolute() {
+            return "Error: 'path' must be an absolute path (e.g. '/Users/me/project').".to_string();
+        }
+        let regex = match regex::Regex::new(pattern_str) {
+            Ok(r) => r,
+            Err(e) => return format!("Error: invalid regex: {}", e),
+        };
+        let glob_filter = tool_input.get("glob").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let output_mode = tool_input.get("output_mode").and_then(|v| v.as_str()).unwrap_or("files_with_matches");
+        let context_lines = tool_input.get("context").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let glob_pat = if let Some(ref f) = glob_filter {
+            match glob::Pattern::new(f) {
+                Ok(p) => Some(p),
+                Err(e) => return format!("Error: invalid glob filter '{}': {}", f, e),
+            }
+        } else {
+            None
+        };
+        let files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(&search_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                if let Some(ref pat) = glob_pat {
+                    pat.matches(&e.file_name().to_string_lossy())
+                } else {
+                    true
+                }
+            })
+            .map(|e| e.path().to_path_buf())
+            .collect();
+        const MAX_BYTES: usize = 50_000;
+        const MAX_FILE_BYTES: u64 = 5_000_000; // skip files larger than 5MB
+        let mut output = String::new();
+        let mut truncated = false;
+        match output_mode {
+            "content" => {
+                for fp in &files {
+                    if truncated { break; }
+                    if std::fs::metadata(fp).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES { continue; }
+                    let Ok(bytes) = std::fs::read(fp) else { continue };
+                    let Ok(text) = String::from_utf8(bytes) else { continue };
+                    let lines: Vec<&str> = text.lines().collect();
+                    let matching: Vec<usize> = lines.iter().enumerate()
+                        .filter(|(_, l)| regex.is_match(l)).map(|(i, _)| i).collect();
+                    if matching.is_empty() { continue; }
+                    let mut include = std::collections::BTreeSet::new();
+                    for &idx in &matching {
+                        let start = idx.saturating_sub(context_lines);
+                        for i in start..(idx + context_lines + 1).min(lines.len()) { include.insert(i); }
+                    }
+                    for li in include {
+                        let entry = format!("{}:{}: {}\n", fp.display(), li + 1, lines[li]);
+                        if output.len() + entry.len() > MAX_BYTES { truncated = true; break; }
+                        output.push_str(&entry);
+                    }
+                }
+            }
+            "count" => {
+                for fp in &files {
+                    if truncated { break; }
+                    if std::fs::metadata(fp).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES { continue; }
+                    let Ok(bytes) = std::fs::read(fp) else { continue };
+                    let Ok(text) = String::from_utf8(bytes) else { continue };
+                    let count = regex.find_iter(&text).count();
+                    if count == 0 { continue; }
+                    let entry = format!("{}: {} matches\n", fp.display(), count);
+                    if output.len() + entry.len() > MAX_BYTES { truncated = true; break; }
+                    output.push_str(&entry);
+                }
+            }
+            _ => {
+                // "files_with_matches" mode (default) — also catches unknown values safely
+                for fp in &files {
+                    if truncated { break; }
+                    if std::fs::metadata(fp).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES { continue; }
+                    let Ok(bytes) = std::fs::read(fp) else { continue };
+                    let Ok(text) = String::from_utf8(bytes) else { continue };
+                    if regex.is_match(&text) {
+                        let entry = format!("{}\n", fp.display());
+                        if output.len() + entry.len() > MAX_BYTES { truncated = true; break; }
+                        output.push_str(&entry);
+                    }
+                }
+            }
+        }
+        if truncated { output.push_str("\n[truncated at 50KB]"); }
+        return if output.is_empty() {
+            format!("No matches found for pattern: {}", pattern_str)
+        } else {
+            output.trim_end().to_string()
+        };
+    }
+
+    // Task management tools
+    if tool_name == "nexibot_task_list" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        let mgr = state.task_manager.read().await;
+        let tasks = mgr.list_tasks();
+        if tasks.is_empty() {
+            return "No background tasks found.".to_string();
+        }
+        let lines: Vec<String> = tasks.iter().map(|t| {
+            use crate::task_manager::TaskStatus;
+            let status = match t.status {
+                TaskStatus::Running => "running",
+                TaskStatus::Completed => "completed",
+                TaskStatus::Failed => "failed",
+                TaskStatus::Cancelled => "cancelled",
+            };
+            let progress = t.progress.as_deref().map(|p| format!(", progress: {}", p)).unwrap_or_default();
+            let result = t.result_summary.as_deref().map(|r| format!(", result: {}", r)).unwrap_or_default();
+            format!("[{}] {} — {}{}{}", t.id, t.description, status, progress, result)
+        }).collect();
+        return lines.join("\n");
+    }
+
+    if tool_name == "nexibot_task_get" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        let task_id = match tool_input.get("task_id").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
+            None => return "Error: 'task_id' is required.".to_string(),
+        };
+        let mgr = state.task_manager.read().await;
+        return match mgr.get_task(&task_id) {
+            None => format!("Task '{}' not found.", task_id),
+            Some(t) => serde_json::to_string_pretty(t).unwrap_or_else(|_| format!("{:?}", t)),
+        };
+    }
+
+    if tool_name == "nexibot_task_update" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        let task_id = match tool_input.get("task_id").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
+            None => return "Error: 'task_id' is required.".to_string(),
+        };
+        let action = match tool_input.get("action").and_then(|v| v.as_str()) {
+            Some(a) => a.to_string(),
+            None => return "Error: 'action' is required.".to_string(),
+        };
+        let message = match tool_input.get("message").and_then(|v| v.as_str()) {
+            Some(m) => m.to_string(),
+            None => return "Error: 'message' is required.".to_string(),
+        };
+        let mut mgr = state.task_manager.write().await;
+        if mgr.get_task(&task_id).is_none() {
+            return format!("Error: task '{}' not found.", task_id);
+        }
+        match action.as_str() {
+            "progress" => {
+                mgr.update_progress(&task_id, &message);
+                return format!("Task '{}' progress updated.", task_id);
+            }
+            "complete" => {
+                mgr.complete_task(&task_id, &message);
+                return format!("Task '{}' marked complete.", task_id);
+            }
+            "fail" => {
+                mgr.fail_task(&task_id, &message);
+                return format!("Task '{}' marked failed.", task_id);
+            }
+            other => return format!("Error: unknown action '{}'. Use: progress, complete, fail.", other),
+        }
     }
 
     // Hard guard check (non-bypassable, before any other check)
