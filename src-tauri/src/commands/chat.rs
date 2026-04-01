@@ -510,8 +510,8 @@ pub(crate) async fn collect_all_tools(
                 },
                 "output_mode": {
                     "type": "string",
-                    "description": "Output mode: 'files' (default), 'content', or 'count'",
-                    "enum": ["files", "content", "count"]
+                    "description": "Output mode: 'files_with_matches' (default, paths only), 'content' (matching lines), or 'count' (match counts per file)",
+                    "enum": ["files_with_matches", "content", "count"]
                 },
                 "context": {
                     "type": "integer",
@@ -575,17 +575,21 @@ pub(crate) async fn collect_all_tools(
         if config.nats.enabled {
             all_tools.push(serde_json::json!({
                 "name": "nats_publish",
-                "description": "Publish a message to a NATS subject. Use for inter-agent communication: send results, requests, or status updates to other agents on the message bus.",
+                "description": "Publish a message to a NATS subject for inter-agent communication. Subject convention: '{target}.in.nexibot' for outbound (e.g. 'agent.task.cto', 'agent.result.nexibot'). Requires Autonomous autonomy level when autonomous mode is enabled.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "subject": {
                             "type": "string",
-                            "description": "NATS subject to publish to (e.g. 'agent.result.nexibot', 'agent.task.cto')"
+                            "description": "NATS subject to publish to. Follow convention: '{target}.in.nexibot' for outbound messages (e.g. 'agent.task.cto', 'agent.result.nexibot')"
                         },
                         "payload": {
                             "type": "string",
                             "description": "Message payload (JSON string recommended)"
+                        },
+                        "reply_subject": {
+                            "type": "string",
+                            "description": "Optional reply-to subject for request-reply patterns"
                         }
                     },
                     "required": ["subject", "payload"]
@@ -1583,6 +1587,34 @@ pub(crate) async fn execute_tool_call<'obs>(
 
     // NATS publish tool
     if tool_name == "nats_publish" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
+        {
+            let config = state.config.read().await;
+            if config.autonomous_mode.enabled {
+                let level = config.autonomous_mode.nats_publish.level;
+                drop(config);
+                match level {
+                    AutonomyLevel::Blocked if !yolo_active => {
+                        return "BLOCKED: NATS publish is disabled in autonomous mode.".to_string();
+                    }
+                    AutonomyLevel::AskUser if !yolo_active => {
+                        if let Err(blocked) = require_tool_approval_or_block(
+                            tool_name,
+                            "Publish a message to NATS (inter-agent communication) — confirm?",
+                            None,
+                            observer,
+                        )
+                        .await
+                        {
+                            return blocked;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         let subject = match tool_input.get("subject").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
             None => return "Error: 'subject' is required.".to_string(),
@@ -1591,11 +1623,17 @@ pub(crate) async fn execute_tool_call<'obs>(
             Some(p) => p.to_string(),
             None => return "Error: 'payload' is required.".to_string(),
         };
+        let reply_subject = tool_input.get("reply_subject").and_then(|v| v.as_str()).map(|s| s.to_string());
         let client_guard = state.nats_publish_client.lock().await;
         let Some(ref client) = *client_guard else {
             return "Error: NATS is not connected.".to_string();
         };
-        return match client.publish(subject.clone(), payload.into()).await {
+        let result = if let Some(ref reply) = reply_subject {
+            client.publish_with_reply(subject.clone(), reply.clone(), payload.into()).await
+        } else {
+            client.publish(subject.clone(), payload.into()).await
+        };
+        return match result {
             Ok(_) => format!("Published to '{}'.", subject),
             Err(e) => format!("Error publishing to '{}': {}", subject, e),
         };
@@ -1611,12 +1649,17 @@ pub(crate) async fn execute_tool_call<'obs>(
             Some(p) => p.to_string(),
             None => return "Error: 'path' is required.".to_string(),
         };
+        if !std::path::Path::new(&base_path).is_absolute() {
+            return "Error: 'path' must be an absolute path (e.g. '/Users/me/project').".to_string();
+        }
         let full_pattern = format!("{}/{}", base_path.trim_end_matches('/'), pattern);
+        const MAX_GLOB_RESULTS: usize = 500;
         return match glob::glob(&full_pattern) {
             Err(e) => format!("Error: invalid glob pattern: {}", e),
             Ok(paths) => {
                 let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> = paths
                     .filter_map(|e| e.ok())
+                    .take(MAX_GLOB_RESULTS + 1)
                     .filter_map(|p| {
                         let mtime = std::fs::metadata(&p)
                             .and_then(|m| m.modified())
@@ -1624,11 +1667,15 @@ pub(crate) async fn execute_tool_call<'obs>(
                         Some((p, mtime))
                     })
                     .collect();
+                let truncated = entries.len() > MAX_GLOB_RESULTS;
+                if truncated { entries.truncate(MAX_GLOB_RESULTS); }
                 entries.sort_by(|a, b| b.1.cmp(&a.1));
                 if entries.is_empty() {
                     format!("No files matched pattern: {}", pattern)
                 } else {
-                    entries.iter().map(|(p, _)| p.display().to_string()).collect::<Vec<_>>().join("\n")
+                    let mut out = entries.iter().map(|(p, _)| p.display().to_string()).collect::<Vec<_>>().join("\n");
+                    if truncated { out.push_str(&format!("\n[truncated at {} results]", MAX_GLOB_RESULTS)); }
+                    out
                 }
             }
         };
@@ -1644,14 +1691,24 @@ pub(crate) async fn execute_tool_call<'obs>(
             Some(p) => std::path::PathBuf::from(p),
             None => return "Error: 'path' is required.".to_string(),
         };
+        if !search_dir.is_absolute() {
+            return "Error: 'path' must be an absolute path (e.g. '/Users/me/project').".to_string();
+        }
         let regex = match regex::Regex::new(pattern_str) {
             Ok(r) => r,
             Err(e) => return format!("Error: invalid regex: {}", e),
         };
         let glob_filter = tool_input.get("glob").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let output_mode = tool_input.get("output_mode").and_then(|v| v.as_str()).unwrap_or("files");
+        let output_mode = tool_input.get("output_mode").and_then(|v| v.as_str()).unwrap_or("files_with_matches");
         let context_lines = tool_input.get("context").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        let glob_pat = glob_filter.as_deref().and_then(|f| glob::Pattern::new(f).ok());
+        let glob_pat = if let Some(ref f) = glob_filter {
+            match glob::Pattern::new(f) {
+                Ok(p) => Some(p),
+                Err(e) => return format!("Error: invalid glob filter '{}': {}", f, e),
+            }
+        } else {
+            None
+        };
         let files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(&search_dir)
             .follow_links(false)
             .into_iter()
@@ -1704,6 +1761,7 @@ pub(crate) async fn execute_tool_call<'obs>(
                 }
             }
             _ => {
+                // "files_with_matches" mode (default) — also catches unknown values safely
                 for fp in &files {
                     if truncated { break; }
                     let Ok(bytes) = std::fs::read(fp) else { continue };
@@ -1732,7 +1790,13 @@ pub(crate) async fn execute_tool_call<'obs>(
             return "No background tasks found.".to_string();
         }
         let lines: Vec<String> = tasks.iter().map(|t| {
-            let status = format!("{:?}", t.status);
+            use crate::task_manager::TaskStatus;
+            let status = match t.status {
+                TaskStatus::Running => "running",
+                TaskStatus::Completed => "completed",
+                TaskStatus::Failed => "failed",
+                TaskStatus::Cancelled => "cancelled",
+            };
             let progress = t.progress.as_deref().map(|p| format!(", progress: {}", p)).unwrap_or_default();
             let result = t.result_summary.as_deref().map(|r| format!(", result: {}", r)).unwrap_or_default();
             format!("[{}] {} — {}{}{}", t.id, t.description, status, progress, result)
@@ -1766,6 +1830,9 @@ pub(crate) async fn execute_tool_call<'obs>(
             None => return "Error: 'message' is required.".to_string(),
         };
         let mut mgr = state.task_manager.write().await;
+        if mgr.get_task(&task_id).is_none() {
+            return format!("Error: task '{}' not found.", task_id);
+        }
         match action.as_str() {
             "progress" => {
                 mgr.update_progress(&task_id, &message);

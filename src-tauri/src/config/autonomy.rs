@@ -184,4 +184,7 @@ pub struct AutonomousModeConfig {
     /// nexibot_soul tool
     #[serde(default)]
     pub soul_modification: CapabilityAutonomy,
+    /// nats_publish tool — inter-agent NATS messaging (default: AskUser)
+    #[serde(default)]
+    pub nats_publish: CapabilityAutonomy,
 }
