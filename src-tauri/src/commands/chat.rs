@@ -1641,6 +1641,9 @@ pub(crate) async fn execute_tool_call<'obs>(
 
     // Glob file search
     if tool_name == "nexibot_glob" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
         let pattern = match tool_input.get("pattern").and_then(|v| v.as_str()) {
             Some(p) => p.to_string(),
             None => return "Error: 'pattern' is required.".to_string(),
@@ -1651,6 +1654,9 @@ pub(crate) async fn execute_tool_call<'obs>(
         };
         if !std::path::Path::new(&base_path).is_absolute() {
             return "Error: 'path' must be an absolute path (e.g. '/Users/me/project').".to_string();
+        }
+        if pattern.split('/').any(|seg| seg == "..") {
+            return "Error: pattern must not contain '..' path components.".to_string();
         }
         let full_pattern = format!("{}/{}", base_path.trim_end_matches('/'), pattern);
         const MAX_GLOB_RESULTS: usize = 500;
@@ -1683,6 +1689,9 @@ pub(crate) async fn execute_tool_call<'obs>(
 
     // Grep content search
     if tool_name == "nexibot_grep" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
         let pattern_str = match tool_input.get("pattern").and_then(|v| v.as_str()) {
             Some(p) => p,
             None => return "Error: 'pattern' is required.".to_string(),
@@ -1724,12 +1733,14 @@ pub(crate) async fn execute_tool_call<'obs>(
             .map(|e| e.path().to_path_buf())
             .collect();
         const MAX_BYTES: usize = 50_000;
+        const MAX_FILE_BYTES: u64 = 5_000_000; // skip files larger than 5MB
         let mut output = String::new();
         let mut truncated = false;
         match output_mode {
             "content" => {
                 for fp in &files {
                     if truncated { break; }
+                    if std::fs::metadata(fp).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES { continue; }
                     let Ok(bytes) = std::fs::read(fp) else { continue };
                     let Ok(text) = String::from_utf8(bytes) else { continue };
                     let lines: Vec<&str> = text.lines().collect();
@@ -1751,6 +1762,7 @@ pub(crate) async fn execute_tool_call<'obs>(
             "count" => {
                 for fp in &files {
                     if truncated { break; }
+                    if std::fs::metadata(fp).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES { continue; }
                     let Ok(bytes) = std::fs::read(fp) else { continue };
                     let Ok(text) = String::from_utf8(bytes) else { continue };
                     let count = regex.find_iter(&text).count();
@@ -1764,6 +1776,7 @@ pub(crate) async fn execute_tool_call<'obs>(
                 // "files_with_matches" mode (default) — also catches unknown values safely
                 for fp in &files {
                     if truncated { break; }
+                    if std::fs::metadata(fp).map(|m| m.len()).unwrap_or(0) > MAX_FILE_BYTES { continue; }
                     let Ok(bytes) = std::fs::read(fp) else { continue };
                     let Ok(text) = String::from_utf8(bytes) else { continue };
                     if regex.is_match(&text) {
@@ -1784,6 +1797,9 @@ pub(crate) async fn execute_tool_call<'obs>(
 
     // Task management tools
     if tool_name == "nexibot_task_list" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
         let mgr = state.task_manager.read().await;
         let tasks = mgr.list_tasks();
         if tasks.is_empty() {
@@ -1805,6 +1821,9 @@ pub(crate) async fn execute_tool_call<'obs>(
     }
 
     if tool_name == "nexibot_task_get" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
         let task_id = match tool_input.get("task_id").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
             None => return "Error: 'task_id' is required.".to_string(),
@@ -1817,6 +1836,9 @@ pub(crate) async fn execute_tool_call<'obs>(
     }
 
     if tool_name == "nexibot_task_update" {
+        if let Some(reason) = Guardrails::hard_guard_check(tool_name, tool_input) {
+            return format!("BLOCKED: {}", reason);
+        }
         let task_id = match tool_input.get("task_id").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
             None => return "Error: 'task_id' is required.".to_string(),
