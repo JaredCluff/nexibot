@@ -2231,7 +2231,7 @@ dependencies = [
 
 [[package]]
 name = "filedescriptor"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e40758ed24c9b2eeb76c35fb0aebc66c626084edd827e07e1552279814c6682d"
 dependencies = [
@@ -5375,7 +5375,7 @@ dependencies = [
 
 [[package]]
 name = "nexibot-tauri"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -7485,7 +7485,7 @@ dependencies = [
 
 [[package]]
 name = "rust-mcp-sdk"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67357f0d9ee9c28bdb0d4cf5ae23c0359342a14d177c23b4ee992df93e9a87d7"
 dependencies = [
@@ -7615,7 +7615,7 @@ dependencies = [
 
 [[package]]
 name = "rustls-native-certs"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "612460d5f7bea540c490b2b6395d8e34a953e52b491accd6c86c8164c5932a63"
 dependencies = [

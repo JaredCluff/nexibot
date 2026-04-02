@@ -1,6 +1,6 @@
 [package]
 name = "nexibot-tauri"
-version = "0.8.3"
+version = "0.8.4"
 edition = "2021"
 description = "NexiBot Tauri backend"
 license = "Apache-2.0"
