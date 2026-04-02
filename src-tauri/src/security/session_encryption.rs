@@ -26,21 +26,12 @@ const KEY_LEN: usize = 32;
 // ---------------------------------------------------------------------------
 
 /// Configuration for session transcript encryption.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionEncryptionConfig {
     /// Whether encryption is enabled.
     pub enabled: bool,
     /// Optional keyring key where the passphrase is stored.
     pub passphrase_keyring_key: Option<String>,
-}
-
-impl Default for SessionEncryptionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            passphrase_keyring_key: None,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -376,7 +367,7 @@ mod tests {
     fn test_truncated_ciphertext_returns_error() {
         let enc = SessionEncryptor::new("key", true);
         // Valid base64 but too short for salt + nonce + auth tag
-        let result = enc.decrypt_line(&BASE64.encode(&[0u8; 10]));
+        let result = enc.decrypt_line(&BASE64.encode([0u8; 10]));
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("nonce extraction stage"), "Expected nonce stage error, got: {}", err);
