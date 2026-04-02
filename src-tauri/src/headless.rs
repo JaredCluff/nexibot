@@ -643,6 +643,8 @@ pub async fn run() {
             let (tx, _rx) = tokio::sync::mpsc::channel(1);
             std::sync::Arc::new(tx)
         },
+        // Shared NATS client for nats_publish tool (populated when NATS starts)
+        nats_publish_client: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         log_state: None,
     };
 
