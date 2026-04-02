@@ -137,7 +137,13 @@ export async function injectTauriMock(
           return overrides[cmd];
         }
 
-        // --- Route to HTTP API ---
+        // --- Default responses (fast, no network) ---
+        const defaultResp = getDefaultResponse(cmd);
+        if (defaultResp !== undefined) {
+          return defaultResp;
+        }
+
+        // --- Route to HTTP API (only for unknown commands) ---
         try {
           const response = await fetch(API_BASE + '/api/invoke/' + cmd, {
             method: 'POST',
@@ -151,7 +157,7 @@ export async function injectTauriMock(
           if (!response.ok) {
             const text = await response.text();
             console.warn('[TAURI_MOCK] invoke HTTP fail:', cmd, response.status, text);
-            return getDefaultResponse(cmd);
+            return null;
           }
 
           const text = await response.text();
@@ -159,7 +165,7 @@ export async function injectTauriMock(
           return JSON.parse(text);
         } catch (err) {
           console.warn('[TAURI_MOCK] invoke error:', cmd, err.message);
-          return getDefaultResponse(cmd);
+          return null;
         }
       },
     };
@@ -213,10 +219,10 @@ export async function injectTauriMock(
         'get_observability_metrics': {},
         'get_yolo_status': { enabled: false, mode: 'off' },
         'get_dashboard_data': { sessions: 0, messages: 0 },
-        'compact_conversation': null,
+        'compact_conversation': { success: true, messages_before: 10, messages_after: 5, tokens_before: 2000, tokens_after: 1000 },
         'load_conversation_session': null,
       };
-      return defaults[cmd] ?? null;
+      return cmd in defaults ? defaults[cmd] : undefined;
     }
   `);
 }

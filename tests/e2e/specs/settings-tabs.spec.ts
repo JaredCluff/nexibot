@@ -52,15 +52,9 @@ test.describe('Settings Tabs Navigation', () => {
     });
     await page.goto('/');
     await page.waitForSelector('textarea', { timeout: 5000 });
-    // Open settings
-    const settingsBtn = page.locator('button').filter({ hasText: /settings|⚙/i }).first();
-    if (await settingsBtn.count() === 0) {
-      // Fallback: click gear icon in header
-      await page.locator('.header-actions button').last().click();
-    } else {
-      await settingsBtn.click();
-    }
-    await expect(page.locator('.settings')).toBeVisible({ timeout: 3000 });
+    // Open settings via the gear button
+    await page.locator('.settings-button').click();
+    await expect(page.locator('.settings')).toBeVisible({ timeout: 5000 });
   });
 
   test('settings panel has Save and Done buttons', async ({ page }) => {
