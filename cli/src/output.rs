@@ -9,7 +9,7 @@ pub fn format_output(value: &Value, format: &str) -> String {
         "json" => format_json(value),
         "yaml" => format_yaml(value),
         "table" => format_table(value),
-        "plain" | _ => format_plain(value),
+        _ => format_plain(value),
     }
 }
 
@@ -115,7 +115,7 @@ fn format_table_rows(rows: &[Value]) -> String {
             for key in &keys {
                 let value = map
                     .get(key)
-                    .map(|v| format_value_short(v))
+                    .map(format_value_short)
                     .unwrap_or_else(|| "-".to_string());
                 output.push_str(&format!("{:<20} ", value));
             }
@@ -128,7 +128,7 @@ fn format_table_rows(rows: &[Value]) -> String {
 
 /// Format object as table
 fn format_table_object(map: &serde_json::Map<String, Value>) -> String {
-    let mut sorted: BTreeMap<_, _> = map.iter().collect();
+    let sorted: BTreeMap<_, _> = map.iter().collect();
 
     let mut output = String::new();
     for (key, value) in sorted.iter() {

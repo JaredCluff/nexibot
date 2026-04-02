@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! NexiBot Comprehensive CLI
 //!
 //! Control NexiBot from the command line with full support for:

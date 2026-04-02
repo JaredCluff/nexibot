@@ -55,7 +55,7 @@ async fn handle_info(client: &NexiBotClient, name: &str) -> Result<(), CliError>
 async fn handle_exec(
     client: &NexiBotClient,
     name: &str,
-    args: Vec<String>,
+    _args: Vec<String>,
 ) -> Result<(), CliError> {
     if !client.health_check().await? {
         return Err(CliError::ServerUnreachable);

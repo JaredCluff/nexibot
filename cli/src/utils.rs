@@ -6,12 +6,12 @@ use std::io::{BufRead, BufReader};
 
 /// Parse JSON Lines format (one JSON object per line)
 pub fn parse_jsonl(file_path: &str) -> Result<Vec<serde_json::Value>, CliError> {
-    let file = File::open(file_path).map_err(|e| CliError::Io(e))?;
+    let file = File::open(file_path).map_err(CliError::Io)?;
     let reader = BufReader::new(file);
 
     let mut result = Vec::new();
     for line in reader.lines() {
-        let line = line.map_err(|e| CliError::Io(e))?;
+        let line = line.map_err(CliError::Io)?;
         if line.trim().is_empty() {
             continue;
         }

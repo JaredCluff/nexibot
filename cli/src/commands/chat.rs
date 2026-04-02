@@ -4,7 +4,6 @@ use crate::client::NexiBotClient;
 use crate::error::CliError;
 use crate::output::{self, format_output};
 use clap::Parser;
-use serde_json::json;
 
 #[derive(Parser)]
 pub struct ChatArgs {
@@ -36,7 +35,7 @@ pub async fn handle(args: ChatArgs, client: &NexiBotClient) -> Result<(), CliErr
 
     // Show loading indicator
     if !matches!(client.format(), "json") {
-        print!("{}", "Sending message... ");
+        print!("Sending message... ");
         std::io::Write::flush(&mut std::io::stdout()).ok();
     }
 
