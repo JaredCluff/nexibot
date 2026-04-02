@@ -121,15 +121,16 @@ jobs:
             tests/e2e/package-lock.json
             tests/mock-llm/package-lock.json
 
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-
       - name: Install UI dependencies
         run: npm ci
         working-directory: ui
 
       - name: Install E2E test dependencies
         run: npm ci
+        working-directory: tests/e2e
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
         working-directory: tests/e2e
 
       - name: Install mock LLM server dependencies
