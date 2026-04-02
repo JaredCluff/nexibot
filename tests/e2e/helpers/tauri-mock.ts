@@ -221,6 +221,27 @@ export async function injectTauriMock(
         'get_dashboard_data': { sessions: 0, messages: 0 },
         'compact_conversation': { success: true, messages_before: 10, messages_after: 5, tokens_before: 2000, tokens_after: 1000 },
         'load_conversation_session': null,
+        // Chat component
+        'get_current_session': { messages: [] },
+        // SettingsContext loaders
+        'get_available_models': [],
+        'get_platform_info': { os: 'linux', arch: 'x86_64' },
+        'list_soul_templates': [],
+        'get_soul': { content: '' },
+        'get_bridge_status': { status: 'ok' },
+        'check_supermemory': false,
+        'get_startup_config': { nexibot_at_login: false, k2k_agent_at_login: false, k2k_agent_binary: '' },
+        'list_pairing_requests': [],
+        'get_runtime_allowlist': { telegram: [], whatsapp: [], channels: {} },
+        'get_oauth_status': null,
+        'list_subscriptions': [],
+        'get_voice_service_status': null,
+        'get_tool_permissions': {},
+        'list_skill_templates': [],
+        'get_gated_shell_status': { enabled: false, debug_mode: false, record_sessions: true, secret_count: 0, active_sessions: 0 },
+        'get_scheduler_results': [],
+        'get_active_gui_agent': '',
+        'get_context_usage': null,
       };
       return cmd in defaults ? defaults[cmd] : undefined;
     }
