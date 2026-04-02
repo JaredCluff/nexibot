@@ -929,6 +929,8 @@ fn main() {
                 network_policy,
                 // Skill lifecycle channel
                 skill_lifecycle_tx,
+                // Shared NATS client for nats_publish tool
+                nats_publish_client: Arc::new(tokio::sync::Mutex::new(None)),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

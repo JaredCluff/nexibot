@@ -491,4 +491,7 @@ pub struct AppState {
     // Skill lifecycle channel — send a TurnSummary after each completed turn
     // to trigger the autonomous skill creation / improvement pipeline.
     pub skill_lifecycle_tx: Arc<tokio::sync::mpsc::Sender<crate::skill_lifecycle::TurnSummary>>,
+
+    // Shared NATS client for nats_publish tool (populated when NATS starts)
+    pub nats_publish_client: Arc<tokio::sync::Mutex<Option<Arc<async_nats::Client>>>>,
 }

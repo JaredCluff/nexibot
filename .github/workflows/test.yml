@@ -54,6 +54,9 @@ jobs:
             protobuf-compiler \
             libasound2-dev
 
+      - name: Create bridge bundle stub for Tauri build script
+        run: mkdir -p src-tauri/_bridge_bundle/bridge
+
       - name: Run workspace tests
         run: cargo test --workspace -- --test-threads=1
 
@@ -200,6 +203,9 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
+
+      - name: Create bridge bundle stub for Tauri build script
+        run: mkdir -p src-tauri/_bridge_bundle/bridge
 
       - name: Run CLI tests
         run: cargo test -p nexibot-cli

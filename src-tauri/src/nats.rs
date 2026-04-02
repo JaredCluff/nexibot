@@ -52,6 +52,12 @@ pub async fn start_nats_listener(app_state: AppState) -> Result<()> {
 
     let client = Arc::new(client);
 
+    // Share client with nats_publish tool
+    {
+        let mut shared = app_state.nats_publish_client.lock().await;
+        *shared = Some(client.clone());
+    }
+
     info!(
         "[NATS] Listener started (server: {}, subject: {})",
         nats_url, inbound_subject

@@ -19,6 +19,8 @@ pub use cloud::{CartesiaTts, ElevenLabsTts};
 #[cfg(target_os = "macos")]
 pub use macos_say::MacOsSayTts;
 pub use piper::PiperTts;
+#[cfg(target_os = "linux")]
+pub use espeak::EspeakTts;
 #[cfg(target_os = "windows")]
 pub use windows_sapi::WindowsSapiTts;
 

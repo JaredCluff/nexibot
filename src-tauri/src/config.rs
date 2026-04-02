@@ -484,6 +484,7 @@ impl Default for NexiBotConfig {
             managed_policy: ManagedPolicyConfig::default(),
             external_skill_dirs: Vec::new(),
             auto_discover_formats: default_auto_discover_formats(),
+            nats: NatsConfig::default(),
         }
     }
 }

@@ -99,6 +99,9 @@ jobs:
             libasound2-dev \
             protobuf-compiler
 
+      - name: Create bridge bundle stub for Tauri build script
+        run: mkdir -p src-tauri/_bridge_bundle/bridge
+
       - name: Run Clippy on full workspace
         run: cargo clippy --all-targets --all-features -- -D warnings
         env:
@@ -136,6 +139,9 @@ jobs:
             libopus-dev \
             libasound2-dev \
             protobuf-compiler
+
+      - name: Create bridge bundle stub for Tauri build script
+        run: mkdir -p src-tauri/_bridge_bundle/bridge
 
       - name: Run workspace tests
         run: cargo test --workspace -- --test-threads=1
