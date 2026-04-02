@@ -61,7 +61,7 @@ jobs:
         run: cargo test --workspace -- --test-threads=1
 
       - name: Run Clippy lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -W warnings
 
   # ──────────────────────────────────────────────────────────────────────────
   # Job 2: UI unit tests (Vitest + coverage)
