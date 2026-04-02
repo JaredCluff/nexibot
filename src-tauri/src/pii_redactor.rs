@@ -50,15 +50,11 @@ fn patterns() -> &'static PiiPatterns {
         .expect("phone regex"),
 
         // US SSN: 3-2-4 format with separators
+        // Note: Rust's regex crate doesn't support lookahead, so we match
+        // any 3-2-4 digit pattern and accept minor false positives on
+        // invalid SSN prefixes (000, 666, 9xx).
         ssn: Regex::new(
-            r"(?x)
-            \b
-            (?!000|666|9\d{2})\d{3}
-            [-\s]
-            (?!00)\d{2}
-            [-\s]
-            (?!0000)\d{4}
-            \b",
+            r"\b\d{3}[-\s]\d{2}[-\s]\d{4}\b",
         )
         .expect("ssn regex"),
 
