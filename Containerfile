@@ -83,6 +83,11 @@ COPY nexibot-connect/ /build/nexibot-connect/
 
 WORKDIR /build
 
+# Create a dummy bridge bundle directory so the Tauri build script's
+# resource check passes. The actual bridge is deployed separately in
+# the runtime stage — it is NOT bundled into the binary for headless.
+RUN mkdir -p /build/src-tauri/_bridge_bundle/bridge
+
 # Build the release binary
 # NEXIBOT_HEADLESS is a runtime env var — no compile-time feature needed.
 RUN cargo build --release -p nexibot-tauri
