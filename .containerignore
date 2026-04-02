@@ -1,0 +1,8 @@
+target/
+.git/
+node_modules/
+ui/node_modules/
+bridge/node_modules/
+bridge/plugins/*/node_modules/
+*.dmg
+*.app

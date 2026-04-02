@@ -28,6 +28,12 @@ jobs:
         with:
           components: clippy
 
+      - name: Stub nexibot-connect plugin
+        run: |
+          mkdir -p nexibot-connect/src
+          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
+          echo '// stub' > nexibot-connect/src/lib.rs
+
       - name: Rust build cache
         uses: swatinem/rust-cache@v2
         with:
@@ -46,12 +52,6 @@ jobs:
             libopus-dev \
             protobuf-compiler \
             libasound2-dev
-
-      - name: Stub nexibot-connect plugin
-        run: |
-          mkdir -p nexibot-connect/src
-          echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
-          echo '// stub' > nexibot-connect/src/lib.rs
 
       - name: Run workspace tests
         run: cargo test --workspace -- --test-threads=1
@@ -188,16 +188,16 @@ jobs:
         with:
           components: clippy
 
-      - name: Rust build cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-
       - name: Stub nexibot-connect plugin
         run: |
           mkdir -p nexibot-connect/src
           echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
           echo '// stub' > nexibot-connect/src/lib.rs
+
+      - name: Rust build cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
 
       - name: Run CLI tests
         run: cargo test -p nexibot-cli

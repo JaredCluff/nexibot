@@ -22,7 +22,7 @@
 # ============================================================================
 # Stage 1: Dependency planner (cargo-chef for layer caching)
 # ============================================================================
-FROM docker.io/rust:1.81-bookworm AS chef
+FROM docker.io/rust:bookworm AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /build
 
@@ -30,9 +30,12 @@ WORKDIR /build
 # Stage 2: Build recipe (captures dependency manifest without source)
 # ============================================================================
 FROM chef AS planner
-COPY src-tauri/Cargo.toml src-tauri/Cargo.lock ./src-tauri/
-COPY ../k2k-common/ k2k-common/ 2>/dev/null || true
-WORKDIR /build/src-tauri
+COPY Cargo.toml Cargo.lock ./
+COPY src-tauri/Cargo.toml ./src-tauri/Cargo.toml
+COPY k2k-common/Cargo.toml ./k2k-common/Cargo.toml
+COPY cli/Cargo.toml ./cli/Cargo.toml
+COPY nexibot-connect/Cargo.toml ./nexibot-connect/Cargo.toml
+RUN mkdir -p src-tauri/src k2k-common/src cli/src nexibot-connect/src && touch src-tauri/src/lib.rs k2k-common/src/lib.rs cli/src/main.rs nexibot-connect/src/lib.rs
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ============================================================================
@@ -51,11 +54,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libayatana-appindicator3-dev \
     librsvg2-dev \
     libxdo-dev \
+    libasound2-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /build/src-tauri
-COPY --from=planner /build/src-tauri/recipe.json recipe.json
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY k2k-common/ k2k-common/
+COPY nexibot-connect/Cargo.toml nexibot-connect/Cargo.toml
+COPY cli/Cargo.toml cli/Cargo.toml
+RUN mkdir -p cli/src nexibot-connect/src src-tauri/src && touch cli/src/main.rs nexibot-connect/src/lib.rs src-tauri/src/lib.rs
+COPY --from=planner /build/recipe.json recipe.json
 
 # Build only dependencies (this layer is cached until Cargo.toml changes)
 RUN cargo chef cook --release --recipe-path recipe.json
@@ -66,14 +75,22 @@ RUN cargo chef cook --release --recipe-path recipe.json
 FROM dependency-builder AS app-builder
 
 # Copy source
+COPY Cargo.toml Cargo.lock /build/
 COPY src-tauri/ /build/src-tauri/
-COPY k2k-common/ /build/k2k-common/ 2>/dev/null || mkdir -p /build/k2k-common
+COPY k2k-common/ /build/k2k-common/
+COPY cli/ /build/cli/
+COPY nexibot-connect/ /build/nexibot-connect/
 
-WORKDIR /build/src-tauri
+WORKDIR /build
 
 # Build the release binary
 # NEXIBOT_HEADLESS is a runtime env var — no compile-time feature needed.
-RUN cargo build --release
+RUN cargo build --release -p nexibot-tauri
+
+# Collect native shared libraries that the binary dynamically links
+# sherpa-rs builds libsherpa-onnx-c-api.so; ort builds libonnxruntime.so
+RUN mkdir -p /build/native-libs && \
+    find /build/target/release -maxdepth 3 -name '*.so*' -exec cp -a {} /build/native-libs/ \; || true
 
 # ============================================================================
 # Stage 5: Build the Node.js bridge service
@@ -116,13 +133,19 @@ RUN groupadd --gid 1000 nexibot && \
 WORKDIR /app
 
 # Copy binary
-COPY --from=app-builder /build/src-tauri/target/release/nexibot-tauri /app/nexibot
+COPY --from=app-builder /build/target/release/nexibot-tauri /app/nexibot
+
+# Copy native shared libraries (sherpa-onnx, onnxruntime, etc.)
+COPY --from=app-builder /build/native-libs/ /usr/local/lib/
 
 # Copy Anthropic bridge
 COPY --from=bridge-builder /build/bridge /app/bridge
 
 # Copy bundled skill resources
 COPY src-tauri/resources/bundled-skills /app/bundled-skills
+
+# Register native shared libraries
+RUN ldconfig
 
 # Own everything to the nexibot user
 RUN chown -R nexibot:nexibot /app
@@ -174,5 +197,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # Start the Anthropic bridge (background) then NexiBot server (foreground).
 # BRIDGE_PORT must match config.yaml's bridge_url setting.
 CMD ["sh", "-c", \
-    "BRIDGE_PORT=${BRIDGE_PORT} node /app/bridge/index.js & \
+    "BRIDGE_PORT=${BRIDGE_PORT} node /app/bridge/server.js & \
      exec /app/nexibot"]
