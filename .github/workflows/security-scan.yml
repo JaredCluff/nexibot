@@ -39,6 +39,7 @@ jobs:
 
       - name: Stub nexibot-connect plugin
         run: |
+          rm -f nexibot-connect
           mkdir -p nexibot-connect/src
           echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
           echo '// stub' > nexibot-connect/src/lib.rs
@@ -77,6 +78,7 @@ jobs:
 
       - name: Stub nexibot-connect plugin
         run: |
+          rm -f nexibot-connect
           mkdir -p nexibot-connect/src
           echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
           echo '// stub' > nexibot-connect/src/lib.rs
@@ -114,6 +116,7 @@ jobs:
 
       - name: Stub nexibot-connect plugin
         run: |
+          rm -f nexibot-connect
           mkdir -p nexibot-connect/src
           echo -e '[package]\nname = "nexibot-connect"\nversion = "0.1.0"\nedition = "2021"' > nexibot-connect/Cargo.toml
           echo '// stub' > nexibot-connect/src/lib.rs

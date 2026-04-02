@@ -49,6 +49,7 @@ jobs:
 
       - name: Stub nexibot-connect plugin
         run: |
+          rm -f nexibot-connect
           mkdir -p nexibot-connect/src
           echo '[package]
           name = "nexibot-connect"
