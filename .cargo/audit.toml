@@ -1,0 +1,8 @@
+# Ignored advisories for transitive dependencies we cannot directly update.
+[advisories]
+ignore = [
+    # rsa: Marvin Attack timing sidechannel (transitive via jsonwebtoken; used only for JWT verification)
+    "RUSTSEC-2023-0071",
+    # rustls-webpki: CRL Distribution Point matching logic (transitive via reqwest/hyper stack)
+    "RUSTSEC-2026-0049",
+]

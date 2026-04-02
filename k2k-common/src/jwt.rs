@@ -12,7 +12,7 @@ pub fn verify_k2k_jwt(jwt: &str, public_key_pem: &str) -> Result<K2KClaims> {
     let mut validation = Validation::new(Algorithm::RS256);
     validation.validate_exp = false; // We'll validate manually for better error messages
     validation.validate_nbf = false;
-    validation.set_audience(&[] as &[&str]);
+    validation.validate_aud = false;
     validation.set_required_spec_claims(&["iss", "exp", "iat"]);
 
     // Verify signature
@@ -33,10 +33,10 @@ pub fn verify_k2k_jwt(jwt: &str, public_key_pem: &str) -> Result<K2KClaims> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::Engine;
-    use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey};
+    use jsonwebtoken::{encode, EncodingKey, Header};
+    use rsa::pkcs1::EncodeRsaPublicKey;
+    use rsa::pkcs8::EncodePrivateKey;
     use rsa::RsaPrivateKey;
-    use sha2::{Digest, Sha256};
 
     #[test]
     fn test_jwt_verify() {
@@ -44,44 +44,32 @@ mod tests {
         let mut rng = rand::thread_rng();
         let private_key = RsaPrivateKey::new(&mut rng, 2048).unwrap();
         let public_key = private_key.to_public_key();
-        let public_pem = public_key.to_pkcs1_pem(rsa::pkcs1::LineEnding::LF).unwrap();
-
-        // Create a valid JWT
-        let now = chrono::Utc::now().timestamp();
-        let header = serde_json::json!({"alg": "RS256", "typ": "JWT"});
-        let claims = serde_json::json!({
-            "iss": "kb:test-store",
-            "client_id": "test-client",
-            "iat": now,
-            "exp": now + 300,
-            "transfer_id": "test123"
-        });
-
-        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(serde_json::to_string(&header).unwrap());
-        let claims_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(serde_json::to_string(&claims).unwrap());
-
-        let message = format!("{}.{}", header_b64, claims_b64);
-
-        // Hash the message
-        let mut hasher = Sha256::new();
-        hasher.update(message.as_bytes());
-        let hash = hasher.finalize();
-
-        // Sign with RSA private key
-        use rsa::pkcs1v15::Pkcs1v15Sign;
-        let signature = private_key
-            .sign(Pkcs1v15Sign::new::<Sha256>(), &hash)
+        let public_pem = public_key
+            .to_pkcs1_pem(rsa::pkcs1::LineEnding::LF)
             .unwrap();
-        let signature_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature);
+        let private_pem = private_key
+            .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
+            .unwrap();
 
-        let jwt = format!("{}.{}", message, signature_b64);
+        let now = chrono::Utc::now().timestamp();
+        let claims = K2KClaims {
+            iss: "kb:test-store".to_string(),
+            aud: "kb:test-store".to_string(),
+            source_kb_id: "test-store".to_string(),
+            iat: now,
+            exp: now + 300,
+            jti: "test-jti-001".to_string(),
+            transfer_id: "test123".to_string(),
+            client_id: "test-client".to_string(),
+        };
 
-        // Verify JWT
+        let encoding_key = EncodingKey::from_rsa_pem(private_pem.as_bytes()).unwrap();
+        let jwt = encode(&Header::new(Algorithm::RS256), &claims, &encoding_key).unwrap();
+
         let result = verify_k2k_jwt(&jwt, &public_pem);
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "JWT verification failed: {:?}", result.err());
         let verified_claims = result.unwrap();
         assert_eq!(verified_claims.client_id, "test-client");
+        assert_eq!(verified_claims.transfer_id, "test123");
     }
 }
