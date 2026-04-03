@@ -500,4 +500,7 @@ pub struct AppState {
 
     // Per-session file read state for staleness detection
     pub file_read_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::file_read_state::FileReadState>>,
+
+    // v0.9.0 git context cache (lazily populated on first message)
+    pub git_context: std::sync::Arc<tokio::sync::RwLock<Option<crate::git_context::GitContext>>>,
 }

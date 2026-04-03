@@ -110,6 +110,7 @@ mod webhooks;
 mod whatsapp;
 mod yolo_mode;
 mod tool_registry;
+mod git_context;
 mod tools;
 #[cfg(feature = "connect")]
 mod managed_policy;
@@ -946,6 +947,8 @@ fn main() {
                 file_read_state: Arc::new(tokio::sync::RwLock::new(
                     crate::tools::file_read_state::FileReadState::default()
                 )),
+                // v0.9.0 git context cache
+                git_context: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.
