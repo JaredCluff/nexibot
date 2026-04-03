@@ -598,6 +598,14 @@ pub(crate) async fn collect_all_tools(
         }
     }
 
+    // v0.9.0 trait-registry tools (nexibot_file_read, nexibot_file_edit, etc.)
+    {
+        let registry = state.tool_registry.read().await;
+        for def in registry.tool_definitions() {
+            all_tools.push(def);
+        }
+    }
+
     let mcp_count = mcp_tools.len();
     (all_tools, mcp_count, computer_use_enabled, browser_enabled)
 }
