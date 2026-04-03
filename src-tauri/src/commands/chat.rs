@@ -836,6 +836,21 @@ pub(crate) async fn execute_tool_call<'obs>(
     source_channel: Option<&ChannelSource>,
     source_sender_id: Option<&str>,
 ) -> String {
+    // Plan mode gate — applies to ALL tools (registry and legacy alike).
+    {
+        let pm = state.plan_mode_state.read().await;
+        if pm.active {
+            let target_path = tool_input["file_path"].as_str()
+                .or(tool_input["path"].as_str())
+                .map(std::path::Path::new);
+            if let Some(msg) = crate::tools::plan_mode::check_plan_mode_restriction_sync(
+                &pm, tool_name, target_path
+            ) {
+                return msg;
+            }
+        }
+    }
+
     // --- Trait-based tool registry dispatch (v0.9.0 new tools) ---
     {
         let registry = state.tool_registry.read().await;
@@ -867,21 +882,6 @@ pub(crate) async fn execute_tool_call<'obs>(
         }
     }
     // --- End registry dispatch ---
-
-    // Plan mode gate for legacy (non-registry) tools
-    {
-        let pm = state.plan_mode_state.read().await;
-        if pm.active {
-            let target_path = tool_input["file_path"].as_str()
-                .or(tool_input["path"].as_str())
-                .map(std::path::Path::new);
-            if let Some(msg) = crate::tools::plan_mode::check_plan_mode_restriction_sync(
-                &pm, tool_name, target_path
-            ) {
-                return msg;
-            }
-        }
-    }
 
     // Check yolo mode once — active yolo bypasses all AskUser approval gates.
     let yolo_active = state.yolo_manager.is_active().await;

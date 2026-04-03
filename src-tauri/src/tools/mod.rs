@@ -15,9 +15,11 @@ pub mod worktree;
 /// Called once at startup from AppState initialization.
 /// `plan_state` must be the SAME Arc stored in AppState::plan_mode_state so
 /// the gate in chat.rs and the tools see the same allocation.
+/// `lsp_config` is the user-configured LSP server map from config.yaml.
 pub fn register_all(
     registry: &mut crate::tool_registry::ToolRegistry,
     plan_state: std::sync::Arc<tokio::sync::RwLock<plan_mode::PlanModeState>>,
+    lsp_config: crate::config::LspConfig,
 ) {
     registry.register(Box::new(file_read::FileReadTool));
     registry.register(Box::new(file_edit::FileEditTool));
@@ -66,10 +68,10 @@ pub fn register_all(
 
     registry.register(Box::new(notebook_edit::NotebookEditTool));
 
-    // LSP tool — uses an empty config by default; servers come from config.yaml at runtime
+    // LSP tool — initialized with the user's config.yaml lsp section.
     let lsp_manager = std::sync::Arc::new(tokio::sync::RwLock::new(
         lsp::server_manager::LspServerManager::from_config(
-            &crate::config::LspConfig::default(),
+            &lsp_config,
             std::env::current_dir().unwrap_or_default(),
         )
     ));

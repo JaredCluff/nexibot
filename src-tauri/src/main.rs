@@ -815,6 +815,12 @@ fn main() {
                 crate::tools::plan_mode::PlanModeState::default()
             ));
 
+            // Read LSP config snapshot for register_all (config is an Arc<RwLock<>>;
+            // we take a blocking read here since we're still in sync startup context).
+            let lsp_config_snapshot = config.try_read()
+                .map(|c| c.lsp.clone())
+                .unwrap_or_default();
+
             // Store state in Tauri (service groups + flat aliases for backward compat)
             let app_state = AppState {
                 // Service groups
@@ -949,7 +955,7 @@ fn main() {
                     let reg = Arc::new(tokio::sync::RwLock::new(crate::tool_registry::ToolRegistry::new()));
                     {
                         let mut r = reg.try_write().expect("registry lock at startup");
-                        crate::tools::register_all(&mut r, plan_mode_state_arc.clone());
+                        crate::tools::register_all(&mut r, plan_mode_state_arc.clone(), lsp_config_snapshot);
                     }
                     reg
                 },
