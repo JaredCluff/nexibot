@@ -67,10 +67,23 @@ impl Tool for WorktreeTool {
 
 impl WorktreeTool {
     async fn enter(&self, input: Value, ctx: &ToolContext) -> ToolResult {
+        {
+            let state = self.state.read().await;
+            if state.active {
+                return ToolResult::err(format!(
+                    "Already in a worktree session (branch: {}); call exit first",
+                    state.branch
+                ));
+            }
+        }
+
         let name = match input["name"].as_str() {
             Some(n) => sanitize_slug(n),
             None => return ToolResult::err("name is required for enter"),
         };
+        if name.is_empty() {
+            return ToolResult::err("name must contain at least one alphanumeric character");
+        }
 
         let git_root = match find_git_root(&ctx.working_dir).await {
             Some(r) => r,
@@ -137,6 +150,7 @@ impl WorktreeTool {
                 "worktree", "remove", "--force",
                 &state.worktree_path.to_string_lossy()
             ]).await;
+            // Brief pause to allow the kernel to flush the directory entry before branch deletion.
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             // Delete the branch (but not if it's main/master)
             if !is_protected_branch(&state.branch) {
@@ -189,11 +203,14 @@ pub async fn create_agent_worktree(
 
 /// Remove an agent worktree. Requires git_root to be passed explicitly
 /// (since the worktree directory is being deleted).
+// TODO: Call from subagent_executor when a Worktree-isolated agent completes or is cancelled.
+#[allow(dead_code)]
 pub async fn remove_agent_worktree(git_root: &Path, worktree_path: &Path, branch: &str) {
     let _ = run_git(git_root, &[
         "worktree", "remove", "--force",
         &worktree_path.to_string_lossy()
     ]).await;
+    // Brief pause to allow the kernel to flush the directory entry before branch deletion.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     if !is_protected_branch(branch) {
         let _ = run_git(git_root, &["branch", "-D", branch]).await;
@@ -284,8 +301,8 @@ mod tests {
     #[tokio::test]
     async fn test_find_git_root_returns_none_outside_repo() {
         let root = find_git_root(Path::new("/tmp")).await;
-        // /tmp might or might not be in a repo; we just verify it doesn't panic
-        let _ = root;
+        // /tmp is not inside a git repo on macOS/Linux in standard configurations
+        assert!(root.is_none());
     }
 
     #[tokio::test]
