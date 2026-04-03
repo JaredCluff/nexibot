@@ -402,6 +402,66 @@ impl Guardrails {
         );
 
         // ============================================================================
+        // GIT DESTRUCTIVE OPERATIONS
+        // ============================================================================
+
+        // git push --force (but not --force-with-lease which is safer)
+        self.add_dangerous_pattern(
+            r"git\s+push\s+.*--force(?!-with-lease)",
+            "Git force push",
+            ViolationSeverity::Critical,
+            "git push --force - Overwrites remote history, can destroy others' work",
+        );
+
+        // git push -f (short flag form)
+        self.add_dangerous_pattern(
+            r"git\s+push\s+-f\s",
+            "Git force push (short flag)",
+            ViolationSeverity::Critical,
+            "git push -f - Short form of force push, overwrites remote history",
+        );
+
+        // git reset --hard discards all uncommitted changes
+        self.add_dangerous_pattern(
+            r"git\s+reset\s+--hard",
+            "Git hard reset",
+            ViolationSeverity::Critical,
+            "git reset --hard - Discards all uncommitted changes, unrecoverable",
+        );
+
+        // git clean -f / -fd / -fdx deletes untracked files
+        self.add_dangerous_pattern(
+            r"git\s+clean\s+-[a-z]*f[a-z]*",
+            "Git clean force",
+            ViolationSeverity::Critical,
+            "git clean -f / -fd - Deletes untracked files, unrecoverable",
+        );
+
+        // git commit --no-verify bypasses pre-commit and commit-msg hooks
+        self.add_dangerous_pattern(
+            r"git\s+commit\s+.*--no-verify",
+            "Git commit skip hooks",
+            ViolationSeverity::Warning,
+            "git commit --no-verify - Bypasses pre-commit and commit-msg hooks",
+        );
+
+        // git commit -n (short form of --no-verify)
+        self.add_dangerous_pattern(
+            r"git\s+commit\s+.*-n\s",
+            "Git commit skip hooks (short flag)",
+            ViolationSeverity::Warning,
+            "git commit -n - Short form of --no-verify, bypasses hooks",
+        );
+
+        // git push origin main/master --force — force push to protected branch
+        self.add_dangerous_pattern(
+            r"git\s+push\s+origin\s+(main|master)\s+--force",
+            "Git force push to main/master",
+            ViolationSeverity::Catastrophic,
+            "git push origin main --force - Force pushes to protected branch, destroys history",
+        );
+
+        // ============================================================================
         // SENSITIVE DATA PATTERNS
         // ============================================================================
 
