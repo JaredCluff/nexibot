@@ -169,3 +169,36 @@ mod tests {
         assert_eq!(defs[0]["name"], "echo");
     }
 }
+
+#[cfg(test)]
+mod integration_tests {
+    #[tokio::test]
+    async fn test_all_v090_tools_registered() {
+        let expected_tools = &[
+            "nexibot_file_read",
+            "nexibot_file_edit",
+            "nexibot_lsp",
+            "nexibot_worktree",
+            "nexibot_enter_plan_mode",
+            "nexibot_exit_plan_mode",
+            "nexibot_task_create",
+            "nexibot_task_list",
+            "nexibot_task_get",
+            "nexibot_task_output",
+            "nexibot_task_stop",
+            "nexibot_send_message",
+            "nexibot_notebook_edit",
+        ];
+        let mut registry = crate::tool_registry::ToolRegistry::new();
+        let plan_state = std::sync::Arc::new(tokio::sync::RwLock::new(
+            crate::tools::plan_mode::PlanModeState::default()
+        ));
+        crate::tools::register_all(&mut registry, plan_state);
+        for tool_name in expected_tools {
+            assert!(
+                registry.get(tool_name).is_some(),
+                "Tool '{}' not registered", tool_name
+            );
+        }
+    }
+}
