@@ -91,12 +91,13 @@ async fn apply_notebook_edit(
             let nbformat = nb["nbformat"].as_u64().unwrap_or(4);
 
             let new_cell = make_cell(cell_type, content, nbformat >= 5);
-            let new_id = new_cell["id"].as_str().unwrap_or("?").to_string();
+            let new_id = new_cell["id"].as_str().unwrap_or("<auto>").to_string();
 
             let insert_idx = if let Some(after) = after_id {
-                cells.iter().position(|c| c["id"].as_str() == Some(after))
-                    .map(|i| i + 1)
-                    .unwrap_or(cells.len())
+                match cells.iter().position(|c| c["id"].as_str() == Some(after)) {
+                    Some(i) => i + 1,
+                    None => return Err(format!("after_cell_id '{}' not found", after)),
+                }
             } else {
                 cells.len()
             };
@@ -126,22 +127,35 @@ async fn apply_notebook_edit(
 }
 
 fn make_cell(cell_type: &str, content: &str, use_id: bool) -> Value {
-    let id = if use_id {
-        uuid::Uuid::new_v4().to_string()[..8].to_string()
-    } else {
-        String::new()
-    };
     if cell_type == "markdown" {
+        if use_id {
+            let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+            serde_json::json!({
+                "cell_type": "markdown",
+                "id": id,
+                "metadata": {},
+                "source": content
+            })
+        } else {
+            serde_json::json!({
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": content
+            })
+        }
+    } else if use_id {
+        let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
         serde_json::json!({
-            "cell_type": "markdown",
+            "cell_type": "code",
             "id": id,
+            "execution_count": null,
             "metadata": {},
+            "outputs": [],
             "source": content
         })
     } else {
         serde_json::json!({
             "cell_type": "code",
-            "id": id,
             "execution_count": null,
             "metadata": {},
             "outputs": [],
@@ -257,5 +271,51 @@ mod tests {
         let input = serde_json::json!({"notebook_path": "/tmp/file.py", "action": "replace"});
         let decision = tool.check_permissions(&input, &ctx).await;
         assert!(matches!(decision, PermissionDecision::Deny(_)));
+    }
+
+    #[tokio::test]
+    async fn test_replace_markdown_cell_does_not_clear_outputs() {
+        let tmp = tempfile::Builder::new().suffix(".ipynb").tempfile().unwrap();
+        let nb = make_notebook(vec![serde_json::json!({
+            "cell_type": "markdown", "id": "md1",
+            "metadata": {}, "source": "# Old heading"
+        })]);
+        write_notebook(tmp.path(), &nb).await;
+
+        let result = apply_notebook_edit(
+            tmp.path(), "replace",
+            &serde_json::json!({"cell_id": "md1", "content": "# New heading"})
+        ).await;
+        assert!(result.is_ok());
+
+        let raw = tokio::fs::read_to_string(tmp.path()).await.unwrap();
+        let updated: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(updated["cells"][0]["source"], "# New heading");
+        // Markdown cells do not have execution_count or outputs — verify they were not added
+        assert!(updated["cells"][0]["execution_count"].is_null() || updated["cells"][0].get("execution_count").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_insert_cell_after_specified_cell() {
+        let tmp = tempfile::Builder::new().suffix(".ipynb").tempfile().unwrap();
+        let nb = make_notebook(vec![
+            serde_json::json!({"cell_type": "code", "id": "first", "execution_count": null, "metadata": {}, "outputs": [], "source": "a=1"}),
+            serde_json::json!({"cell_type": "code", "id": "last", "execution_count": null, "metadata": {}, "outputs": [], "source": "b=2"}),
+        ]);
+        write_notebook(tmp.path(), &nb).await;
+
+        let result = apply_notebook_edit(
+            tmp.path(), "insert",
+            &serde_json::json!({"content": "c=3", "cell_type": "code", "after_cell_id": "first"})
+        ).await;
+        assert!(result.is_ok());
+
+        let raw = tokio::fs::read_to_string(tmp.path()).await.unwrap();
+        let updated: Value = serde_json::from_str(&raw).unwrap();
+        let cells = updated["cells"].as_array().unwrap();
+        assert_eq!(cells.len(), 3);
+        assert_eq!(cells[0]["id"], "first");
+        assert_eq!(cells[1]["source"], "c=3");
+        assert_eq!(cells[2]["id"], "last");
     }
 }
