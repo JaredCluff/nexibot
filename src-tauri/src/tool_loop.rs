@@ -493,6 +493,15 @@ pub trait ToolLoopObserver: Send + Sync {
     /// `error` carries the kind, plain-English message, and retry metadata.
     async fn on_tool_error(&self, _name: &str, _id: &str, _error: &ToolErrorInfo) {}
 
+    /// Called when a streaming trait-based tool emits a progress event.
+    /// Default implementation does nothing (backward compatible with all existing impls).
+    async fn on_tool_progress(
+        &self,
+        _name: &str,
+        _id: &str,
+        _progress: &crate::tool_registry::ToolProgress,
+    ) {}
+
     /// Called to check if the loop should be cancelled early.
     /// Returns true if cancellation is requested.
     async fn should_cancel(&self) -> bool {

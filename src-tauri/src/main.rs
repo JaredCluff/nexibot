@@ -111,6 +111,7 @@ mod whatsapp;
 mod yolo_mode;
 mod tool_registry;
 mod git_context;
+mod tool_streaming;
 mod tools;
 #[cfg(feature = "connect")]
 mod managed_policy;
