@@ -279,7 +279,7 @@ async fn execute_single_subtask(
     // Register spawn in orchestration manager.
     let spawn_id = {
         let mut orch = state.orchestration_manager.write().await;
-        match orch.spawn_subagent(None, &subtask.agent, &subtask.task) {
+        match orch.spawn_subagent(None, &subtask.agent, &subtask.task, None) {
             Ok(id) => {
                 let _ = orch.mark_running(&id);
                 id

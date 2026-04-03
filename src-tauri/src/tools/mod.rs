@@ -6,6 +6,7 @@ pub mod file_read;
 pub mod file_read_state;
 pub mod send_message;
 pub mod tasks;
+pub mod worktree;
 
 /// Register all v0.9.0 tools into the registry.
 /// Called once at startup from AppState initialization.
@@ -43,4 +44,10 @@ pub fn register_all(registry: &mut crate::tool_registry::ToolRegistry) {
         inbox: task_inbox,
         in_process_queues,
     }));
+
+    // Worktree tool
+    let worktree_state = std::sync::Arc::new(tokio::sync::RwLock::new(
+        worktree::WorktreeState::default()
+    ));
+    registry.register(Box::new(worktree::WorktreeTool { state: worktree_state }));
 }
