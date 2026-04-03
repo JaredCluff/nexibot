@@ -11,7 +11,12 @@ pub mod worktree;
 
 /// Register all v0.9.0 tools into the registry.
 /// Called once at startup from AppState initialization.
-pub fn register_all(registry: &mut crate::tool_registry::ToolRegistry) {
+/// `plan_state` must be the SAME Arc stored in AppState::plan_mode_state so
+/// the gate in chat.rs and the tools see the same allocation.
+pub fn register_all(
+    registry: &mut crate::tool_registry::ToolRegistry,
+    plan_state: std::sync::Arc<tokio::sync::RwLock<plan_mode::PlanModeState>>,
+) {
     registry.register(Box::new(file_read::FileReadTool));
     registry.register(Box::new(file_edit::FileEditTool));
 
@@ -52,10 +57,8 @@ pub fn register_all(registry: &mut crate::tool_registry::ToolRegistry) {
     ));
     registry.register(Box::new(worktree::WorktreeTool { state: worktree_state }));
 
-    // Plan mode tools — shared PlanModeState
-    let plan_state = std::sync::Arc::new(tokio::sync::RwLock::new(
-        plan_mode::PlanModeState::default()
-    ));
+    // Plan mode tools — use the caller-supplied Arc so tools and AppState share
+    // the same allocation (fixes the gate-never-fires bug).
     registry.register(Box::new(plan_mode::EnterPlanModeTool { state: plan_state.clone() }));
-    registry.register(Box::new(plan_mode::ExitPlanModeTool { state: plan_state.clone() }));
+    registry.register(Box::new(plan_mode::ExitPlanModeTool { state: plan_state }));
 }

@@ -807,6 +807,12 @@ fn main() {
                 ptt_capture: ptt_capture.clone(),
             };
 
+            // Create plan mode Arc before AppState so both the tool registry
+            // and AppState::plan_mode_state share the SAME allocation.
+            let plan_mode_state_arc = std::sync::Arc::new(tokio::sync::RwLock::new(
+                crate::tools::plan_mode::PlanModeState::default()
+            ));
+
             // Store state in Tauri (service groups + flat aliases for backward compat)
             let app_state = AppState {
                 // Service groups
@@ -935,12 +941,13 @@ fn main() {
                 skill_lifecycle_tx,
                 // Shared NATS client for nats_publish tool
                 nats_publish_client: Arc::new(tokio::sync::Mutex::new(None)),
-                // v0.9.0 tool registry
+                // v0.9.0 tool registry — plan_mode_state_arc is created first so
+                // the tool registry and AppState::plan_mode_state share the same Arc.
                 tool_registry: {
                     let reg = Arc::new(tokio::sync::RwLock::new(crate::tool_registry::ToolRegistry::new()));
                     {
                         let mut r = reg.try_write().expect("registry lock at startup");
-                        crate::tools::register_all(&mut r);
+                        crate::tools::register_all(&mut r, plan_mode_state_arc.clone());
                     }
                     reg
                 },
@@ -950,10 +957,8 @@ fn main() {
                 )),
                 // v0.9.0 git context cache
                 git_context: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
-                // v0.9.0 plan mode state
-                plan_mode_state: std::sync::Arc::new(tokio::sync::RwLock::new(
-                    crate::tools::plan_mode::PlanModeState::default()
-                )),
+                // v0.9.0 plan mode state — same Arc passed to register_all above.
+                plan_mode_state: plan_mode_state_arc,
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

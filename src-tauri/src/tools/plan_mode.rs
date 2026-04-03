@@ -41,7 +41,7 @@ You SHOULD:
 - Ask clarifying questions if needed
 - Call nexibot_exit_plan_mode when your plan is complete and ready for review
 
-Only nexibot_file_read, nexibot_grep, nexibot_glob, nexibot_lsp, and writing to the plan file are permitted.
+Only nexibot_file_read, nexibot_grep, nexibot_glob, nexibot_lsp, nexibot_web_search, nexibot_fetch, and writing to the plan file are permitted.
 "#;
 
 // ─── Enter Plan Mode ──────────────────────────────────────────────────────────
@@ -68,9 +68,18 @@ impl Tool for EnterPlanModeTool {
         PermissionDecision::Allow
     }
     async fn call(&self, input: Value, ctx: ToolContext) -> ToolResult {
+        {
+            let state = self.state.read().await;
+            if state.active {
+                return ToolResult::err(format!(
+                    "Already in plan mode (task: {}); call nexibot_exit_plan_mode first",
+                    state.description
+                ));
+            }
+        }
         let description = input["description"].as_str().unwrap_or("coding task").to_string();
         let plan_dir = ctx.working_dir.join(".nexibot").join("plans");
-        let plan_file = plan_dir.join(format!("plan-{}.md", chrono::Utc::now().timestamp()));
+        let plan_file = plan_dir.join(format!("plan-{}.md", chrono::Utc::now().timestamp_millis()));
 
         let _ = tokio::fs::create_dir_all(&plan_dir).await;
 
@@ -112,19 +121,24 @@ impl Tool for ExitPlanModeTool {
         })
     }
     async fn check_permissions(&self, _: &Value, _: &ToolContext) -> PermissionDecision {
-        // This triggers user approval — return Ask to prompt the user
+        // TODO: In headless mode (no observer), Ask falls through to auto-approval
+        // which bypasses the human-review contract. Future: return Deny in headless context.
         PermissionDecision::Ask {
             reason: "Ready to exit plan mode and begin execution?".to_string(),
             details: Some("Review the plan and approve to proceed.".to_string()),
         }
     }
     async fn call(&self, input: Value, _ctx: ToolContext) -> ToolResult {
-        let state = self.state.read().await;
-        if !state.active {
-            return ToolResult::err("Plan mode is not active.");
-        }
-        let plan_file = state.plan_file_path.clone();
-        drop(state);
+        // Acquire write lock immediately to atomically check and deactivate (fixes TOCTOU).
+        let plan_file = {
+            let mut state = self.state.write().await;
+            if !state.active {
+                return ToolResult::err("Plan mode is not active.");
+            }
+            let plan_file = state.plan_file_path.clone();
+            state.active = false;
+            plan_file
+        };
 
         // Write inline plan_content to file if provided
         if let Some(content) = input["plan_content"].as_str() {
@@ -138,10 +152,6 @@ impl Tool for ExitPlanModeTool {
             .await
             .unwrap_or_else(|_| "(plan file not found or empty)".to_string());
 
-        // Deactivate plan mode
-        let mut state = self.state.write().await;
-        state.active = false;
-
         ToolResult::ok(format!(
             "Plan approved. Beginning execution.\n\n## Approved Plan\n\n{}\n\nPlan file: {}",
             plan_text, plan_file.display()
@@ -153,10 +163,11 @@ impl Tool for ExitPlanModeTool {
 
 /// Returns Some(error message) if plan mode is active and tool is write-restricted.
 /// Async version — takes the Arc<RwLock<PlanModeState>> and locks it.
+/// Only used in tests; production code uses check_plan_mode_restriction_sync.
+#[cfg(test)]
 pub async fn check_plan_mode_restriction(
     state: &Arc<RwLock<PlanModeState>>,
     tool_name: &str,
-    plan_file_path: &std::path::Path,
     target_path: Option<&std::path::Path>,
 ) -> Option<String> {
     let s = state.read().await;
@@ -171,7 +182,7 @@ pub async fn check_plan_mode_restriction(
 
     // The plan file itself is always writable
     if let Some(target) = target_path {
-        if target == plan_file_path { return None; }
+        if target == s.plan_file_path { return None; }
     }
 
     Some(format!(
@@ -217,9 +228,10 @@ mod tests {
     async fn test_enter_plan_mode_activates_state() {
         let state = make_state();
         let tool = EnterPlanModeTool { state: state.clone() };
+        let tmp = tempfile::tempdir().unwrap();
         let ctx = ToolContext {
             session_key: "s".into(), agent_id: "a".into(),
-            working_dir: PathBuf::from(tempfile::tempdir().unwrap().into_path()),
+            working_dir: tmp.path().to_path_buf(),
         };
         let result = tool.call(serde_json::json!({"description": "fix login bug"}), ctx).await;
         assert!(result.success);
@@ -247,10 +259,7 @@ mod tests {
             s.active = true;
             s.plan_file_path = PathBuf::from("/tmp/plan.md");
         }
-        let plan_file = PathBuf::from("/tmp/plan.md");
-        let block = check_plan_mode_restriction(
-            &state, "nexibot_file_edit", &plan_file, None
-        ).await;
+        let block = check_plan_mode_restriction(&state, "nexibot_file_edit", None).await;
         assert!(block.is_some());
         assert!(block.unwrap().contains("BLOCKED"));
     }
@@ -263,10 +272,7 @@ mod tests {
             s.active = true;
             s.plan_file_path = PathBuf::from("/tmp/plan.md");
         }
-        let plan_file = PathBuf::from("/tmp/plan.md");
-        let block = check_plan_mode_restriction(
-            &state, "nexibot_file_read", &plan_file, None
-        ).await;
+        let block = check_plan_mode_restriction(&state, "nexibot_file_read", None).await;
         assert!(block.is_none());
     }
 
@@ -279,9 +285,7 @@ mod tests {
             s.active = true;
             s.plan_file_path = plan_file.clone();
         }
-        let block = check_plan_mode_restriction(
-            &state, "nexibot_file_edit", &plan_file, Some(&plan_file)
-        ).await;
+        let block = check_plan_mode_restriction(&state, "nexibot_file_edit", Some(&plan_file)).await;
         assert!(block.is_none());
     }
 
