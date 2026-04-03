@@ -109,6 +109,7 @@ mod webhook_rate_limit;
 mod webhooks;
 mod whatsapp;
 mod yolo_mode;
+mod tool_registry;
 #[cfg(feature = "connect")]
 mod managed_policy;
 #[cfg(not(feature = "connect"))]
