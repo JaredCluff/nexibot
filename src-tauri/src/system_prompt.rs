@@ -219,7 +219,33 @@ mod tests {
         builder.add_section("empty", "", true, 100);
         builder.add_section("content", "hello", true, 90);
         let result = builder.build();
-        assert!(!result.contains("empty"));
-        assert!(result.contains("hello"));
+        // The empty section should not produce any output or blank separators
+        assert_eq!(result.trim(), "hello");
+        // No double-blank artifacts from the skipped section
+        assert!(!result.contains("\n\n\n"));
+    }
+
+    #[test]
+    fn test_no_boundary_when_all_sections_cacheable() {
+        let mut builder = SystemPromptBuilder::new(ChannelContext::Gui);
+        builder.add_section("s1", "first", true, 100);
+        builder.add_section("s2", "second", true, 90);
+        let result = builder.build();
+        assert!(!result.contains("[DYNAMIC_BOUNDARY]"));
+        assert!(result.contains("first"));
+        assert!(result.contains("second"));
+    }
+
+    #[test]
+    fn test_boundary_first_when_all_sections_dynamic() {
+        let mut builder = SystemPromptBuilder::new(ChannelContext::Gui);
+        builder.add_section("d1", "dynamic one", false, 50);
+        builder.add_section("d2", "dynamic two", false, 40);
+        let result = builder.build();
+        assert!(result.contains("[DYNAMIC_BOUNDARY]"));
+        // Boundary should appear before both dynamic sections
+        let boundary_pos = result.find("[DYNAMIC_BOUNDARY]").unwrap();
+        let d1_pos = result.find("dynamic one").unwrap();
+        assert!(boundary_pos < d1_pos);
     }
 }
