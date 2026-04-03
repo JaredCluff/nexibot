@@ -114,6 +114,7 @@ mod git_context;
 mod cost_tracker;
 mod tool_streaming;
 mod tools;
+mod system_prompt;
 #[cfg(feature = "connect")]
 mod managed_policy;
 #[cfg(not(feature = "connect"))]
