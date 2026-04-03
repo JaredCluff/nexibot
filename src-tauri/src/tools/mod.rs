@@ -4,6 +4,7 @@
 pub mod file_edit;
 pub mod file_read;
 pub mod file_read_state;
+pub mod notebook_edit;
 pub mod send_message;
 pub mod tasks;
 pub mod plan_mode;
@@ -61,4 +62,6 @@ pub fn register_all(
     // the same allocation (fixes the gate-never-fires bug).
     registry.register(Box::new(plan_mode::EnterPlanModeTool { state: plan_state.clone() }));
     registry.register(Box::new(plan_mode::ExitPlanModeTool { state: plan_state }));
+
+    registry.register(Box::new(notebook_edit::NotebookEditTool));
 }
