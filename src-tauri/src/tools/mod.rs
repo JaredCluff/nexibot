@@ -4,6 +4,7 @@
 pub mod file_edit;
 pub mod file_read;
 pub mod file_read_state;
+pub mod lsp;
 pub mod notebook_edit;
 pub mod send_message;
 pub mod tasks;
@@ -64,4 +65,13 @@ pub fn register_all(
     registry.register(Box::new(plan_mode::ExitPlanModeTool { state: plan_state }));
 
     registry.register(Box::new(notebook_edit::NotebookEditTool));
+
+    // LSP tool — uses an empty config by default; servers come from config.yaml at runtime
+    let lsp_manager = std::sync::Arc::new(tokio::sync::RwLock::new(
+        lsp::server_manager::LspServerManager::from_config(
+            &crate::config::LspConfig::default(),
+            std::env::current_dir().unwrap_or_default(),
+        )
+    ));
+    registry.register(Box::new(lsp::LspTool { manager: lsp_manager }));
 }
