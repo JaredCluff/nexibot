@@ -6,6 +6,7 @@ pub mod file_read;
 pub mod file_read_state;
 pub mod send_message;
 pub mod tasks;
+pub mod plan_mode;
 pub mod worktree;
 
 /// Register all v0.9.0 tools into the registry.
@@ -50,4 +51,11 @@ pub fn register_all(registry: &mut crate::tool_registry::ToolRegistry) {
         worktree::WorktreeState::default()
     ));
     registry.register(Box::new(worktree::WorktreeTool { state: worktree_state }));
+
+    // Plan mode tools — shared PlanModeState
+    let plan_state = std::sync::Arc::new(tokio::sync::RwLock::new(
+        plan_mode::PlanModeState::default()
+    ));
+    registry.register(Box::new(plan_mode::EnterPlanModeTool { state: plan_state.clone() }));
+    registry.register(Box::new(plan_mode::ExitPlanModeTool { state: plan_state.clone() }));
 }

@@ -950,6 +950,10 @@ fn main() {
                 )),
                 // v0.9.0 git context cache
                 git_context: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+                // v0.9.0 plan mode state
+                plan_mode_state: std::sync::Arc::new(tokio::sync::RwLock::new(
+                    crate::tools::plan_mode::PlanModeState::default()
+                )),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

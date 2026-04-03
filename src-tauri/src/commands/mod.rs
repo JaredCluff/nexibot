@@ -503,4 +503,7 @@ pub struct AppState {
 
     // v0.9.0 git context cache (lazily populated on first message)
     pub git_context: std::sync::Arc<tokio::sync::RwLock<Option<crate::git_context::GitContext>>>,
+
+    // v0.9.0 plan mode state — tracks whether the agent is in plan-only mode
+    pub plan_mode_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::plan_mode::PlanModeState>>,
 }
