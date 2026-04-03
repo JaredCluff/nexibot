@@ -109,6 +109,12 @@ mod webhook_rate_limit;
 mod webhooks;
 mod whatsapp;
 mod yolo_mode;
+mod tool_registry;
+mod git_context;
+mod cost_tracker;
+mod tool_streaming;
+mod tools;
+mod system_prompt;
 #[cfg(feature = "connect")]
 mod managed_policy;
 #[cfg(not(feature = "connect"))]
@@ -803,6 +809,18 @@ fn main() {
                 ptt_capture: ptt_capture.clone(),
             };
 
+            // Create plan mode Arc before AppState so both the tool registry
+            // and AppState::plan_mode_state share the SAME allocation.
+            let plan_mode_state_arc = std::sync::Arc::new(tokio::sync::RwLock::new(
+                crate::tools::plan_mode::PlanModeState::default()
+            ));
+
+            // Read LSP config snapshot for register_all (config is an Arc<RwLock<>>;
+            // we take a blocking read here since we're still in sync startup context).
+            let lsp_config_snapshot = config.try_read()
+                .map(|c| c.lsp.clone())
+                .unwrap_or_default();
+
             // Store state in Tauri (service groups + flat aliases for backward compat)
             let app_state = AppState {
                 // Service groups
@@ -931,6 +949,32 @@ fn main() {
                 skill_lifecycle_tx,
                 // Shared NATS client for nats_publish tool
                 nats_publish_client: Arc::new(tokio::sync::Mutex::new(None)),
+                // v0.9.0 tool registry — plan_mode_state_arc is created first so
+                // the tool registry and AppState::plan_mode_state share the same Arc.
+                tool_registry: {
+                    let reg = Arc::new(tokio::sync::RwLock::new(crate::tool_registry::ToolRegistry::new()));
+                    {
+                        let mut r = reg.try_write().expect("registry lock at startup");
+                        crate::tools::register_all(&mut r, plan_mode_state_arc.clone(), lsp_config_snapshot);
+                    }
+                    reg
+                },
+                // v0.9.0 per-session file read state
+                file_read_state: Arc::new(tokio::sync::RwLock::new(
+                    crate::tools::file_read_state::FileReadState::default()
+                )),
+                // v0.9.0 git context cache
+                git_context: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+                // v0.9.0 plan mode state — same Arc passed to register_all above.
+                plan_mode_state: plan_mode_state_arc,
+                // v0.9.0 cost/token tracking
+                session_cost_tracker: std::sync::Arc::new(tokio::sync::RwLock::new(
+                    crate::cost_tracker::CostTracker::new(uuid::Uuid::new_v4().to_string())
+                )),
+                budget_limits: crate::cost_tracker::BudgetLimits::default(),
+                session_context_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
+                    crate::cost_tracker::ContextManager::new(200_000)
+                )),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

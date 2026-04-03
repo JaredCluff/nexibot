@@ -1,6 +1,6 @@
 [package]
 name = "nexibot-tauri"
-version = "0.8.4"
+version = "0.9.0"
 edition = "2021"
 description = "NexiBot Tauri backend"
 license = "Apache-2.0"
@@ -200,6 +200,15 @@ secrecy = { version = "0.8", features = ["serde"] }
 
 # Explicit memory zeroing for key maps
 zeroize = { version = "1", features = ["derive"] }
+
+# Diff generation for file edit tool
+similar = "2"
+
+# LSP protocol types
+lsp-types = "0.97"
+
+# Image processing for file read tool
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 
 # macOS-specific dependencies for Speech framework FFI and Computer Use
 [target.'cfg(target_os = "macos")'.dependencies]

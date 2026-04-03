@@ -598,6 +598,14 @@ pub(crate) async fn collect_all_tools(
         }
     }
 
+    // v0.9.0 trait-registry tools (nexibot_file_read, nexibot_file_edit, etc.)
+    {
+        let registry = state.tool_registry.read().await;
+        for def in registry.tool_definitions() {
+            all_tools.push(def);
+        }
+    }
+
     let mcp_count = mcp_tools.len();
     (all_tools, mcp_count, computer_use_enabled, browser_enabled)
 }
@@ -828,6 +836,53 @@ pub(crate) async fn execute_tool_call<'obs>(
     source_channel: Option<&ChannelSource>,
     source_sender_id: Option<&str>,
 ) -> String {
+    // Plan mode gate — applies to ALL tools (registry and legacy alike).
+    {
+        let pm = state.plan_mode_state.read().await;
+        if pm.active {
+            let target_path = tool_input["file_path"].as_str()
+                .or(tool_input["path"].as_str())
+                .map(std::path::Path::new);
+            if let Some(msg) = crate::tools::plan_mode::check_plan_mode_restriction_sync(
+                &pm, tool_name, target_path
+            ) {
+                return msg;
+            }
+        }
+    }
+
+    // --- Trait-based tool registry dispatch (v0.9.0 new tools) ---
+    {
+        let registry = state.tool_registry.read().await;
+        if let Some(tool) = registry.get(tool_name) {
+            let ctx = crate::tool_registry::ToolContext {
+                session_key: session_key.to_string(),
+                agent_id: agent_id.to_string(),
+                working_dir: std::env::current_dir().unwrap_or_default(),
+            };
+            let permission = tool.check_permissions(tool_input, &ctx).await;
+            match permission {
+                crate::tool_registry::PermissionDecision::Deny(msg) => {
+                    return format!("BLOCKED: {}", msg);
+                }
+                crate::tool_registry::PermissionDecision::Ask { reason, details } => {
+                    if let Some(obs) = observer {
+                        if !obs.request_approval_with_details(
+                            tool_name, &reason, details.as_deref()
+                        ).await {
+                            return "BLOCKED: User denied tool execution.".to_string();
+                        }
+                    }
+                    // No observer = headless/background: auto-approve Ask
+                }
+                crate::tool_registry::PermissionDecision::Allow => {}
+            }
+            let result = tool.call(tool_input.clone(), ctx).await;
+            return result.content;
+        }
+    }
+    // --- End registry dispatch ---
+
     // Check yolo mode once — active yolo bypasses all AskUser approval gates.
     let yolo_active = state.yolo_manager.is_active().await;
 

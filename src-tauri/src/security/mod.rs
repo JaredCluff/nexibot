@@ -14,6 +14,7 @@ pub mod exec_approval;
 pub mod external_content;
 pub mod key_interceptor;
 pub mod key_vault;
+pub mod llm_classifier;
 pub mod log_redactor;
 pub mod merge_safety;
 pub mod network_policy;
