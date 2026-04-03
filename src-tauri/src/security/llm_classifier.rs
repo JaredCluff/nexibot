@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
+use tracing::{info, warn};
 
 /// Result from the LLM classifier.
 #[derive(Debug, Clone)]
@@ -21,9 +22,9 @@ fn cache_key(tool_name: &str, input: &Value) -> String {
     let cmd = input["command"].as_str()
         .or(input["action"].as_str())
         .unwrap_or("");
-    // Normalize: strip arguments after first word for caching
-    let first_word = cmd.split_whitespace().take(3).collect::<Vec<_>>().join(" ");
-    format!("{}:{}", tool_name, first_word)
+    // Normalize: keep the first two words (verb + primary argument) for cache stability
+    let prefix = cmd.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+    format!("{}:{}", tool_name, prefix)
 }
 
 /// Session-scoped cache of classifier decisions.
@@ -61,6 +62,7 @@ pub struct LlmClassifier {
     /// API key and model to use for side queries
     api_key: Option<String>,
     model: String,
+    http_client: reqwest::Client,
 }
 
 impl LlmClassifier {
@@ -71,6 +73,7 @@ impl LlmClassifier {
             timeout: Duration::from_secs(5),
             api_key,
             model: "claude-haiku-4-5-20251001".to_string(),
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -91,6 +94,7 @@ impl LlmClassifier {
         {
             let cache = self.cache.read().await;
             if let Some(cached) = cache.get(&key) {
+                info!("[LLM_CLASSIFIER] Cache hit for {}: allow={}", key, cached.allow);
                 return Some(cached.clone());
             }
         }
@@ -102,11 +106,12 @@ impl LlmClassifier {
         let api_key = self.api_key.as_deref()?;
         let result = tokio::time::timeout(
             self.timeout,
-            make_classifier_request(&prompt, api_key, &self.model)
+            make_classifier_request(&self.http_client, &prompt, api_key, &self.model)
         ).await.ok()??;
 
         // Cache the result
         let mut cache = self.cache.write().await;
+        info!("[LLM_CLASSIFIER] Classified {}: allow={} confidence={:.2} reason={}", tool_name, result.allow, result.confidence, result.reason);
         cache.insert(key, result.clone());
 
         Some(result)
@@ -150,11 +155,11 @@ Respond with JSON only: {{"allow": true/false, "reason": "brief explanation", "c
 }
 
 async fn make_classifier_request(
+    client: &reqwest::Client,
     prompt: &str,
     api_key: &str,
     model: &str,
 ) -> Option<ClassifierResult> {
-    let client = reqwest::Client::new();
     let body = serde_json::json!({
         "model": model,
         "max_tokens": 150,
@@ -169,6 +174,14 @@ async fn make_classifier_request(
         .send()
         .await
         .ok()?;
+
+    if !resp.status().is_success() {
+        warn!(
+            "[LLM_CLASSIFIER] API request failed with status {}",
+            resp.status()
+        );
+        return None;
+    }
 
     let json: Value = resp.json().await.ok()?;
     let text = json["content"][0]["text"].as_str()?;
@@ -189,7 +202,7 @@ mod tests {
     fn test_cache_key_normalizes_commands() {
         let input1 = serde_json::json!({"command": "rm -rf /tmp/build"});
         let input2 = serde_json::json!({"command": "rm -rf /tmp/other"});
-        // Both should produce the same cache key (first 3 words)
+        // Both should produce the same cache key (first 2 words)
         let key1 = cache_key("nexibot_execute", &input1);
         let key2 = cache_key("nexibot_execute", &input2);
         assert_eq!(key1, key2);
@@ -245,5 +258,18 @@ mod tests {
         assert!(prompt.contains("rm -rf /tmp"));
         assert!(prompt.contains("/home/user/project"));
         assert!(prompt.contains("clean build artifacts"));
+    }
+
+    #[tokio::test]
+    async fn test_classifier_no_api_key_returns_none() {
+        let classifier = LlmClassifier::new(None, true);
+        let result = classifier.classify(
+            "nexibot_execute",
+            &serde_json::json!({"command": "ls /tmp"}),
+            "/tmp",
+            &[]
+        ).await;
+        // No api_key means the classify call short-circuits at api_key check
+        assert!(result.is_none());
     }
 }
