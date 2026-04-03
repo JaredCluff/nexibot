@@ -494,4 +494,10 @@ pub struct AppState {
 
     // Shared NATS client for nats_publish tool (populated when NATS starts)
     pub nats_publish_client: Arc<tokio::sync::Mutex<Option<Arc<async_nats::Client>>>>,
+
+    // v0.9.0 tool registry (trait-based tools)
+    pub tool_registry: std::sync::Arc<tokio::sync::RwLock<crate::tool_registry::ToolRegistry>>,
+
+    // Per-session file read state for staleness detection
+    pub file_read_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::file_read_state::FileReadState>>,
 }

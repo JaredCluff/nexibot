@@ -828,6 +828,38 @@ pub(crate) async fn execute_tool_call<'obs>(
     source_channel: Option<&ChannelSource>,
     source_sender_id: Option<&str>,
 ) -> String {
+    // --- Trait-based tool registry dispatch (v0.9.0 new tools) ---
+    {
+        let registry = state.tool_registry.read().await;
+        if let Some(tool) = registry.get(tool_name) {
+            let ctx = crate::tool_registry::ToolContext {
+                session_key: session_key.to_string(),
+                agent_id: agent_id.to_string(),
+                working_dir: std::env::current_dir().unwrap_or_default(),
+            };
+            let permission = tool.check_permissions(tool_input, &ctx).await;
+            match permission {
+                crate::tool_registry::PermissionDecision::Deny(msg) => {
+                    return format!("BLOCKED: {}", msg);
+                }
+                crate::tool_registry::PermissionDecision::Ask { reason, details } => {
+                    if let Some(obs) = observer {
+                        if !obs.request_approval_with_details(
+                            tool_name, &reason, details.as_deref()
+                        ).await {
+                            return "BLOCKED: User denied tool execution.".to_string();
+                        }
+                    }
+                    // No observer = headless/background: auto-approve Ask
+                }
+                crate::tool_registry::PermissionDecision::Allow => {}
+            }
+            let result = tool.call(tool_input.clone(), ctx).await;
+            return result.content;
+        }
+    }
+    // --- End registry dispatch ---
+
     // Check yolo mode once — active yolo bypasses all AskUser approval gates.
     let yolo_active = state.yolo_manager.is_active().await;
 

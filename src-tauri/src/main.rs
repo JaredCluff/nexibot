@@ -110,6 +110,7 @@ mod webhooks;
 mod whatsapp;
 mod yolo_mode;
 mod tool_registry;
+mod tools;
 #[cfg(feature = "connect")]
 mod managed_policy;
 #[cfg(not(feature = "connect"))]
@@ -932,6 +933,19 @@ fn main() {
                 skill_lifecycle_tx,
                 // Shared NATS client for nats_publish tool
                 nats_publish_client: Arc::new(tokio::sync::Mutex::new(None)),
+                // v0.9.0 tool registry
+                tool_registry: {
+                    let reg = Arc::new(tokio::sync::RwLock::new(crate::tool_registry::ToolRegistry::new()));
+                    {
+                        let mut r = reg.try_write().expect("registry lock at startup");
+                        crate::tools::register_all(&mut r);
+                    }
+                    reg
+                },
+                // v0.9.0 per-session file read state
+                file_read_state: Arc::new(tokio::sync::RwLock::new(
+                    crate::tools::file_read_state::FileReadState::default()
+                )),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.
