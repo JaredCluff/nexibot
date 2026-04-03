@@ -83,16 +83,54 @@ pub fn normalize_quotes(s: &str) -> String {
 
 /// Find the actual string in file content, trying exact match then quote-normalized.
 pub fn find_actual_string<'a>(content: &'a str, search: &str) -> Option<&'a str> {
+    // Fast path: exact match
     if content.contains(search) {
         return Some(search);
     }
+    // Normalized fallback: find match in normalized content, map back to original
     let norm_content = normalize_quotes(content);
     let norm_search = normalize_quotes(search);
-    if let Some(pos) = norm_content.find(&norm_search) {
-        Some(&content[pos..pos + search.len()])
-    } else {
-        None
+    let norm_pos = norm_content.find(&norm_search)?;
+
+    // Map norm_pos (byte offset in norm_content) back to byte offset in content.
+    // We walk both strings char-by-char simultaneously, accumulating byte offsets.
+    let mut content_byte_pos = 0usize;
+    let mut norm_byte_pos = 0usize;
+
+    let mut content_chars = content.char_indices();
+    let mut norm_chars = norm_content.char_indices();
+
+    // Advance until norm_byte_pos reaches norm_pos
+    loop {
+        if norm_byte_pos >= norm_pos {
+            break;
+        }
+        let (nc_byte, nc) = norm_chars.next()?;
+        let (cc_byte, cc) = content_chars.next()?;
+        norm_byte_pos = nc_byte + nc.len_utf8();
+        content_byte_pos = cc_byte + cc.len_utf8();
     }
+
+    // At this point content_byte_pos corresponds to norm_pos in norm_content.
+    // Now determine how many bytes in content correspond to norm_search's length.
+    let norm_search_len = norm_search.len();
+    let mut norm_consumed = 0usize;
+    let mut content_end = content_byte_pos;
+
+    let mut content_chars2 = content[content_byte_pos..].chars();
+    let mut norm_chars2 = norm_content[norm_pos..].chars();
+
+    loop {
+        if norm_consumed >= norm_search_len {
+            break;
+        }
+        let nc = norm_chars2.next()?;
+        let cc = content_chars2.next()?;
+        norm_consumed += nc.len_utf8();
+        content_end += cc.len_utf8();
+    }
+
+    Some(&content[content_byte_pos..content_end])
 }
 
 /// Generate a unified diff between old and new content.
@@ -103,16 +141,14 @@ pub fn generate_diff(path: &Path, old: &str, new: &str) -> String {
 
     for group in diff.grouped_ops(3) {
         for op in group {
-            for change in diff.iter_inline_changes(&op) {
+            for change in diff.iter_changes(&op) {
                 let prefix = match change.tag() {
                     ChangeTag::Delete => "-",
                     ChangeTag::Insert => "+",
                     ChangeTag::Equal => " ",
                 };
-                for (_, value) in change.iter_strings_lossy() {
-                    output.push_str(prefix);
-                    output.push_str(&value);
-                }
+                output.push_str(prefix);
+                output.push_str(change.value());
             }
         }
     }
@@ -186,7 +222,7 @@ async fn apply_edit(
     };
 
     // Step 8: write atomically (write to temp, rename)
-    let tmp_path = path.with_extension("__nexibot_tmp__");
+    let tmp_path = path.with_extension(format!("__nexibot_tmp_{:x}__", rand::random::<u32>()));
     tokio::fs::write(&tmp_path, &new_content).await
         .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
     tokio::fs::rename(&tmp_path, path).await
