@@ -111,6 +111,7 @@ mod whatsapp;
 mod yolo_mode;
 mod tool_registry;
 mod git_context;
+mod cost_tracker;
 mod tool_streaming;
 mod tools;
 #[cfg(feature = "connect")]
@@ -959,6 +960,14 @@ fn main() {
                 git_context: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
                 // v0.9.0 plan mode state — same Arc passed to register_all above.
                 plan_mode_state: plan_mode_state_arc,
+                // v0.9.0 cost/token tracking
+                session_cost_tracker: std::sync::Arc::new(tokio::sync::RwLock::new(
+                    crate::cost_tracker::CostTracker::new(uuid::Uuid::new_v4().to_string())
+                )),
+                budget_limits: crate::cost_tracker::BudgetLimits::default(),
+                session_context_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
+                    crate::cost_tracker::ContextManager::new(200_000)
+                )),
             };
 
             // Inject services into heartbeat manager for catch-up notification scan.

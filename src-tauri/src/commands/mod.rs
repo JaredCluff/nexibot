@@ -506,4 +506,9 @@ pub struct AppState {
 
     // v0.9.0 plan mode state — tracks whether the agent is in plan-only mode
     pub plan_mode_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::plan_mode::PlanModeState>>,
+
+    // v0.9.0 cost/token tracking
+    pub session_cost_tracker: std::sync::Arc<tokio::sync::RwLock<crate::cost_tracker::CostTracker>>,
+    pub budget_limits: crate::cost_tracker::BudgetLimits,
+    pub session_context_manager: std::sync::Arc<tokio::sync::RwLock<crate::cost_tracker::ContextManager>>,
 }
