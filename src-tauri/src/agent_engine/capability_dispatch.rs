@@ -286,7 +286,7 @@ impl LocalCapabilityDispatch {
             .as_ref()
             .context("K2K client not initialised — cannot delegate capability")?;
 
-        let request = k2k_common::TaskRequest {
+        let request = k2k::TaskRequest {
             capability_id: capability_id.to_string(),
             input,
             requesting_node_id: client_id,

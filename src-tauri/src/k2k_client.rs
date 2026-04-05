@@ -1,7 +1,7 @@
 //! K2K Client integration for NexiBot
 
 use anyhow::{Context, Result};
-use k2k_common::{generate_rsa_keypair, K2KClient as K2KCommonClient, K2KQueryResponse};
+use k2k::{generate_rsa_keypair, K2KClient as K2KCommonClient, K2KQueryResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};

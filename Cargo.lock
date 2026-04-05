@@ -4692,8 +4692,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "k2k-common"
-version = "0.1.0"
+name = "k2k"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5433,19 +5433,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nexibot-connect"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "nexibot-tauri"
 version = "0.9.0"
 dependencies = [
@@ -5478,14 +5465,13 @@ dependencies = [
  "idna",
  "image",
  "jsonwebtoken",
- "k2k-common",
+ "k2k",
  "keyring",
  "lettre",
  "lru 0.12.5",
  "lsp-types",
  "mailparse",
  "ndarray",
- "nexibot-connect",
  "notify",
  "notify-debouncer-mini",
  "objc",

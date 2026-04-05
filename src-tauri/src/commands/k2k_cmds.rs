@@ -141,7 +141,7 @@ pub async fn submit_agent_task(
         None => return Err("K2K client not initialized".to_string()),
     };
 
-    let request = k2k_common::TaskRequest {
+    let request = k2k::TaskRequest {
         capability_id,
         input,
         requesting_node_id: client_id,
@@ -366,7 +366,7 @@ pub async fn search_web_via_k2k(
         input["max_results"] = serde_json::json!(n);
     }
 
-    let request = k2k_common::TaskRequest {
+    let request = k2k::TaskRequest {
         capability_id: "web_search".to_string(),
         input,
         requesting_node_id: client_id,

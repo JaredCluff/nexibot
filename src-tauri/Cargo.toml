@@ -32,10 +32,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-deep-link = "2"
 
 # Shared K2K library
-k2k-common = { path = "../k2k-common" }
-
-# Knowledge Nexus connector plugin (optional, gated behind "connect" feature)
-nexibot-connect = { path = "../nexibot-connect", optional = true }
+k2k = { path = "../../k2k" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -237,4 +234,4 @@ proptest = "1"
 [features]
 default = []
 custom-protocol = ["tauri/custom-protocol"]
-connect = ["dep:nexibot-connect"]
+
