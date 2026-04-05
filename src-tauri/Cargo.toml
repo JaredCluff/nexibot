@@ -1,6 +1,6 @@
 [package]
 name = "nexibot-tauri"
-version = "0.8.4"
+version = "0.9.0"
 edition = "2021"
 description = "NexiBot Tauri backend"
 license = "Apache-2.0"
@@ -32,10 +32,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-deep-link = "2"
 
 # Shared K2K library
-k2k-common = { path = "../k2k-common" }
-
-# Knowledge Nexus connector plugin (optional, gated behind "connect" feature)
-nexibot-connect = { path = "../nexibot-connect", optional = true }
+k2k = { path = "../../k2k" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -201,6 +198,15 @@ secrecy = { version = "0.8", features = ["serde"] }
 # Explicit memory zeroing for key maps
 zeroize = { version = "1", features = ["derive"] }
 
+# Diff generation for file edit tool
+similar = "2"
+
+# LSP protocol types
+lsp-types = "0.97"
+
+# Image processing for file read tool
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+
 # macOS-specific dependencies for Speech framework FFI and Computer Use
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
@@ -228,4 +234,4 @@ proptest = "1"
 [features]
 default = []
 custom-protocol = ["tauri/custom-protocol"]
-connect = ["dep:nexibot-connect"]
+

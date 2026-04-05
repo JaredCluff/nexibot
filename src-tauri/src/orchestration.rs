@@ -74,6 +74,20 @@ impl Default for OrchestrationConfig {
     }
 }
 
+/// Isolation mode for a spawned subagent.
+#[derive(Debug, Clone, Default)]
+pub enum Isolation {
+    #[default]
+    None,
+    Worktree,
+}
+
+/// Configuration for a single subagent spawn.
+#[derive(Debug, Clone, Default)]
+pub struct SpawnConfig {
+    pub isolation: Isolation,
+}
+
 // ---------------------------------------------------------------------------
 // OrchestrationManager
 // ---------------------------------------------------------------------------
@@ -114,6 +128,7 @@ impl OrchestrationManager {
         parent_id: Option<&str>,
         agent_id: &str,
         task: &str,
+        config: Option<SpawnConfig>,
     ) -> Result<String> {
         if !self.config.enabled {
             anyhow::bail!("Subagent orchestration is disabled");
@@ -183,6 +198,27 @@ impl OrchestrationManager {
         );
 
         self.active_spawns.insert(spawn_id.clone(), spawn);
+
+        // Apply isolation if configured
+        if let Some(cfg) = config {
+            if matches!(cfg.isolation, Isolation::Worktree) {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                // Spawn async worktree creation as best-effort (non-blocking)
+                let spawn_id_for_wt = spawn_id.clone();
+                tokio::spawn(async move {
+                    if let Some(git_root) = crate::tools::worktree::find_git_root(&cwd).await {
+                        match crate::tools::worktree::create_agent_worktree(&git_root, &spawn_id_for_wt).await {
+                            Ok(path) => {
+                                tracing::info!("Agent {} using worktree: {}", spawn_id_for_wt, path.display());
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to create worktree for agent {}: {}", spawn_id_for_wt, e);
+                            }
+                        }
+                    }
+                });
+            }
+        }
 
         Ok(spawn_id)
     }
@@ -620,18 +656,18 @@ mod tests {
         let mut mgr = default_manager();
 
         // Root spawn (depth 0).
-        let root = mgr.spawn_subagent(None, "agent-a", "root task").unwrap();
+        let root = mgr.spawn_subagent(None, "agent-a", "root task", None).unwrap();
         assert_eq!(mgr.get_depth(&root), 0);
 
         // Child spawn (depth 1).
         let child = mgr
-            .spawn_subagent(Some(&root), "agent-b", "child task")
+            .spawn_subagent(Some(&root), "agent-b", "child task", None)
             .unwrap();
         assert_eq!(mgr.get_depth(&child), 1);
 
         // Grandchild spawn (depth 2).
         let grandchild = mgr
-            .spawn_subagent(Some(&child), "agent-c", "grandchild task")
+            .spawn_subagent(Some(&child), "agent-c", "grandchild task", None)
             .unwrap();
         assert_eq!(mgr.get_depth(&grandchild), 2);
     }
@@ -644,13 +680,13 @@ mod tests {
         };
         let mut mgr = OrchestrationManager::new(config);
 
-        let root = mgr.spawn_subagent(None, "agent-a", "task 0").unwrap();
+        let root = mgr.spawn_subagent(None, "agent-a", "task 0", None).unwrap();
         let child = mgr
-            .spawn_subagent(Some(&root), "agent-b", "task 1")
+            .spawn_subagent(Some(&root), "agent-b", "task 1", None)
             .unwrap();
 
         // Depth 2 should be rejected (>= max_depth of 2).
-        let result = mgr.spawn_subagent(Some(&child), "agent-c", "task 2");
+        let result = mgr.spawn_subagent(Some(&child), "agent-c", "task 2", None);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(
@@ -668,11 +704,11 @@ mod tests {
         };
         let mut mgr = OrchestrationManager::new(config);
 
-        let _s1 = mgr.spawn_subagent(None, "agent-a", "task 1").unwrap();
-        let _s2 = mgr.spawn_subagent(None, "agent-b", "task 2").unwrap();
+        let _s1 = mgr.spawn_subagent(None, "agent-a", "task 1", None).unwrap();
+        let _s2 = mgr.spawn_subagent(None, "agent-b", "task 2", None).unwrap();
 
         // Third spawn should fail.
-        let result = mgr.spawn_subagent(None, "agent-c", "task 3");
+        let result = mgr.spawn_subagent(None, "agent-c", "task 3", None);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(
@@ -686,15 +722,15 @@ mod tests {
     fn test_cancel_tree_cascading() {
         let mut mgr = default_manager();
 
-        let root = mgr.spawn_subagent(None, "agent-a", "root").unwrap();
+        let root = mgr.spawn_subagent(None, "agent-a", "root", None).unwrap();
         let child1 = mgr
-            .spawn_subagent(Some(&root), "agent-b", "child1")
+            .spawn_subagent(Some(&root), "agent-b", "child1", None)
             .unwrap();
         let child2 = mgr
-            .spawn_subagent(Some(&root), "agent-c", "child2")
+            .spawn_subagent(Some(&root), "agent-c", "child2", None)
             .unwrap();
         let _grandchild = mgr
-            .spawn_subagent(Some(&child1), "agent-d", "grandchild")
+            .spawn_subagent(Some(&child1), "agent-d", "grandchild", None)
             .unwrap();
 
         assert_eq!(mgr.get_active_count(), 4);
@@ -714,7 +750,7 @@ mod tests {
     fn test_mark_completed_and_result_storage() {
         let mut mgr = default_manager();
 
-        let id = mgr.spawn_subagent(None, "agent-a", "some task").unwrap();
+        let id = mgr.spawn_subagent(None, "agent-a", "some task", None).unwrap();
         mgr.mark_running(&id).unwrap();
 
         let result = SubagentResult {
@@ -745,7 +781,7 @@ mod tests {
     fn test_mark_failed() {
         let mut mgr = default_manager();
 
-        let id = mgr.spawn_subagent(None, "agent-a", "failing task").unwrap();
+        let id = mgr.spawn_subagent(None, "agent-a", "failing task", None).unwrap();
         mgr.mark_running(&id).unwrap();
         mgr.mark_failed(&id, "timeout reached").unwrap();
 
@@ -763,12 +799,12 @@ mod tests {
     fn test_get_children() {
         let mut mgr = default_manager();
 
-        let root = mgr.spawn_subagent(None, "agent-a", "root").unwrap();
+        let root = mgr.spawn_subagent(None, "agent-a", "root", None).unwrap();
         let _c1 = mgr
-            .spawn_subagent(Some(&root), "agent-b", "child1")
+            .spawn_subagent(Some(&root), "agent-b", "child1", None)
             .unwrap();
         let _c2 = mgr
-            .spawn_subagent(Some(&root), "agent-c", "child2")
+            .spawn_subagent(Some(&root), "agent-c", "child2", None)
             .unwrap();
 
         let children = mgr.get_children(&root);
@@ -779,12 +815,12 @@ mod tests {
     fn test_get_tree_visualization() {
         let mut mgr = default_manager();
 
-        let root = mgr.spawn_subagent(None, "agent-root", "root task").unwrap();
+        let root = mgr.spawn_subagent(None, "agent-root", "root task", None).unwrap();
         let child = mgr
-            .spawn_subagent(Some(&root), "agent-child", "child task")
+            .spawn_subagent(Some(&root), "agent-child", "child task", None)
             .unwrap();
         let _leaf = mgr
-            .spawn_subagent(Some(&child), "agent-leaf", "leaf task")
+            .spawn_subagent(Some(&child), "agent-leaf", "leaf task", None)
             .unwrap();
 
         let viz = mgr.get_tree_visualization(&root);
@@ -818,7 +854,7 @@ mod tests {
     fn test_cleanup_completed() {
         let mut mgr = default_manager();
 
-        let id = mgr.spawn_subagent(None, "agent-a", "task").unwrap();
+        let id = mgr.spawn_subagent(None, "agent-a", "task", None).unwrap();
         mgr.mark_running(&id).unwrap();
         mgr.mark_completed(
             &id,
@@ -846,7 +882,7 @@ mod tests {
         };
         let mut mgr = OrchestrationManager::new(config);
 
-        let result = mgr.spawn_subagent(None, "agent-a", "task");
+        let result = mgr.spawn_subagent(None, "agent-a", "task", None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("disabled"));
     }
@@ -855,7 +891,7 @@ mod tests {
     fn test_cancel_single_spawn() {
         let mut mgr = default_manager();
 
-        let id = mgr.spawn_subagent(None, "agent-a", "cancellable").unwrap();
+        let id = mgr.spawn_subagent(None, "agent-a", "cancellable", None).unwrap();
         assert_eq!(mgr.get_active_count(), 1);
 
         mgr.cancel_spawn(&id).unwrap();
@@ -868,7 +904,7 @@ mod tests {
     fn test_mark_running_wrong_status() {
         let mut mgr = default_manager();
 
-        let id = mgr.spawn_subagent(None, "agent-a", "task").unwrap();
+        let id = mgr.spawn_subagent(None, "agent-a", "task", None).unwrap();
         mgr.mark_running(&id).unwrap();
 
         // Trying to mark Running again should fail.

@@ -665,6 +665,22 @@ impl ClaudeClient {
             }
         }
 
+        // Git context (sync collection from working directory)
+        {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let git_ctx = crate::git_context::collect_git_context_sync(&cwd);
+            if !git_ctx.is_empty() {
+                let git_section = format!(
+                    "## Git Context\n{}\n",
+                    git_ctx.to_prompt_string()
+                );
+                system_prompt.push_str(&git_section);
+                system_prompt.push_str("\n\n");
+                system_prompt.push_str(crate::git_context::GIT_SAFETY_RULES);
+                system_prompt.push_str("\n\n");
+            }
+        }
+
         system_prompt.push_str(&current_datetime_context());
         system_prompt.push_str("\n\n");
 

@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
-use k2k_common::models::{
+use k2k::models::{
     AgentCapability, CapabilitiesResponse, CapabilityCategory, TaskRequest, TaskResult, TaskStatus,
     TaskStatusResponse,
 };

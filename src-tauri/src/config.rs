@@ -344,6 +344,30 @@ pub struct NexiBotConfig {
     /// Skill formats to auto-discover (e.g., "openclaw", "codex", "claude").
     #[serde(default = "default_auto_discover_formats")]
     pub auto_discover_formats: Vec<String>,
+
+    /// LSP server configuration
+    #[serde(default)]
+    pub lsp: LspConfig,
+}
+
+// ---------------------------------------------------------------------------
+// LSP configuration
+// ---------------------------------------------------------------------------
+
+/// Configuration for a single LSP server.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LspServerConfig {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub extensions: Vec<String>,
+}
+
+/// LSP server configuration section.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LspConfig {
+    #[serde(default)]
+    pub servers: std::collections::HashMap<String, LspServerConfig>,
 }
 
 // ---------------------------------------------------------------------------

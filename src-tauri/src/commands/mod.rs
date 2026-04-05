@@ -494,4 +494,21 @@ pub struct AppState {
 
     // Shared NATS client for nats_publish tool (populated when NATS starts)
     pub nats_publish_client: Arc<tokio::sync::Mutex<Option<Arc<async_nats::Client>>>>,
+
+    // v0.9.0 tool registry (trait-based tools)
+    pub tool_registry: std::sync::Arc<tokio::sync::RwLock<crate::tool_registry::ToolRegistry>>,
+
+    // Per-session file read state for staleness detection
+    pub file_read_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::file_read_state::FileReadState>>,
+
+    // v0.9.0 git context cache (lazily populated on first message)
+    pub git_context: std::sync::Arc<tokio::sync::RwLock<Option<crate::git_context::GitContext>>>,
+
+    // v0.9.0 plan mode state — tracks whether the agent is in plan-only mode
+    pub plan_mode_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::plan_mode::PlanModeState>>,
+
+    // v0.9.0 cost/token tracking
+    pub session_cost_tracker: std::sync::Arc<tokio::sync::RwLock<crate::cost_tracker::CostTracker>>,
+    pub budget_limits: crate::cost_tracker::BudgetLimits,
+    pub session_context_manager: std::sync::Arc<tokio::sync::RwLock<crate::cost_tracker::ContextManager>>,
 }

@@ -49,8 +49,7 @@ BRIDGE_PORT=9000 npm start         # Custom port
 
 ## Architecture
 
-This is a Rust workspace with three members:
-- **k2k-common** (`k2k-common/`): Shared K2K protocol library
+This is a Rust workspace with two members:
 - **nexibot-tauri** (`src-tauri/`): Tauri desktop application (NexiBot) with GUI
 - **cli** (`cli/`): CLI commands
 
@@ -315,7 +314,7 @@ Plugin-based Node.js bridge service for provider SDK integration.
 
 ### Rust (Cargo.toml)
 - **tauri** 2.10 - Desktop framework with tray-icon, image-png
-- **k2k-common** - Shared K2K protocol library (local path)
+- **k2k** - K2K federation protocol library (https://github.com/jaredcluff/k2k)
 - **tokio** 1 - Async runtime (full features)
 - **reqwest** 0.12 - HTTP client (rustls-tls, streaming, multipart)
 - **axum** 0.7 - HTTP server (for OAuth callback, gateway)
