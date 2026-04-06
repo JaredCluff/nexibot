@@ -736,7 +736,7 @@ async fn send_gmail_reply(
         "threadId": thread_id,
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
         .header("Authorization", format!("Bearer {}", access_token))

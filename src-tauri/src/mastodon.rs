@@ -396,7 +396,7 @@ pub async fn start_mastodon_bot(app_state: AppState) -> Result<(), String> {
 /// Fetch the bot's own @acct handle from /api/v1/accounts/verify_credentials.
 async fn fetch_own_acct(instance_url: &str, access_token: &str) -> Option<String> {
     let url = format!("{}/api/v1/accounts/verify_credentials", instance_url);
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .get(&url)
         .bearer_auth(access_token)
@@ -846,7 +846,7 @@ async fn send_mastodon_reply_checked(
     }
 
     let url = format!("{}/api/v1/statuses", instance_url);
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     match client
         .post(&url)

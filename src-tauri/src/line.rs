@@ -677,7 +677,7 @@ async fn send_line_message_checked(app_state: &AppState, target_id: &str, text: 
         ]
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     match client
         .post("https://api.line.me/v2/bot/message/push")
         .header("Authorization", format!("Bearer {}", access_token))

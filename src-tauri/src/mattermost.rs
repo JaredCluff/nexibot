@@ -699,7 +699,7 @@ async fn send_mattermost_message_checked(
         "message": text,
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     match client
         .post(&url)
         .header("Authorization", format!("Bearer {}", bot_token))
