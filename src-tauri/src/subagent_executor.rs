@@ -301,10 +301,10 @@ impl SubagentExecutor {
     ) -> String {
         let mut parts = Vec::new();
 
-        parts.push(format!(
-            "You are '{}', a specialized subagent.",
-            agent_config.name
-        ));
+        // Sanitize agent name — strip newlines/carriage returns to prevent
+        // prompt injection via config-controlled agent names.
+        let safe_name = agent_config.name.replace(['\n', '\r'], " ");
+        parts.push(format!("You are '{}', a specialized subagent.", safe_name));
 
         if let Some(ref system_prompt) = agent_config.system_prompt {
             parts.push(system_prompt.clone());
@@ -314,7 +314,11 @@ impl SubagentExecutor {
             let caps: Vec<String> = agent_config
                 .capabilities
                 .iter()
-                .map(|c| format!("- {}: {}", c.name, c.description))
+                .map(|c| {
+                    let safe_cap = c.name.replace(['\n', '\r'], " ");
+                    let safe_desc = c.description.replace(['\n', '\r'], " ");
+                    format!("- {}: {}", safe_cap, safe_desc)
+                })
                 .collect();
             parts.push(format!("Your capabilities:\n{}", caps.join("\n")));
         }

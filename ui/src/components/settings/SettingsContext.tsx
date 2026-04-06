@@ -44,19 +44,9 @@ export interface AgentConfigEntry {
   soul_path?: string;
   system_prompt?: string;
   is_default: boolean;
-  channel_bindings: Array<{ channel: string; channel_id?: string }>;
+  channel_bindings: Array<{ channel: string; peer_id: string | null }>;
   capabilities: Array<{ name: string; enabled: boolean; config?: Record<string, unknown> }>;
   workspace?: Record<string, unknown>;
-}
-
-export interface ScheduledTask {
-  id: string;
-  name: string;
-  schedule: string;
-  prompt: string;
-  enabled: boolean;
-  run_if_missed: boolean;
-  last_run?: string;
 }
 
 export interface NexiBotConfig {
