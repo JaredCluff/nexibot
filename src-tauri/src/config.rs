@@ -1440,18 +1440,13 @@ impl NexiBotConfig {
         // we proceed with the write.
         if config_path.exists() {
             let bak_path = config_path.with_extension("yaml.bak");
-            match std::fs::copy(&config_path, &bak_path) {
-                Ok(_) => {
-                    tracing::debug!("[CONFIG] Backup created at {:?}", bak_path);
-                }
-                Err(e) => {
-                    tracing::error!(
-                        "[CONFIG] CRITICAL: Failed to create backup before save: {}. \
-                         Proceeding anyway, but credential recovery may not be possible.",
-                        e
-                    );
-                }
-            }
+            std::fs::copy(&config_path, &bak_path).with_context(|| {
+                format!(
+                    "Failed to create config backup at {:?} — refusing to overwrite config",
+                    bak_path
+                )
+            })?;
+            tracing::debug!("[CONFIG] Backup created at {:?}", bak_path);
         }
 
         // Move secrets to OS keyring, replacing values with placeholders

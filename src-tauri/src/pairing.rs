@@ -352,6 +352,7 @@ impl PairingManager {
         }
 
         let previous_pending = self.pending.clone();
+        let now = Utc::now();
         // Constant-time scan across all entries to avoid leaking which codes exist
         let code_bytes = code.as_bytes();
         let pos = {
@@ -363,7 +364,7 @@ impl PairingManager {
                 let mut b = vec![0u8; len];
                 a[..code_bytes.len()].copy_from_slice(code_bytes);
                 b[..pending_bytes.len()].copy_from_slice(pending_bytes);
-                let matched: bool = a.ct_eq(&b).into();
+                let matched: bool = a.ct_eq(&b).into() && now <= r.expires_at;
                 if matched && found.is_none() {
                     found = Some(i);
                 }

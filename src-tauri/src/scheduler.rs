@@ -160,11 +160,20 @@ impl CronSchedule {
             Weekday::Sat => 6,
         };
 
+        // POSIX cron: when both day-of-month and day-of-week are restricted
+        // (neither is a full wildcard), either condition matching fires the job.
+        let days_wildcard = self.days.len() == 31;    // * expands to 1..=31
+        let weekdays_wildcard = self.weekdays.len() == 7; // * expands to 0..=6
+        let day_cond = if days_wildcard || weekdays_wildcard {
+            self.days.contains(&day) && self.weekdays.contains(&weekday)
+        } else {
+            self.days.contains(&day) || self.weekdays.contains(&weekday)
+        };
+
         self.minutes.contains(&minute)
             && self.hours.contains(&hour)
-            && self.days.contains(&day)
             && self.months.contains(&month)
-            && self.weekdays.contains(&weekday)
+            && day_cond
     }
 
     /// Find the next datetime after `after` that matches this cron schedule.
@@ -195,11 +204,18 @@ impl CronSchedule {
                 Weekday::Sat => 6,
             };
 
-            // Check if this date matches month, day, and weekday constraints
-            if self.months.contains(&month)
-                && self.days.contains(&day)
-                && self.weekdays.contains(&weekday_num)
-            {
+            // Check if this date matches month, day, and weekday constraints.
+            // POSIX cron: if both day-of-month and day-of-week are restricted,
+            // either matching fires the job (OR semantics).
+            let days_wildcard = self.days.len() == 31;
+            let weekdays_wildcard = self.weekdays.len() == 7;
+            let day_cond = if days_wildcard || weekdays_wildcard {
+                self.days.contains(&day) && self.weekdays.contains(&weekday_num)
+            } else {
+                self.days.contains(&day) || self.weekdays.contains(&weekday_num)
+            };
+
+            if self.months.contains(&month) && day_cond {
                 // Find the earliest matching time on this date
                 for &hour in &self.hours {
                     for &minute in &self.minutes {
