@@ -374,6 +374,7 @@ export interface MCPDiscoveredTool {
   name: string;
   prefixed_name: string;
   description: string;
+  input_schema: unknown;
   server_name: string;
 }
 

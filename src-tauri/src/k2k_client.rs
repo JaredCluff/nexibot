@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use k2k::{generate_rsa_keypair, K2KClient as K2KCommonClient, K2KQueryResponse};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
@@ -34,7 +35,11 @@ impl K2KIntegration {
         Self {
             client: Arc::new(RwLock::new(None)),
             config,
-            http_client: reqwest::Client::new(),
+            http_client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .connect_timeout(Duration::from_secs(10))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
