@@ -125,6 +125,7 @@ struct ToastEvent {
 pub(crate) async fn collect_all_tools(
     state: &AppState,
     query: Option<&str>,
+    source_channel: Option<&crate::channel::ChannelSource>,
 ) -> (Vec<serde_json::Value>, usize, bool, bool) {
     let mcp_tools = {
         let mcp = state.mcp_manager.read().await;
@@ -265,10 +266,16 @@ pub(crate) async fn collect_all_tools(
         }
     }));
 
-    // Yolo mode request tool — model can request, never approve
+    // Yolo mode request tool — model can request, never approve.
+    // Excluded for external channel sources: prompt injection from a Telegram/
+    // Discord/etc. message must not be able to trigger an elevation request.
+    let is_gui_source = matches!(
+        source_channel,
+        None | Some(crate::channel::ChannelSource::Gui)
+    );
     {
         let cfg = state.config.read().await;
-        if cfg.yolo_mode.allow_model_request {
+        if cfg.yolo_mode.allow_model_request && is_gui_source {
             all_tools.push(serde_json::json!({
                 "name": "nexibot_request_yolo_mode",
                 "description": "Request time-limited elevated access (yolo mode) for a privileged operation such as writing config, installing packages, or direct file edits outside normal sandboxing. A human must approve via the desktop UI or Telegram before yolo mode activates — you cannot approve it yourself. Use only when a specific operation requires it; explain exactly why.",

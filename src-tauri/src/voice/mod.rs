@@ -1377,7 +1377,7 @@ impl VoiceService {
 
                                                 // Collect tools for agentic voice (reuse chat tool collection)
                                                 let all_tools = if let Some(ref astate) = app_state_pipeline {
-                                                    let (tools, _, _, _) = crate::commands::chat::collect_all_tools(astate, Some(&transcript)).await;
+                                                    let (tools, _, _, _) = crate::commands::chat::collect_all_tools(astate, Some(&transcript), None).await;
                                                     tools
                                                 } else {
                                                     vec![]

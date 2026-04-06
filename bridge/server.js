@@ -48,9 +48,12 @@ app.use(express.json({ limit: '10mb' }));
 // X-Bridge-Secret header.  If the env var is absent (standalone / dev mode)
 // the check is skipped for backward compatibility.
 const BRIDGE_SECRET = process.env.BRIDGE_SECRET || null;
+const _nodePath = require('path');
 app.use((req, res, next) => {
   if (!BRIDGE_SECRET) return next();          // no secret configured — allow all
-  if (req.path === '/health') return next();  // health endpoint is always open
+  // Normalize the path to prevent /health/.. traversal bypasses.
+  const normalizedPath = _nodePath.posix.normalize(req.path || '/');
+  if (normalizedPath === '/health') return next();  // health endpoint is always open
 
   const provided = req.headers['x-bridge-secret'];
   if (!provided || provided !== BRIDGE_SECRET) {
@@ -208,6 +211,15 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   console.log('[Bridge] Shutting down...');
   process.exit(0);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[BRIDGE] Uncaught exception:', err);
+  // Don't exit — let Express's default error handler return 500 to callers
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[BRIDGE] Unhandled promise rejection:', reason);
 });
 
 /**

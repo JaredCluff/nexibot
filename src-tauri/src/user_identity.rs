@@ -141,7 +141,7 @@ impl UserIdentityManager {
     ///
     /// If the (channel, peer_id) is already known, returns the existing user.
     /// Otherwise, creates a new user with this channel binding.
-    pub fn resolve_user(&mut self, channel: &ChannelSource) -> &UserIdentity {
+    pub fn resolve_user(&mut self, channel: &ChannelSource) -> Result<&UserIdentity> {
         let (channel_type, peer_id) = channel_key(channel);
         let key = (channel_type.clone(), peer_id.clone());
 
@@ -150,9 +150,12 @@ impl UserIdentityManager {
             let user = self
                 .users
                 .get_mut(&user_id)
-                .expect("channel_index and users out of sync");
+                .ok_or_else(|| anyhow::anyhow!("channel_index and users out of sync for user '{}'", user_id))?;
             user.last_active = Utc::now();
-            return self.users.get(&user_id).expect("key was just accessed via get_mut");
+            return self
+                .users
+                .get(&user_id)
+                .ok_or_else(|| anyhow::anyhow!("users map missing key '{}' after get_mut succeeded", user_id));
         }
 
         // Auto-create
@@ -186,7 +189,9 @@ impl UserIdentityManager {
             );
         }
 
-        self.users.get(&user_id).expect("key was just inserted above")
+        self.users
+            .get(&user_id)
+            .ok_or_else(|| anyhow::anyhow!("users map missing key '{}' after insert", user_id))
     }
 
     /// Link a new channel binding to an existing user.

@@ -646,14 +646,17 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
             let config = state.app_state.config.read().await;
             let app_id = config.teams.app_id.clone();
             drop(config);
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 &service_url,
                 &conversation_id,
                 "Too many messages. Please wait a moment.",
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
             return Ok(());
         }
     }
@@ -717,14 +720,17 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
                     };
                     if !allowed {
                         let token = state.get_token().await.unwrap_or_default();
-                        let _ = send_teams_reply(
+                        if let Err(e) = send_teams_reply(
                             &service_url,
                             &conversation_id,
                             "You are not authorized to use this bot.",
                             &app_id,
                             &token,
                         )
-                        .await;
+                        .await
+                        {
+                            warn!("[TEAMS] Failed to send reply: {}", e);
+                        }
                         return Ok(());
                     }
                 }
@@ -743,7 +749,7 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
                         match result {
                             Ok(code) => {
                                 let token = state.get_token().await.unwrap_or_default();
-                                let _ = send_teams_reply(
+                                if let Err(e) = send_teams_reply(
                                     &service_url,
                                     &conversation_id,
                                     &format!(
@@ -753,7 +759,10 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
                                     &app_id,
                                     &token,
                                 )
-                                .await;
+                                .await
+                                {
+                                    warn!("[TEAMS] Failed to send reply: {}", e);
+                                }
                             }
                             Err(e) => {
                                 warn!("[TEAMS] Pairing request failed for {}: {}", sender_id, e);
@@ -810,7 +819,9 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
             let config = state.app_state.config.read().await;
             let app_id = config.teams.app_id.clone();
             drop(config);
-            let _ = send_teams_reply(&service_url, &conversation_id, reply, &app_id, &token).await;
+            if let Err(e) = send_teams_reply(&service_url, &conversation_id, reply, &app_id, &token).await {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
             return Ok(());
         }
         if owner_mismatch {
@@ -818,14 +829,17 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
             let config = state.app_state.config.read().await;
             let app_id = config.teams.app_id.clone();
             drop(config);
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 &service_url,
                 &conversation_id,
                 "This approval request belongs to another user in this conversation.",
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
             return Ok(());
         }
     }
@@ -883,34 +897,45 @@ pub async fn handle_teams_activity(activity: TeamsActivity, state: &TeamsBotStat
         Ok(routed) => {
             let response = router::extract_text_from_response(&routed.text);
             if response.is_empty() {
-                let _ = send_teams_reply(
+                if let Err(e) = send_teams_reply(
                     &service_url,
                     &conversation_id,
                     "(No response)",
                     &app_id,
                     &token,
                 )
-                .await;
+                .await
+                {
+                    warn!("[TEAMS] Failed to send reply: {}", e);
+                }
             } else {
                 for chunk in router::split_message(&response, 4096) {
-                    let _ =
+                    if let Err(e) =
                         send_teams_reply(&service_url, &conversation_id, &chunk, &app_id, &token)
-                            .await;
+                            .await
+                    {
+                        warn!("[TEAMS] Failed to send reply: {}", e);
+                    }
                 }
             }
         }
         Err(RouterError::Blocked(msg)) => {
-            let _ = send_teams_reply(&service_url, &conversation_id, &msg, &app_id, &token).await;
+            if let Err(e) = send_teams_reply(&service_url, &conversation_id, &msg, &app_id, &token).await {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
         }
         Err(e) => {
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 &service_url,
                 &conversation_id,
                 &format!("Error: {}", e),
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
         }
     }
 
@@ -1102,7 +1127,7 @@ async fn handle_command(
 
     match cmd {
         "help" | "start" => {
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 service_url,
                 conversation_id,
                 "**NexiBot Commands:**\n\n\
@@ -1113,18 +1138,24 @@ async fn handle_command(
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
         }
         "new" => {
             state.clear_session(conversation_id).await;
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 service_url,
                 conversation_id,
                 "Conversation cleared. Starting fresh!",
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
         }
         "status" => {
             let (model, has_key) = {
@@ -1143,7 +1174,7 @@ async fn handle_command(
             } else {
                 "NOT configured"
             };
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 service_url,
                 conversation_id,
                 &format!(
@@ -1153,17 +1184,23 @@ async fn handle_command(
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
         }
         _ => {
-            let _ = send_teams_reply(
+            if let Err(e) = send_teams_reply(
                 service_url,
                 conversation_id,
                 "Unknown command. Use `/help` for available commands.",
                 &app_id,
                 &token,
             )
-            .await;
+            .await
+            {
+                warn!("[TEAMS] Failed to send reply: {}", e);
+            }
         }
     }
 }

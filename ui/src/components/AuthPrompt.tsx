@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import type { AvailableModel } from '../shared/types';
 import { open } from '@tauri-apps/plugin-shell';
 import './Onboarding.css';
 
@@ -146,7 +147,7 @@ function AuthPrompt({ onComplete, onDismiss, reason, provider: providerHint }: A
       config.cerebras.api_key = apiKey;
       await invoke('update_config', { newConfig: config });
       try {
-        const validated = await invoke<Array<{ id: string; size_score: number }>>('validate_provider_models', { provider: 'Cerebras' });
+        const validated = await invoke<AvailableModel[]>('validate_provider_models', { provider: 'Cerebras' });
         if (validated.length > 0) {
           config.claude.model = validated[0].id;
           await invoke('update_config', { newConfig: config });

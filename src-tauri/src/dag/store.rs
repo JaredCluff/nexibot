@@ -764,6 +764,11 @@ impl DagStore {
                     "INSERT OR IGNORE INTO dag_task_deps (task_id, depends_on_task_id) VALUES (?1, ?2)",
                     params![task_id, dep_id],
                 )?;
+            } else {
+                tracing::warn!(
+                    "[DAG] Task '{}' depends on '{}' which does not exist in run '{}' — dependency edge skipped",
+                    task_def.task_key, dep_key, run_id
+                );
             }
         }
 

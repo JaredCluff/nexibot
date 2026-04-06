@@ -240,7 +240,7 @@ pub async fn route_message(
 
     // 3. Collect tools (pass user message for semantic MCP tool filtering)
     let (all_tools, mcp_count, computer_use_enabled, browser_enabled) =
-        chat::collect_all_tools(state, Some(&message.text)).await;
+        chat::collect_all_tools(state, Some(&message.text), Some(&message.channel)).await;
     if !all_tools.is_empty() {
         info!(
             "[ROUTER] Passing {} tools (MCP: {}, CU: {}, Browser: {}, Built-in: rest)",

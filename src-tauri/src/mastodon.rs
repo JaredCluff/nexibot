@@ -808,7 +808,9 @@ async fn send_mastodon_reply(
     in_reply_to_id: Option<&str>,
     text: &str,
 ) {
-    let _ = send_mastodon_reply_checked(app_state, acct, in_reply_to_id, text).await;
+    if !send_mastodon_reply_checked(app_state, acct, in_reply_to_id, text).await {
+        warn!("[MASTODON] Failed to send reply to {}", acct);
+    }
 }
 
 async fn send_mastodon_reply_checked(
