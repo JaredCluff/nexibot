@@ -499,7 +499,7 @@ pub async fn promote_knowledge(
     let client_id = config.k2k.client_id.clone();
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
         .post(format!("{}/research/kb/contribute/multi-tier", base_url))
         .json(&serde_json::json!({
@@ -560,7 +560,7 @@ pub async fn list_pending_approvals(
         .unwrap_or_else(|| config.k2k.local_agent_url.clone());
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
         .get(format!("{}/api/v1/approvals/pending", base_url))
         .send()
@@ -638,7 +638,7 @@ pub async fn approve_contribution(
     let client_id = config.k2k.client_id.clone();
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let mut body = serde_json::json!({
         "decision": if approve { "approved" } else { "rejected" },
         "reviewer": client_id,
@@ -707,7 +707,7 @@ pub async fn trigger_research(
     let client_id = config.k2k.client_id.clone();
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let mut payload = serde_json::json!({
         "topic": topic,
         "research_type": research_type,
@@ -763,7 +763,7 @@ pub async fn poll_research_task(
         .unwrap_or_else(|| config.k2k.local_agent_url.clone());
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
         .get(format!("{}/research/tasks/{}", base_url, task_id))
         .send()
@@ -818,7 +818,7 @@ pub async fn resume_research_task(
         payload["from_step"] = serde_json::json!(step);
     }
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
         .post(format!("{}/research/tasks/{}/resume", base_url, task_id))
         .json(&payload)
@@ -892,7 +892,7 @@ pub async fn list_research_tasks(
         .unwrap_or_else(|| config.k2k.local_agent_url.clone());
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let mut req = http.get(format!("{}/research/tasks", base_url));
     if let Some(ref status) = status_filter {
         req = req.query(&[("status", status.as_str())]);
@@ -971,7 +971,7 @@ pub async fn list_knowledge(
     let base_url = config.k2k.local_agent_url.clone();
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let mut req = http.get(format!("{}/api/v1/articles", base_url));
 
     if let Some(ref sid) = store_id {
@@ -1059,7 +1059,7 @@ pub async fn get_knowledge_item(
     let base_url = config.k2k.local_agent_url.clone();
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
         .get(format!("{}/api/v1/articles/{}", base_url, article_id))
         .send()

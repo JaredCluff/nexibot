@@ -197,7 +197,7 @@ pub async fn discover_ollama_models(
     let url = format!("{}/api/tags", config.ollama.url);
     drop(config);
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
         .get(&url)
         .timeout(std::time::Duration::from_secs(5))
@@ -299,7 +299,7 @@ pub async fn refresh_model_cache(
 async fn fetch_models_from_bridge(state: &AppState) -> Vec<AvailableModel> {
     let bridge_url = std::env::var("ANTHROPIC_BRIDGE_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:18790".to_string());
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     // Get API keys and Ollama config
     let config = state.config.read().await;
@@ -621,7 +621,7 @@ pub async fn validate_provider_models(
         return Ok(Vec::new());
     };
 
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let mut validated = Vec::new();
 
     for model in provider_models {
