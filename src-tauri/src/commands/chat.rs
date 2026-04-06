@@ -2251,7 +2251,8 @@ pub(crate) async fn auto_save_message(state: &AppState, role: &str, content: &st
         if let Some(session) = memory_manager.get_current_session() {
             if session.title.is_none() && session.messages.len() <= 2 {
                 let title = if content.len() > 50 {
-                    format!("{}...", &content[..50])
+                    let b = content.char_indices().take_while(|(i, _)| *i < 50).last().map(|(i, c)| i + c.len_utf8()).unwrap_or(0);
+                    format!("{}...", &content[..b])
                 } else {
                     content.to_string()
                 };
