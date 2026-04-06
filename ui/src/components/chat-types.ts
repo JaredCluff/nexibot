@@ -53,10 +53,11 @@ export interface SessionOverrides {
 export interface AvailableModel {
   id: string;
   display_name: string;
-  alias: string | null;
+  alias?: string | null;
   provider: string;
-  tier: string;
+  tier?: string;
   available: boolean;
+  size_score?: number;
 }
 
 export interface BackgroundTaskUI {

@@ -224,10 +224,10 @@ function App() {
     await window.setFocus();
   };
 
-  const handleSessionSelect = async (session: { session_id: string }) => {
+  const handleSessionSelect = async (session: { id: string }) => {
     try {
-      await invoke('load_conversation_session', { sessionId: session.session_id });
-      setCurrentSessionId(session.session_id);
+      await invoke('load_conversation_session', { sessionId: session.id });
+      setCurrentSessionId(session.id);
       setShowSettings(false);
     } catch (error) {
       notifyError('History', `Failed to load session: ${error}`);

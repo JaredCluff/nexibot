@@ -278,7 +278,7 @@ impl NetworkPolicyEngine {
 
     /// Load policy from a YAML file. Returns the previous policy on parse error.
     pub async fn load_from_file(&self, path: &std::path::Path) -> Result<()> {
-        let content = std::fs::read_to_string(path)?;
+        let content = tokio::fs::read_to_string(path).await?;
         let new_policy: NetworkPolicy = serde_yml::from_str(&content)?;
         self.reload(new_policy).await;
         Ok(())
