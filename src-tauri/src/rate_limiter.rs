@@ -107,11 +107,14 @@ impl RateLimiter {
         if record.failures.len() >= self.config.max_attempts as usize {
             let lockout_duration = std::time::Duration::from_secs(self.config.lockout_secs);
             record.locked_until = Some(now + lockout_duration);
+            // Clear failures — they are no longer needed once locked_until is set and
+            // would otherwise occupy memory for the full lockout period.
+            record.failures.clear();
             warn!(
                 "[RATE_LIMIT] IP {} locked out for {}s after {} failures",
                 ip,
                 self.config.lockout_secs,
-                record.failures.len()
+                self.config.max_attempts,
             );
 
             // Emergency cleanup if map exceeds hard cap

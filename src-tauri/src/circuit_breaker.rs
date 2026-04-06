@@ -230,6 +230,14 @@ impl CircuitBreakerRegistry {
                 agent_id, old_state, breaker.state, breaker.failure_count
             );
         }
+
+        // Evict Closed breakers with zero failures if registry is over capacity.
+        // Mirrors the same eviction in allow_call() so either entry point keeps the
+        // map bounded at MAX_CIRCUIT_BREAKERS.
+        if self.breakers.len() > MAX_CIRCUIT_BREAKERS {
+            self.breakers
+                .retain(|_, b| !(b.state == CircuitState::Closed && b.failure_count == 0));
+        }
     }
 
     /// Get the current state for an agent (defaults to Closed if not tracked).
