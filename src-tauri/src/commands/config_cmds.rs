@@ -453,12 +453,14 @@ pub async fn update_config(
         .reload(runtime_config.network_policy.clone())
         .await;
 
-    // Update the shared config (all services read from this via state.config.read().await)
+    // Update the shared config and save atomically: hold the write lock across the
+    // file write so concurrent calls to update_config cannot overwrite each other.
     let mut config = state.config.write().await;
     *config = runtime_config;
+    let save_result = tokio::task::block_in_place(|| new_config.save());
     drop(config);
 
-    match new_config.save() {
+    match save_result {
         Ok(_) => {
             info!("[CONFIG] Configuration updated and saved successfully");
             // Broadcast after a successful save so subscribers only react to durable changes.

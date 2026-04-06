@@ -263,8 +263,39 @@ impl GatewayServer {
                 );
                 (ws, Some(AuthCredentials::TailscaleHeaders { login, name }))
             } else {
-                let ws = accept_async_with_config(
+                // For non-TailscaleProxy modes validate the Origin header to prevent
+                // Cross-Site WebSocket Hijacking (CSWSH) by malicious browser pages.
+                let ws = accept_hdr_async_with_config(
                     stream,
+                    move |req: &tokio_tungstenite::tungstenite::handshake::server::Request,
+                          resp: tokio_tungstenite::tungstenite::handshake::server::Response| {
+                        if let Some(origin) = req.headers().get("origin") {
+                            let origin_str = origin.to_str().unwrap_or("");
+                            let allowed = origin_str.is_empty()
+                                || origin_str.starts_with("http://localhost")
+                                || origin_str.starts_with("http://127.0.0.1")
+                                || origin_str.starts_with("https://localhost")
+                                || origin_str.starts_with("https://127.0.0.1")
+                                || origin_str.starts_with("tauri://localhost");
+                            if !allowed {
+                                warn!(
+                                    "[GATEWAY] Rejected WebSocket upgrade: untrusted Origin '{}'",
+                                    origin_str
+                                );
+                                return Err(
+                                    tokio_tungstenite::tungstenite::http::Response::builder()
+                                        .status(
+                                            tokio_tungstenite::tungstenite::http::StatusCode::FORBIDDEN,
+                                        )
+                                        .body(Some("Forbidden: untrusted Origin".to_string()))
+                                        .unwrap_or_else(|_| {
+                                            tokio_tungstenite::tungstenite::http::Response::new(None)
+                                        }),
+                                );
+                            }
+                        }
+                        Ok(resp)
+                    },
                     Some(WebSocketConfig {
                         max_message_size: Some(4 * 1024 * 1024),
                         max_frame_size: Some(1 * 1024 * 1024),

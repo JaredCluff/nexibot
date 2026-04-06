@@ -479,6 +479,7 @@ export interface PairingRequest {
   channel: string;
   display_name: string | null;
   created_at: string;
+  expires_at: string; // ISO 8601 from Rust DateTime<Utc>
 }
 
 export interface RuntimeAllowlist {
