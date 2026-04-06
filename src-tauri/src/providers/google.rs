@@ -232,8 +232,8 @@ impl LlmClient for GoogleGeminiClient {
         }
 
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            self.model_id, self.api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            self.model_id
         );
 
         info!("[GOOGLE] Sending request (model: {})", self.model_id);
@@ -242,6 +242,7 @@ impl LlmClient for GoogleGeminiClient {
             .http_client
             .post(&url)
             .header("Content-Type", "application/json")
+            .header("x-goog-api-key", &self.api_key)
             .json(&request_body)
             .send()
             .await
@@ -342,8 +343,8 @@ impl LlmClient for GoogleGeminiClient {
 
         // Gemini streaming uses streamGenerateContent with alt=sse
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?key={}&alt=sse",
-            self.model_id, self.api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
+            self.model_id
         );
 
         info!("[GOOGLE] Sending streaming request (model: {})", self.model_id);
@@ -352,6 +353,7 @@ impl LlmClient for GoogleGeminiClient {
             .http_client
             .post(&url)
             .header("Content-Type", "application/json")
+            .header("x-goog-api-key", &self.api_key)
             .json(&request_body)
             .send()
             .await
@@ -367,11 +369,15 @@ impl LlmClient for GoogleGeminiClient {
         let mut tool_uses: Vec<LlmToolUse> = Vec::new();
         let mut stop_reason = "STOP".to_string();
         let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER: usize = 1024 * 1024; // 1 MB
 
         while let Some(chunk_result) = response.chunk().await.transpose() {
             let chunk_bytes = chunk_result.context("Failed to read Gemini streaming chunk")?;
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER {
+                anyhow::bail!("Gemini streaming line buffer exceeded 1 MB — possible malformed response");
+            }
 
             // Process complete lines — Gemini SSE format: "data: {json}\n\n"
             while let Some(newline_pos) = line_buffer.find('\n') {

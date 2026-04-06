@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use axum::{
-    extract::{ConnectInfo, Path, State as AxumState},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, State as AxumState},
     http::{HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::IntoResponse,
@@ -154,6 +154,7 @@ pub async fn start_webhook_server(
         .route("/webhook/health", get(health_handler))
         .route("/webhook/{endpoint_id}", post(webhook_handler))
         .with_state(state)
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10 MB max body
         .layer(middleware::from_fn(security_headers_middleware));
 
     // Optional REST API surface for mobile/headless clients.
