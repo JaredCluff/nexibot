@@ -54,7 +54,9 @@ impl LlamaGuardClassifier {
             _ => anyhow::bail!("Unknown Llama Guard mode: {}. Use 'api' or 'local'.", mode),
         };
 
-        // Validate endpoint URL - reject non-localhost unless explicitly allowed
+        // Validate endpoint URL - reject non-localhost unless explicitly allowed,
+        // then run full SSRF validation to block private IP ranges and cloud
+        // metadata endpoints regardless of the allow_remote flag.
         if let Ok(parsed) = url::Url::parse(api_url) {
             let host = parsed.host_str().unwrap_or("");
             let is_local =
@@ -72,6 +74,14 @@ impl LlamaGuardClassifier {
                 );
             }
         }
+        // Full SSRF check: blocks private IP ranges (RFC1918, link-local, cloud
+        // metadata endpoints, etc.) that hostname-string comparison would miss.
+        crate::security::ssrf::validate_outbound_request(
+            api_url,
+            &crate::security::ssrf::SsrfPolicy::default(),
+            &[],
+        )
+        .map_err(|e| anyhow::anyhow!("Llama Guard API URL SSRF check failed: {}", e))?;
 
         Ok(Self {
             mode,
