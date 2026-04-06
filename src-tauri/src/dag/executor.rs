@@ -334,7 +334,7 @@ async fn execution_loop(
                             let _ = s.update_task_status(&task_id, &DagTaskStatus::Failed, None, Some(&timeout_msg));
                             let _ = s.add_history(&run_id_owned, Some(&task_id), "task_failed", Some(&timeout_msg));
                         }
-                        emit_event(&app_handle_clone, "dag:task-failed", serde_json::json!({ "run_id": run_id_owned, "task_id": task_id, "task_key": task_key, "error": timeout_msg, "will_retry": false }));
+                        emit_event(&app_handle_clone, "dag:task-failed", &serde_json::json!({ "run_id": run_id_owned, "task_id": task_id, "task_key": task_key, "error": timeout_msg, "will_retry": false }));
                         return;
                     }
                 };
