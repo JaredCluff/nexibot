@@ -68,7 +68,10 @@ export interface ProviderStatus {
   anthropic_configured: boolean;
   openai_configured: boolean;
   ollama_configured: boolean;
-  ollama_url: string;
+  ollama_url: string | null;
+  cerebras_configured: boolean;
+  lmstudio_configured: boolean;
+  lmstudio_url: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +396,7 @@ export interface MCPPreset {
 export interface WebhookEndpoint {
   id: string;
   name: string;
-  action: string;
+  action: 'TriggerTask' | 'SendMessage';
   target: string;
 }
 

@@ -427,7 +427,7 @@ export function SystemTab() {
             <input
               type="checkbox"
               checked={config.gateway?.enabled ?? false}
-              onChange={(e) => setConfig({ ...config, gateway: { ...(config.gateway ?? { enabled: false, port: 18792, bind_address: '127.0.0.1', auth_mode: 'Token' as const, max_connections: 50 }), enabled: e.target.checked } })}
+              onChange={(e) => setConfig({ ...config, gateway: { ...(config.gateway ?? { enabled: false, port: 18792, bind_address: '127.0.0.1', auth_mode: 'token' as const, max_connections: 50 }), enabled: e.target.checked } })}
             />
             Enable Gateway<InfoTip text="Start the WebSocket gateway server for multi-user access." />
           </label>
@@ -457,15 +457,16 @@ export function SystemTab() {
         <label className="field">
           <span>Auth Mode<InfoTip text="Token: pre-shared bearer tokens. Password: SHA-256 hash comparison. Open: no auth (development only)." /></span>
           <select
-            value={config.gateway?.auth_mode ?? 'Token'}
-            onChange={(e) => setConfig({ ...config, gateway: { ...config.gateway, auth_mode: e.target.value as 'Token' | 'Password' | 'Open' } })}
+            value={config.gateway?.auth_mode ?? 'token'}
+            onChange={(e) => setConfig({ ...config, gateway: { ...config.gateway, auth_mode: e.target.value as 'token' | 'password' | 'open' | 'tailscale_proxy' } })}
           >
-            <option value="Token">Token (pre-shared bearer tokens)</option>
-            <option value="Password">Password (hash comparison)</option>
-            <option value="Open">Open (development only)</option>
+            <option value="token">Token (pre-shared bearer tokens)</option>
+            <option value="password">Password (hash comparison)</option>
+            <option value="open">Open (development only)</option>
+            <option value="tailscale_proxy">Tailscale Proxy</option>
           </select>
         </label>
-        {config.gateway?.auth_mode === 'Open' && (
+        {config.gateway?.auth_mode === 'open' && (
           <div className="warning-banner">Open auth mode allows unauthenticated access. Only use for local development.</div>
         )}
         <label className="field">

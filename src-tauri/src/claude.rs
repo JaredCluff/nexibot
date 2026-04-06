@@ -1397,6 +1397,7 @@ impl ClaudeClient {
     /// Get the API URL and model prefix strip for cloud OpenAI-compatible providers.
     async fn get_cloud_openai_compat_config(&self, provider: LlmProvider) -> Result<(String, &'static str)> {
         let config = self.config.read().await;
+        let ssrf_policy = crate::security::ssrf::SsrfPolicy::default();
         match provider {
             LlmProvider::DeepSeek => {
                 let url = config
@@ -1404,6 +1405,8 @@ impl ClaudeClient {
                     .as_ref()
                     .map(|d| d.api_url.clone())
                     .unwrap_or_else(|| "https://api.deepseek.com/v1".to_string());
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("DeepSeek api_url SSRF check failed: {}", e))?;
                 Ok((format!("{}/chat/completions", url), "deepseek/"))
             }
             LlmProvider::GitHubCopilot => {
@@ -1412,6 +1415,8 @@ impl ClaudeClient {
                     .as_ref()
                     .map(|c| c.api_url.clone())
                     .unwrap_or_else(|| "https://api.githubcopilot.com".to_string());
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("GitHub Copilot api_url SSRF check failed: {}", e))?;
                 Ok((format!("{}/chat/completions", url), "github-copilot/"))
             }
             LlmProvider::MiniMax => {
@@ -1420,6 +1425,8 @@ impl ClaudeClient {
                     .as_ref()
                     .map(|m| m.api_url.clone())
                     .unwrap_or_else(|| "https://api.minimax.chat/v1".to_string());
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("MiniMax api_url SSRF check failed: {}", e))?;
                 Ok((format!("{}/chat/completions", url), "minimax/"))
             }
             LlmProvider::Cerebras => {
@@ -1431,6 +1438,8 @@ impl ClaudeClient {
                     .as_ref()
                     .map(|q| q.api_url.clone())
                     .unwrap_or_else(|| "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string());
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("Qwen api_url SSRF check failed: {}", e))?;
                 Ok((format!("{}/chat/completions", url), "qwen/"))
             }
             _ => anyhow::bail!("Provider {:?} is not a cloud OpenAI-compatible provider", provider),

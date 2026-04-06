@@ -1785,6 +1785,7 @@ pub(crate) async fn execute_tool_call<'obs>(
         };
         let files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(&search_dir)
             .follow_links(false)
+            .max_depth(10)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
@@ -1796,6 +1797,7 @@ pub(crate) async fn execute_tool_call<'obs>(
                 }
             })
             .map(|e| e.path().to_path_buf())
+            .take(10_000)
             .collect();
         const MAX_BYTES: usize = 50_000;
         const MAX_FILE_BYTES: u64 = 5_000_000; // skip files larger than 5MB
