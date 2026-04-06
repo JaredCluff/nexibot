@@ -66,8 +66,8 @@ export function GatedShellTab() {
     setGeneratingKey(true);
     setGeneratedKey(null);
     try {
-      const pubkey = await invoke<string>('generate_plugin_signing_key');
-      setGeneratedKey(pubkey);
+      const result = await invoke<{ private_key_hex: string; public_key_hex: string; note: string }>('generate_plugin_signing_key');
+      setGeneratedKey(result.public_key_hex);
       notifySuccess('Plugin Key', 'Ed25519 keypair generated. Add the public key to trusted keys and keep the private key (signing.key) secure.');
     } catch (e) {
       notifyError('Plugin Key', `Failed to generate keypair: ${e}`);

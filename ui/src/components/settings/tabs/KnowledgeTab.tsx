@@ -403,7 +403,7 @@ export function KnowledgeTab() {
             <button disabled={loadingCapabilities} onClick={async () => {
               setLoadingCapabilities(true);
               try {
-                const caps = await invoke<string[]>('get_agent_capabilities');
+                const caps = await invoke<string[]>('list_agent_capabilities');
                 setAgentCapabilities(caps);
                 if (caps.length > 0 && !selectedCapability) setSelectedCapability(caps[0]);
               } catch (error) {
@@ -450,7 +450,7 @@ export function KnowledgeTab() {
                   try {
                     let parsedInput;
                     try { parsedInput = JSON.parse(taskInput); } catch { notifyWarn('Agent Tasks', 'Invalid JSON input'); setSubmittingTask(false); return; }
-                    const result = await invoke<{ task_id: string }>('submit_agent_task', {
+                    const result = await invoke<{ task_id: string; status: string; error: string | null }>('submit_agent_task', {
                       capability: selectedCapability,
                       input: parsedInput,
                       context: taskContext || null,

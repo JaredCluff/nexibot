@@ -339,8 +339,29 @@ impl WorkflowExecutor {
                             iteration_outputs.push(Value::Null);
                         }
                         FailureAction::Retry => {
-                            any_failed = true;
-                            iteration_outputs.push(Value::Null);
+                            // Retry this iteration up to max_retries times with exponential backoff
+                            let max_retries = step.on_failure.max_retries;
+                            let mut succeeded = false;
+                            for attempt in 1..=max_retries {
+                                let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1));
+                                warn!("[WF_EXECUTOR] Loop step '{}' iteration {} retry {}/{} in {}ms", step.id, idx, attempt, max_retries, delay_ms);
+                                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                                let retry_input = substitute_value(&step.input, &loop_ctx_vars);
+                                match self.dispatch.invoke(&step.capability, retry_input).await {
+                                    Ok(out) => {
+                                        iteration_outputs.push(out);
+                                        succeeded = true;
+                                        break;
+                                    }
+                                    Err(re) => {
+                                        warn!("[WF_EXECUTOR] Loop step '{}' iteration {} retry {}/{} failed: {}", step.id, idx, attempt, max_retries, re);
+                                    }
+                                }
+                            }
+                            if !succeeded {
+                                any_failed = true;
+                                iteration_outputs.push(Value::Null);
+                            }
                         }
                     }
                 }
