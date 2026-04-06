@@ -489,9 +489,9 @@ async fn exchange_anthropic_code(
     })
 }
 
-/// Generate PKCE code verifier
+/// Generate PKCE code verifier using the OS CSPRNG.
 pub fn generate_code_verifier() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = OsRng;
     let random_bytes: Vec<u8> = (0..32).map(|_| rng.gen::<u8>()).collect();
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes)
 }

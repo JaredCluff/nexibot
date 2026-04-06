@@ -226,11 +226,11 @@ export function SystemTab() {
         {subscriptions.map((sub, i) => (
           <div key={i} className="mcp-server-card">
             <div className="mcp-server-header">
-              <span className={`status-dot ${sub.status === 'active' ? 'healthy' : sub.status === 'expired' ? 'unhealthy' : 'inactive'}`} />
+              <span className={`status-dot ${sub.status === 'Active' ? 'healthy' : sub.status === 'Expired' ? 'unhealthy' : 'inactive'}`} />
               <span className="mcp-server-name">{sub.provider}</span>
               <span className="mcp-server-command">{sub.tier}</span>
               {sub.expires_at && (
-                <span className="mcp-tool-count">Expires: {new Date(sub.expires_at).toLocaleDateString()}</span>
+                <span className="mcp-tool-count">Expires: {new Date(sub.expires_at * 1000).toLocaleDateString()}</span>
               )}
             </div>
             <div className="action-buttons">
