@@ -17,6 +17,8 @@ use tracing::{error, info, warn};
 use super::capability_dispatch::{ExecutionContext, LocalCapabilityDispatch};
 use super::workflow_spec::{AgentRunStatus, FailureAction, StepResult, WorkflowSpec, WorkflowStep, evaluate_condition, substitute_vars};
 
+const MAX_LOOP_SIZE: usize = 10_000;
+
 // ── Run state ────────────────────────────────────────────────────────────────
 
 /// Status of a workflow step during execution.
@@ -304,6 +306,20 @@ impl WorkflowExecutor {
             }
         };
 
+        if list.len() > MAX_LOOP_SIZE {
+            return StepResult {
+                step_id: step.id.clone(),
+                status: "failed".to_string(),
+                output: None,
+                error: Some(format!(
+                    "loop_over array size {} exceeds maximum {}",
+                    list.len(),
+                    MAX_LOOP_SIZE
+                )),
+                duration_ms: step_start.elapsed().as_millis() as u64,
+            };
+        }
+
         let mut iteration_outputs = Vec::new();
         let mut any_failed = false;
 
@@ -343,7 +359,7 @@ impl WorkflowExecutor {
                             let max_retries = step.on_failure.max_retries;
                             let mut succeeded = false;
                             for attempt in 1..=max_retries {
-                                let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1));
+                                let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1).min(63));
                                 warn!("[WF_EXECUTOR] Loop step '{}' iteration {} retry {}/{} in {}ms", step.id, idx, attempt, max_retries, delay_ms);
                                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                                 let retry_input = substitute_value(&step.input, &loop_ctx_vars);
@@ -396,7 +412,7 @@ impl WorkflowExecutor {
         let mut last_error = String::new();
         for attempt in 0..=max_retries {
             if attempt > 0 {
-                let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1));
+                let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1).min(63));
                 warn!(
                     "[WF_EXECUTOR] Retrying step '{}' (attempt {}/{}) in {}ms",
                     step.id, attempt, max_retries, delay_ms
@@ -467,7 +483,7 @@ impl WorkflowExecutor {
 
                 for attempt in 0..=max_retries {
                     if attempt > 0 {
-                        let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1));
+                        let delay_ms = 1000u64 * 2u64.pow(attempt.saturating_sub(1).min(63));
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                     }
                     match dispatch.invoke(&step.capability, input.clone()).await {
