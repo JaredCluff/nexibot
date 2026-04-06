@@ -45,7 +45,7 @@ export interface AgentConfigEntry {
   system_prompt?: string;
   is_default: boolean;
   channel_bindings: Array<{ channel: string; peer_id: string | null }>;
-  capabilities: Array<{ name: string; enabled: boolean; config?: Record<string, unknown> }>;
+  capabilities: Array<{ name: string; category: string; description: string }>;
   workspace?: Record<string, unknown>;
 }
 

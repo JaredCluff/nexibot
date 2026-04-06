@@ -947,7 +947,7 @@ impl NotificationDispatcher {
             warn!("[NOTIFY] Telegram token not configured");
             return;
         }
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
         let body = serde_json::json!({
             "chat_id": chat_id,
@@ -1003,7 +1003,7 @@ impl NotificationDispatcher {
             warn!("[NOTIFY] Discord token not configured");
             return;
         }
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         let url = format!(
             "https://discord.com/api/v10/channels/{}/messages",
             channel_id
@@ -1050,7 +1050,7 @@ impl NotificationDispatcher {
             warn!("[NOTIFY] Slack token not configured");
             return;
         }
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         let body = serde_json::json!({
             "channel": channel_id,
             "text": message,
@@ -1124,7 +1124,7 @@ impl NotificationDispatcher {
             "text": { "body": message }
         });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client
             .post(&url)
             .bearer_auth(access_token)
@@ -1180,7 +1180,7 @@ impl NotificationDispatcher {
             "message": message,
         });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client
             .post(&url)
             .header("Authorization", format!("Bearer {}", bot_token))
@@ -1212,7 +1212,7 @@ impl NotificationDispatcher {
 
     async fn send_google_chat(&self, webhook_url: &str, message: &str) {
         let body = serde_json::json!({ "text": message });
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client.post(webhook_url).json(&body).send().await {
             Ok(r) if r.status().is_success() => {
                 info!("[NOTIFY] Google Chat notification sent");
@@ -1255,7 +1255,7 @@ impl NotificationDispatcher {
             "tempGuid": temp_guid,
         });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client.post(&url).json(&body).send().await {
             Ok(r) if r.status().is_success() => {
                 info!("[NOTIFY] BlueBubbles notification sent to {}", chat_guid);
@@ -1283,7 +1283,7 @@ impl NotificationDispatcher {
             "message": { "text": message },
         });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client
             .post(url)
             .bearer_auth(page_access_token)
@@ -1326,7 +1326,7 @@ impl NotificationDispatcher {
             "message": { "text": message },
         });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client
             .post(&url)
             .bearer_auth(access_token)
@@ -1361,7 +1361,7 @@ impl NotificationDispatcher {
                 "text": message,
             }],
         });
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client
             .post("https://api.line.me/v2/bot/message/push")
             .header("Authorization", format!("Bearer {}", channel_access_token))
@@ -1394,7 +1394,7 @@ impl NotificationDispatcher {
             account_sid
         );
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         match client
             .post(&url)
             .basic_auth(account_sid, Some(auth_token))

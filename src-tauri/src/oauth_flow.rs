@@ -434,7 +434,7 @@ async fn exchange_anthropic_code(
 ) -> Result<OAuthResult> {
     info!("[OAUTH] Exchanging authorization code for tokens");
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     // Use Claude CLI's client ID
     let client_id = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -536,7 +536,7 @@ fn build_google_oauth_url(callback_url: &str, state: &str, code_challenge: &str)
 async fn exchange_google_code(code: &str, code_verifier: &str, callback_url: &str) -> Result<OAuthResult> {
     info!("[OAUTH] Exchanging Google authorization code for tokens");
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     let response = client
         .post("https://oauth2.googleapis.com/token")

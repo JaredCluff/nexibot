@@ -81,7 +81,7 @@ pub async fn get_supported_connectors(
 ) -> Result<Vec<ConnectorMeta>, String> {
     let (base, token) = kn_api_creds(&state).await?;
     let url = format!("{base}/connectors/supported");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .get(&url)
         .bearer_auth(&token)
@@ -110,7 +110,7 @@ pub async fn start_connector_oauth(
 ) -> Result<String, String> {
     let (base, token) = kn_api_creds(&state).await?;
     let url = format!("{base}/connectors/oauth/start");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post(&url)
         .bearer_auth(&token)
@@ -150,7 +150,7 @@ pub async fn poll_connector_status(
     let (base, token) = kn_api_creds(&state).await?;
     let safe_id = encode_path_segment(&connector_id);
     let url = format!("{base}/connectors/{safe_id}/sync-status");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .get(&url)
         .bearer_auth(&token)
@@ -174,7 +174,7 @@ pub async fn list_user_connectors(
 ) -> Result<Vec<UserConnector>, String> {
     let (base, token) = kn_api_creds(&state).await?;
     let url = format!("{base}/connectors/");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .get(&url)
         .bearer_auth(&token)
@@ -203,7 +203,7 @@ pub async fn delete_connector(
     let (base, token) = kn_api_creds(&state).await?;
     let safe_id = encode_path_segment(&connector_id);
     let url = format!("{base}/connectors/{safe_id}");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .delete(&url)
         .bearer_auth(&token)

@@ -131,7 +131,7 @@ pub async fn send_telegram_test_message(state: State<'_, AppState>) -> Result<St
         "parse_mode": "Markdown"
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post(&url)
         .json(&body)

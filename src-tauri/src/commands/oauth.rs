@@ -204,7 +204,7 @@ pub async fn complete_oauth_flow(
     }
 
     // Exchange code for tokens
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let client_id = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
     let redirect_uri = "https://console.anthropic.com/oauth/code/callback";
 
@@ -661,7 +661,7 @@ pub async fn start_openai_device_flow(
 ) -> Result<OpenAIDeviceFlowResponse, String> {
     info!("[OAUTH] Starting OpenAI device code flow (Codex-style)");
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let response = client
         .post(format!("{}/api/accounts/deviceauth/usercode", OPENAI_AUTH_BASE))
         .header("Content-Type", "application/json")
@@ -757,7 +757,7 @@ pub async fn poll_openai_device_flow(
     }
 
     // Step 2: Poll for authorization code
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let response = client
         .post(format!("{}/api/accounts/deviceauth/token", OPENAI_AUTH_BASE))
         .header("Content-Type", "application/json")

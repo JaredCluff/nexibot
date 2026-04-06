@@ -77,7 +77,7 @@ impl SttBackend for DeepgramStt {
             bytes.extend_from_slice(&sample.to_le_bytes());
         }
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
         // Call Deepgram Nova-3 API
         let response = client
@@ -176,7 +176,7 @@ impl SttBackend for OpenAIStt {
             .part("file", part)
             .text("model", "gpt-4o-transcribe");
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
         // Call OpenAI Audio API
         let response = client
