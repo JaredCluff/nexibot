@@ -549,14 +549,17 @@ async fn incremental_sync(
     access_token: &str,
     since: &str,
 ) -> Result<SyncResponse> {
-    let url = format!(
-        "{}/_matrix/client/v3/sync?since={}&timeout=30000",
-        homeserver_url.trim_end_matches('/'),
-        since
+    // Build URL with query() so reqwest percent-encodes `since`; raw string
+    // interpolation would allow a malicious homeserver to inject extra
+    // query params via a crafted next_batch token.
+    let base = format!(
+        "{}/_matrix/client/v3/sync",
+        homeserver_url.trim_end_matches('/')
     );
 
     let response = client
-        .get(&url)
+        .get(&base)
+        .query(&[("since", since), ("timeout", "30000")])
         .header("Authorization", format!("Bearer {}", access_token))
         .timeout(std::time::Duration::from_secs(60))
         .send()
