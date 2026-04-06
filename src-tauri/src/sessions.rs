@@ -453,6 +453,7 @@ impl SessionManager {
         inbox.push_back(msg.clone());
         while inbox.len() > MAX_INBOX_SIZE {
             inbox.pop_front();
+            warn!("[SESSION] Inbox for '{}' exceeded MAX_INBOX_SIZE ({}); oldest message evicted", to_id, MAX_INBOX_SIZE);
         }
 
         // Persist the message

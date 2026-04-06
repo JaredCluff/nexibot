@@ -197,18 +197,27 @@ fn collect_files_recursive(
         }
         let entry = entry?;
         let path = entry.path();
-        // Skip symlinks to prevent traversal outside skill directory
-        if path.is_symlink() {
-            continue;
-        }
-        // Skip the integrity manifest itself
-        if path.file_name().and_then(|n| n.to_str()) == Some(".integrity.json") {
-            continue;
-        }
-        if path.is_dir() {
-            collect_files_recursive(&path, out, depth + 1, max_depth, max_files)?;
-        } else if path.is_file() {
-            out.push(path);
+        // Use entry.metadata() (lstat semantics — does not follow symlinks) to
+        // atomically inspect the entry's type. Separate is_symlink()/is_dir()/
+        // is_file() calls on `path` each issue a fresh syscall, creating a TOCTOU
+        // window where the path could be swapped between checks.
+        match entry.metadata() {
+            Ok(meta) => {
+                // Skip symlinks to prevent traversal outside skill directory
+                if meta.is_symlink() {
+                    continue;
+                }
+                // Skip the integrity manifest itself
+                if path.file_name().and_then(|n| n.to_str()) == Some(".integrity.json") {
+                    continue;
+                }
+                if meta.is_dir() {
+                    collect_files_recursive(&path, out, depth + 1, max_depth, max_files)?;
+                } else if meta.is_file() {
+                    out.push(path);
+                }
+            }
+            Err(_) => continue, // Skip entries whose metadata is unavailable
         }
     }
     Ok(())

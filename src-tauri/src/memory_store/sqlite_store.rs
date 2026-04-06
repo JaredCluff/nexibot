@@ -470,32 +470,56 @@ impl SqliteMemoryStore {
             })
     }
 
-    /// Brute-force vector search: loads all embeddings, computes cosine similarity,
-    /// returns top results above the similarity threshold.
+    /// Brute-force vector search: loads only id+embedding for all records that have
+    /// embeddings, scores them via cosine similarity, then loads full records only for
+    /// the top-K matches.
     ///
-    /// For NexiBot's scale (max 50K memories), brute-force over BLOB-stored vectors
-    /// is fast enough (~10ms for 50K 384-dim vectors). No ANN indexing needed.
+    /// Two-phase approach avoids materialising full text content and metadata for all
+    /// 50K records (~hundreds of MB), instead only loading embedding blobs in Phase 1
+    /// (~75 MB for 50K × 384-dim × 4 bytes). Full records are fetched only for the
+    /// final top-K results.
     pub fn vector_search(
         &self,
         query_embedding: &[f32],
         limit: usize,
         min_similarity: f64,
     ) -> Result<Vec<(MemoryRecord, f64)>> {
-        let all = self.get_all()?;
-        let mut scored: Vec<(MemoryRecord, f64)> = all
-            .into_iter()
-            .filter_map(|record| {
-                record.embedding.as_ref().map(|emb| {
-                    let sim = super::hybrid_search::cosine_similarity(query_embedding, emb);
-                    (record.clone(), sim)
-                })
+        // Phase 1: load id + embedding blob only (WHERE embedding IS NOT NULL skips
+        // records without embeddings, reducing unnecessary I/O further).
+        let mut stmt = self.conn.prepare(
+            "SELECT id, embedding FROM memories WHERE embedding IS NOT NULL",
+        )?;
+
+        let mut scored: Vec<(String, f64)> = stmt
+            .query_map([], |row| {
+                let id: String = row.get(0)?;
+                let blob: Vec<u8> = row.get(1)?;
+                Ok((id, blob))
+            })?
+            .filter_map(|r| r.ok())
+            .filter_map(|(id, blob)| {
+                if blob.len() % 4 != 0 {
+                    return None;
+                }
+                let emb: Vec<f32> = blob
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
+                let sim = super::hybrid_search::cosine_similarity(query_embedding, &emb);
+                if sim > min_similarity { Some((id, sim)) } else { None }
             })
-            .filter(|(_, sim)| *sim > min_similarity)
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(limit);
-        Ok(scored)
+
+        // Phase 2: load full records for top-K results only.
+        let results = scored
+            .into_iter()
+            .filter_map(|(id, sim)| self.get_by_id(&id).map(|record| (record, sim)))
+            .collect();
+
+        Ok(results)
     }
 
     /// Persist — no-op with WAL mode (writes are already durable).
