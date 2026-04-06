@@ -176,7 +176,7 @@ impl ApnsClient {
         let provider_token = self.provider_token().await?;
         let payload = build_payload(notification, extra_data);
 
-        let url = format!("{}/3/device/{}", APNS_HOST, device_token);
+        let url = format!("{}/3/device/{}", APNS_HOST, urlencoding::encode(device_token));
 
         let response = self
             .http
