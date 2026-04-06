@@ -870,6 +870,14 @@ impl NexiBotConfig {
                 continue;
             }
 
+            // Reject symlinks to prevent information disclosure via symlink following
+            if let Ok(meta) = std::fs::symlink_metadata(backup) {
+                if meta.file_type().is_symlink() {
+                    tracing::warn!("[CONFIG] Backup {:?} is a symlink, skipping", backup);
+                    continue;
+                }
+            }
+
             tracing::info!(
                 "[CONFIG] Found backup at {:?}, attempting restore...",
                 backup

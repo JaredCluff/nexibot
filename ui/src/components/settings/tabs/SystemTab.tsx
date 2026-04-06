@@ -404,7 +404,7 @@ export function SystemTab() {
               <button disabled={testingHeartbeat} onClick={async () => {
                 setTestingHeartbeat(true);
                 try {
-                  const result = await invoke<{ status: string }>('trigger_heartbeat');
+                  const result = await invoke<{ timestamp: string; actions_performed: unknown[]; messages: string[]; actions_taken: boolean }>('trigger_heartbeat');
                   notifyInfo('Heartbeat', `Result: ${JSON.stringify(result)}`);
                 } catch (error) {
                   notifyError('Heartbeat', `Heartbeat failed: ${error}`);

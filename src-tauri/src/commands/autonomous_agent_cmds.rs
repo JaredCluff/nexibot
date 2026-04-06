@@ -19,6 +19,9 @@ use crate::agent_engine::workflow_spec::{AgentRunStatus, AgentSummary, WorkflowS
 
 // ── Active run registry ───────────────────────────────────────────────────────
 
+/// Maximum number of terminal (completed/failed/cancelled) runs retained.
+const MAX_FINISHED_AGENT_RUNS: usize = 500;
+
 /// In-memory registry of active and recently completed agent runs.
 /// Stored in AppState as `agent_run_registry`.
 pub struct AgentRunRegistry {
@@ -34,6 +37,7 @@ impl AgentRunRegistry {
 
     pub fn insert(&mut self, run: AgentRunStatus) {
         self.runs.insert(run.run_id.clone(), run);
+        self.evict_finished();
     }
 
     pub fn get(&self, run_id: &str) -> Option<&AgentRunStatus> {
@@ -42,6 +46,26 @@ impl AgentRunRegistry {
 
     pub fn update(&mut self, run: AgentRunStatus) {
         self.runs.insert(run.run_id.clone(), run);
+        self.evict_finished();
+    }
+
+    /// Evict oldest terminal runs when over the cap.
+    fn evict_finished(&mut self) {
+        let terminal = ["completed", "failed", "cancelled"];
+        let finished_count = self.runs.values()
+            .filter(|r| terminal.contains(&r.status.as_str()))
+            .count();
+        if finished_count > MAX_FINISHED_AGENT_RUNS {
+            let mut finished: Vec<_> = self.runs.iter()
+                .filter(|(_, r)| terminal.contains(&r.status.as_str()))
+                .map(|(k, r)| (k.clone(), r.started_at.unwrap_or(0)))
+                .collect();
+            finished.sort_by_key(|(_, ts)| *ts);
+            let evict_count = finished_count - MAX_FINISHED_AGENT_RUNS;
+            for (id, _) in finished.into_iter().take(evict_count) {
+                self.runs.remove(&id);
+            }
+        }
     }
 }
 
