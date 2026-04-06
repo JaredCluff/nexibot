@@ -1027,17 +1027,29 @@ impl Guardrails {
     /// Check a command string for catastrophic patterns (non-bypassable)
     fn check_hard_guard_command(cmd: &str) -> Option<String> {
         let cmd_lower = cmd.to_lowercase();
+
+        // Normalize runs of whitespace to a single space so that "rm  -rf /" (double
+        // space) or tab-separated variants don't bypass pattern matching.
+        let cmd_norm: String = cmd_lower
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
         let catastrophic_patterns = [
+            // Standard flag order
             ("rm -rf /", "Catastrophic: root filesystem deletion"),
-            (
-                "rm -rf /*",
-                "Catastrophic: root filesystem wildcard deletion",
-            ),
+            ("rm -rf /*", "Catastrophic: root filesystem wildcard deletion"),
             ("rm -fr /", "Catastrophic: root filesystem deletion"),
-            (
-                "rm -fr /*",
-                "Catastrophic: root filesystem wildcard deletion",
-            ),
+            ("rm -fr /*", "Catastrophic: root filesystem wildcard deletion"),
+            // Split-flag forms: -r -f or -f -r
+            ("rm -r -f /", "Catastrophic: root filesystem deletion"),
+            ("rm -f -r /", "Catastrophic: root filesystem deletion"),
+            ("rm -r -f /*", "Catastrophic: root filesystem wildcard deletion"),
+            ("rm -f -r /*", "Catastrophic: root filesystem wildcard deletion"),
+            // Long-form flags
+            ("rm --recursive --force /", "Catastrophic: root filesystem deletion"),
+            ("rm --force --recursive /", "Catastrophic: root filesystem deletion"),
+            // Other catastrophic patterns
             ("mkfs.", "Catastrophic: filesystem format command"),
             (":(){ :|:& };:", "Catastrophic: fork bomb"),
             ("> /dev/sda", "Catastrophic: raw device write"),
@@ -1045,16 +1057,16 @@ impl Guardrails {
         ];
 
         for (pattern, reason) in &catastrophic_patterns {
-            if cmd_lower.contains(pattern) {
+            if cmd_norm.contains(pattern) {
                 return Some(format!("HARD GUARD: {}", reason));
             }
         }
 
-        // Check dd to raw devices
-        if cmd_lower.contains("dd ")
-            && (cmd_lower.contains("of=/dev/sd")
-                || cmd_lower.contains("of=/dev/hd")
-                || cmd_lower.contains("of=/dev/nvme"))
+        // Check dd to raw devices (already whitespace-normalized)
+        if cmd_norm.contains("dd ")
+            && (cmd_norm.contains("of=/dev/sd")
+                || cmd_norm.contains("of=/dev/hd")
+                || cmd_norm.contains("of=/dev/nvme"))
         {
             return Some("HARD GUARD: Catastrophic: direct disk write via dd".to_string());
         }
