@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use tracing::{info, warn};
 
 use crate::memory::{MemoryManager, MemoryType};
+use crate::security::external_content;
 
 /// Get the tool definition to pass to Claude alongside MCP and settings tools.
 pub fn nexibot_memory_tool_definition() -> Value {
@@ -107,11 +108,15 @@ pub fn execute_memory_tool(input: &Value, memory_manager: &mut MemoryManager) ->
                     query
                 );
                 for (i, memory) in results.iter().enumerate().take(10) {
+                    let wrapped = external_content::wrap_external_content(
+                        &memory.content,
+                        &format!("recalled-memory-{}", memory.id),
+                    );
                     output.push_str(&format!(
                         "{}. [{}] {} (tags: {})\n",
                         i + 1,
                         format!("{:?}", memory.memory_type).to_lowercase(),
-                        memory.content,
+                        wrapped,
                         if memory.tags.is_empty() {
                             "none".to_string()
                         } else {
@@ -139,7 +144,8 @@ pub fn execute_memory_tool(input: &Value, memory_manager: &mut MemoryManager) ->
             if !preferences.is_empty() {
                 output.push_str(&format!("Preferences ({}):\n", preferences.len()));
                 for pref in preferences.iter().take(20) {
-                    output.push_str(&format!("  - {}\n", pref.content));
+                    let wrapped = external_content::wrap_external_content(&pref.content, &format!("memory-{}", pref.id));
+                    output.push_str(&format!("  - {}\n", wrapped));
                 }
                 output.push('\n');
             }
@@ -147,7 +153,8 @@ pub fn execute_memory_tool(input: &Value, memory_manager: &mut MemoryManager) ->
             if !facts.is_empty() {
                 output.push_str(&format!("Facts ({}):\n", facts.len()));
                 for fact in facts.iter().take(20) {
-                    output.push_str(&format!("  - {}\n", fact.content));
+                    let wrapped = external_content::wrap_external_content(&fact.content, &format!("memory-{}", fact.id));
+                    output.push_str(&format!("  - {}\n", wrapped));
                 }
                 output.push('\n');
             }
@@ -155,7 +162,8 @@ pub fn execute_memory_tool(input: &Value, memory_manager: &mut MemoryManager) ->
             if !contexts.is_empty() {
                 output.push_str(&format!("Context ({}):\n", contexts.len()));
                 for ctx in contexts.iter().take(20) {
-                    output.push_str(&format!("  - {}\n", ctx.content));
+                    let wrapped = external_content::wrap_external_content(&ctx.content, &format!("memory-{}", ctx.id));
+                    output.push_str(&format!("  - {}\n", wrapped));
                 }
             }
 

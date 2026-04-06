@@ -123,8 +123,8 @@ export interface TaskExecutionResult {
 // ---------------------------------------------------------------------------
 
 export interface SkillMetadata {
-  name: string;
-  description: string;
+  name: string | null;        // Option<String> in Rust
+  description: string | null; // Option<String> in Rust
   user_invocable: boolean;
 }
 
