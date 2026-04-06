@@ -708,7 +708,7 @@ async fn send_google_chat_message_checked(
     }
 
     let body = serde_json::json!({ "text": text });
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     match client.post(&webhook_url).json(&body).send().await {
         Ok(resp) if resp.status().is_success() => {

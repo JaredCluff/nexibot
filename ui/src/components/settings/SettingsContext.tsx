@@ -57,6 +57,11 @@ export interface NexiBotConfig {
     fallback_model?: string;
     max_tokens: number;
     system_prompt: string;
+    auto_compact_threshold: number;
+    auto_compact_enabled: boolean;
+    max_history_messages: number;
+    max_history_age_days?: number;
+    max_session_age_days?: number;
   };
   k2k: {
     enabled: boolean;

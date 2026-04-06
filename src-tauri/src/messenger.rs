@@ -653,7 +653,7 @@ async fn send_messenger_message_checked(
         "message": { "text": text },
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     match client
         .post(url)
         .bearer_auth(page_access_token)
