@@ -336,6 +336,16 @@ impl AuthProfileManager {
             .filter(|p| p.provider == provider)
             .collect()
     }
+
+    /// List all profiles across all providers (immutable)
+    pub fn all_profiles(&self) -> &[AuthProfile] {
+        &self.profiles
+    }
+
+    /// List all profiles across all providers (mutable)
+    pub fn all_profiles_mut(&mut self) -> &mut Vec<AuthProfile> {
+        &mut self.profiles
+    }
 }
 
 #[cfg(test)]

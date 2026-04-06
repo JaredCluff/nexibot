@@ -47,12 +47,15 @@ pub async fn add_oauth_profile(
     Ok(())
 }
 
-/// List OAuth profiles for a provider
+/// List OAuth profiles — optionally filtered by provider.
+/// When provider is omitted, returns all profiles across all providers.
 #[tauri::command]
-pub async fn list_oauth_profiles(provider: String) -> Result<Vec<AuthProfile>, String> {
+pub async fn list_oauth_profiles(provider: Option<String>) -> Result<Vec<AuthProfile>, String> {
     let manager = AuthProfileManager::load().map_err(|e| e.to_string())?;
-    let profiles = manager.list_profiles(&provider);
-    Ok(profiles.into_iter().cloned().collect())
+    match provider.as_deref() {
+        Some(p) => Ok(manager.list_profiles(p).into_iter().cloned().collect()),
+        None => Ok(manager.all_profiles().to_vec()),
+    }
 }
 
 /// Remove an OAuth profile
@@ -517,12 +520,18 @@ fn extract_claude_tokens_from_credentials_file() -> anyhow::Result<oauth_flow::O
     })
 }
 
-/// Get OAuth authentication status
+/// Get OAuth authentication status — optionally filtered by provider.
+/// When provider is omitted, returns the status of the first available profile.
 #[tauri::command]
-pub async fn get_oauth_status(provider: String) -> Result<Option<OAuthStatus>, String> {
+pub async fn get_oauth_status(provider: Option<String>) -> Result<Option<OAuthStatus>, String> {
     let mut manager = AuthProfileManager::load().map_err(|e| e.to_string())?;
 
-    if let Some(profile) = manager.get_default_profile(&provider) {
+    let profile = match provider.as_deref() {
+        Some(p) => manager.get_default_profile(p),
+        None => manager.all_profiles_mut().first_mut(),
+    };
+
+    if let Some(profile) = profile {
         Ok(Some(OAuthStatus {
             provider: profile.provider.clone(),
             profile_name: profile.profile_name.clone(),
