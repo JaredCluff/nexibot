@@ -119,8 +119,20 @@ function toolDisplayName(toolName: string): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const MAX_MESSAGES = 1000;
+
 function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessagesRaw] = useState<Message[]>([]);
+  // Capped setter — keeps only the most recent MAX_MESSAGES entries.
+  const setMessages = useCallback(
+    (updater: Message[] | ((prev: Message[]) => Message[])) => {
+      setMessagesRaw((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        return next.length > MAX_MESSAGES ? next.slice(next.length - MAX_MESSAGES) : next;
+      });
+    },
+    []
+  );
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);

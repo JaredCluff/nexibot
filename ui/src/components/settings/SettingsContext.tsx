@@ -949,7 +949,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setSoulTemplates(templates);
     } catch { /* not critical */ }
     try {
-      const soul = await invoke<{ content: string }>('get_soul');
+      const soul = await invoke<{ path: string; content: string; last_modified: string; version: string }>('get_soul');
       setCurrentSoul(soul.content || '');
     } catch { /* not critical */ }
     try {
