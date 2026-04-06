@@ -157,7 +157,9 @@ pub async fn revoke_yolo_mode(
 ) -> Result<YoloCmdResult, String> {
     let mgr = &state.yolo_manager;
     let status = mgr.revoke().await;
-    if let Err(e) = app.emit("yolo:revoked", &status) {
+    // Emit with unit payload — the TypeScript listener does not use the payload,
+    // and main.rs also emits yolo:revoked with (). Keep both sites consistent.
+    if let Err(e) = app.emit("yolo:revoked", ()) {
         warn!("[YOLO_CMD] Failed to emit yolo:revoked: {}", e);
     }
     info!("[YOLO_CMD] Revoked");
