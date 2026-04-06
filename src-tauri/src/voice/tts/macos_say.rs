@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::process::Command;
 use tracing::{debug, info};
+use tokio::task;
 
 use super::TtsBackend;
 use crate::platform;
@@ -98,38 +99,50 @@ impl TtsBackend for MacOsSayTts {
 
         debug!("[TTS] Synthesizing with macOS say: {}", text);
 
-        // Create temp file for audio output (WAV format for rodio compatibility)
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join(format!("nexibot_tts_{}.wav", uuid::Uuid::new_v4()));
+        let voice = self.voice.clone();
+        let rate = self.rate;
+        let text_owned = text.to_string();
 
-        // Call say command to generate WAV audio file directly
-        // Using --file-format=WAVE and --data-format=LEI16@16000 for 16-bit PCM WAV at 16kHz
-        let status = Command::new("say")
-            .arg("-v")
-            .arg(&self.voice)
-            .arg("-r")
-            .arg(self.rate.to_string())
-            .arg("-o")
-            .arg(&temp_file)
-            .arg("--file-format=WAVE")
-            .arg("--data-format=LEI16@16000")
-            .arg(text)
-            .status()
-            .context("Failed to execute say command")?;
+        // Run in spawn_blocking: `say` is a synchronous child process that can take
+        // several seconds; blocking the async executor would stall voice pipeline tasks.
+        let audio_bytes = task::spawn_blocking(move || -> Result<Vec<u8>> {
+            // Create temp file for audio output (WAV format for rodio compatibility)
+            let temp_dir = std::env::temp_dir();
+            let temp_file = temp_dir.join(format!("nexibot_tts_{}.wav", uuid::Uuid::new_v4()));
 
-        if !status.success() {
-            return Err(anyhow::anyhow!(
-                "say command failed with status: {}",
-                status
-            ));
-        }
+            // Call say command to generate WAV audio file directly
+            // Using --file-format=WAVE and --data-format=LEI16@16000 for 16-bit PCM WAV at 16kHz
+            let status = Command::new("say")
+                .arg("-v")
+                .arg(&voice)
+                .arg("-r")
+                .arg(rate.to_string())
+                .arg("-o")
+                .arg(&temp_file)
+                .arg("--file-format=WAVE")
+                .arg("--data-format=LEI16@16000")
+                .arg(&text_owned)
+                .status()
+                .context("Failed to execute say command")?;
 
-        // Read the generated audio file
-        let audio_bytes =
-            std::fs::read(&temp_file).context("Failed to read generated audio file")?;
+            if !status.success() {
+                return Err(anyhow::anyhow!(
+                    "say command failed with status: {}",
+                    status
+                ));
+            }
 
-        // Clean up temp file
-        let _ = std::fs::remove_file(&temp_file);
+            // Read the generated audio file
+            let bytes =
+                std::fs::read(&temp_file).context("Failed to read generated audio file")?;
+
+            // Clean up temp file
+            let _ = std::fs::remove_file(&temp_file);
+
+            Ok(bytes)
+        })
+        .await
+        .context("TTS task panicked")??;
 
         info!("[TTS] Generated {} bytes of audio", audio_bytes.len());
 

@@ -99,9 +99,18 @@ impl SttBackend for DeepgramStt {
 
         let result: serde_json::Value = response.json().await?;
 
-        // Extract transcript
-        let transcript = result["results"]["channels"][0]["alternatives"][0]["transcript"]
-            .as_str()
+        // Extract transcript using safe .get() chaining to avoid silent index panics.
+        // Deepgram nests: results.channels[0].alternatives[0].transcript
+        let transcript = result
+            .get("results")
+            .and_then(|r| r.get("channels"))
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|c| c.get("alternatives"))
+            .and_then(|a| a.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|a| a.get("transcript"))
+            .and_then(|t| t.as_str())
             .unwrap_or("")
             .to_string();
 

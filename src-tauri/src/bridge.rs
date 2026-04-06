@@ -315,7 +315,16 @@ impl BridgeManager {
         let pid = child.id();
         info!("[BRIDGE] Bridge service started with PID: {}", pid);
 
-        *self.process.write().await = Some(child);
+        // Drain any previously-stored child before overwriting, in case
+        // kill_existing_process() missed it on a prior restart attempt.
+        {
+            let mut proc = self.process.write().await;
+            if let Some(mut old_child) = proc.take() {
+                let _ = old_child.kill();
+                let _ = old_child.wait();
+            }
+            *proc = Some(child);
+        }
 
         // Wait for bridge to be ready (retry health check a few times)
         for attempt in 1..=5 {
