@@ -56,8 +56,14 @@ impl OpenAICompatibleClient {
         api_key: &str,
         base_url: &str,
         max_tokens: usize,
-    ) -> Self {
-        Self {
+    ) -> anyhow::Result<Self> {
+        crate::security::ssrf::validate_outbound_request(
+            base_url,
+            &crate::security::ssrf::SsrfPolicy::default(),
+            &[],
+        )
+        .map_err(|e| anyhow::anyhow!("base_url SSRF check failed: {}", e))?;
+        Ok(Self {
             model_id: model_id.to_string(),
             provider,
             api_key: api_key.to_string(),
@@ -69,7 +75,7 @@ impl OpenAICompatibleClient {
             max_tokens,
             use_bridge: false,
             bridge_url: String::new(),
-        }
+        })
     }
 
     fn build_openai_messages(system_prompt: &str, messages: &[Message]) -> Vec<serde_json::Value> {

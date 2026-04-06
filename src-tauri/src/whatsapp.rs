@@ -565,7 +565,10 @@ async fn send_whatsapp_message_checked(app_state: &AppState, to: &str, text: &st
         "text": { "body": text }
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     match client
         .post(&url)
         .bearer_auth(&access_token)

@@ -393,7 +393,7 @@ export interface VaultEntry {
 export interface WebhookEndpoint {
   id: string;
   name: string;
-  action: string;
+  action: 'TriggerTask' | 'SendMessage';
   target: string;
 }
 
