@@ -27,6 +27,7 @@ interface SecurityAuditReport {
   findings: SecurityAuditFinding[];
   passed_count: number;
   total_checks: number;
+  timestamp: string;
 }
 import AutonomousModePanel from '../../AutonomousModePanel';
 

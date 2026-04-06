@@ -84,6 +84,21 @@ pub async fn add_webhook_endpoint(
     action: String,
     target: String,
 ) -> Result<WebhookEndpoint, String> {
+    const MAX_NAME_LEN: usize = 256;
+    const MAX_TARGET_LEN: usize = 4096;
+    if name.is_empty() || name.len() > MAX_NAME_LEN {
+        return Err(format!(
+            "Endpoint name must be 1–{} characters",
+            MAX_NAME_LEN
+        ));
+    }
+    if target.is_empty() || target.len() > MAX_TARGET_LEN {
+        return Err(format!(
+            "Endpoint target must be 1–{} characters",
+            MAX_TARGET_LEN
+        ));
+    }
+
     let webhook_action = match action.to_lowercase().as_str() {
         "trigger_task" | "triggertask" => WebhookAction::TriggerTask,
         "send_message" | "sendmessage" => WebhookAction::SendMessage,
