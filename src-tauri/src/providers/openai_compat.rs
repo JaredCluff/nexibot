@@ -217,7 +217,14 @@ impl LlmClient for OpenAICompatibleClient {
             }
 
             let resp: serde_json::Value = response.json().await?;
-            let choice = &resp["choices"][0];
+            // Use .get()/.first() instead of direct indexing: resp["choices"][0] panics
+            // if "choices" is absent or the array is empty (e.g., streaming-interrupted
+            // or error body masquerading as 200).
+            let choice = resp
+                .get("choices")
+                .and_then(|c| c.as_array())
+                .and_then(|arr| arr.first())
+                .ok_or_else(|| anyhow::anyhow!("Empty or missing 'choices' in API response"))?;
             let text = choice["message"]["content"]
                 .as_str()
                 .unwrap_or("")

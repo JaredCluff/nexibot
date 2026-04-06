@@ -102,7 +102,11 @@ impl LlmClient for OllamaClient {
         }
 
         let resp: serde_json::Value = response.json().await?;
-        let choice = &resp["choices"][0];
+        let choice = resp
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .ok_or_else(|| anyhow::anyhow!("Empty or missing 'choices' in Ollama response"))?;
         let text = choice["message"]["content"]
             .as_str()
             .unwrap_or("")

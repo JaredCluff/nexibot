@@ -473,9 +473,15 @@ export interface HeartbeatConfig {
 // Bridge status
 // ---------------------------------------------------------------------------
 
-export interface BridgeStatus {
-  status: string;
-}
+// Matches Rust enum BridgeStatus in bridge.rs (unit variants serialize as strings,
+// Error(String) variant serializes as { Error: string })
+export type BridgeStatus =
+  | 'NotInstalled'
+  | 'Stopped'
+  | 'Starting'
+  | 'Running'
+  | 'Unhealthy'
+  | { Error: string };
 
 // ---------------------------------------------------------------------------
 // Smart Key Vault

@@ -1007,7 +1007,10 @@ impl MemoryManager {
             return String::new();
         }
 
-        let mut context = String::from("# Memory Context\n\n");
+        // Boundary markers signal to the model that the following content is
+        // user-controlled and may contain adversarial prompts (second-order
+        // prompt injection defense, consistent with soul.rs).
+        let mut context = String::from("# Memory Context\n\n<MEMORY_CONTENT>\n");
         context.push_str("I have access to the following remembered information:\n\n");
 
         // Get preferences
@@ -1040,6 +1043,7 @@ impl MemoryManager {
             context.push('\n');
         }
 
+        context.push_str("</MEMORY_CONTENT>\n");
         context
     }
 
@@ -1058,7 +1062,7 @@ impl MemoryManager {
             return self.get_memory_context(max_entries);
         }
 
-        let mut context = String::from("# Relevant Memory Context\n\n");
+        let mut context = String::from("# Relevant Memory Context\n\n<MEMORY_CONTENT>\n");
 
         for (entry, score) in &results {
             let type_label = match entry.memory_type {
@@ -1074,7 +1078,7 @@ impl MemoryManager {
             context.push('\n');
         }
 
-        context.push('\n');
+        context.push_str("</MEMORY_CONTENT>\n\n");
         context
     }
 }
