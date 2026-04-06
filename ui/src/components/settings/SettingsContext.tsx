@@ -33,6 +33,32 @@ export interface SandboxConfig {
   apparmor_profile?: string;
 }
 
+export interface AgentConfigEntry {
+  id: string;
+  name: string;
+  avatar?: string;
+  model?: string;
+  primary_model?: string;
+  backup_model?: string;
+  provider?: string;
+  soul_path?: string;
+  system_prompt?: string;
+  is_default: boolean;
+  channel_bindings: Array<{ channel: string; channel_id?: string }>;
+  capabilities: Array<{ name: string; enabled: boolean; config?: Record<string, unknown> }>;
+  workspace?: Record<string, unknown>;
+}
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  schedule: string;
+  prompt: string;
+  enabled: boolean;
+  run_if_missed: boolean;
+  last_run?: string;
+}
+
 export interface NexiBotConfig {
   config_version: number;
   claude: {
@@ -501,6 +527,35 @@ export interface NexiBotConfig {
     model: string;
     backup_model?: string;
   };
+  agents: AgentConfigEntry[];
+  scheduled_tasks: {
+    enabled: boolean;
+    tasks: ScheduledTask[];
+  };
+  yolo_mode: {
+    default_duration_secs?: number;
+    allow_model_request: boolean;
+  };
+  session_encryption: {
+    enabled: boolean;
+    passphrase_keyring_key?: string;
+  };
+  lsp: {
+    servers: Record<string, { command: string; args: string[]; extensions: string[] }>;
+  };
+  network_policy: {
+    version: number;
+    default_action: 'Deny' | 'Allow';
+    endpoints: Record<string, { hosts: string[]; ports: number[]; allowed_methods: string[] }>;
+  };
+  managed_policy: {
+    enabled: boolean;
+    kn_server_url: string;
+    service_token?: string;
+  };
+  external_skill_dirs: string[];
+  auto_discover_formats: string[];
+  agent_engine_url?: string;
   gateway: GatewayConfig;
   sandbox: SandboxConfig;
   key_vault: {
