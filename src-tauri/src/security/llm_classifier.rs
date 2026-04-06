@@ -73,7 +73,11 @@ impl LlmClassifier {
             timeout: Duration::from_secs(5),
             api_key,
             model: "claude-haiku-4-5-20251001".to_string(),
-            http_client: reqwest::Client::new(),
+            http_client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
     }
 
