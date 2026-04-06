@@ -195,7 +195,8 @@ pub async fn execute_execute_tool(
         action,
         timeout_ms,
         if command.len() > 100 {
-            format!("{}...", &command[..100])
+            let b = command.char_indices().take_while(|(i, _)| *i < 100).last().map(|(i, c)| i + c.len_utf8()).unwrap_or(0);
+            format!("{}...", &command[..b])
         } else {
             command.clone()
         }
