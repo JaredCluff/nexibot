@@ -650,7 +650,7 @@ pub async fn approve_contribution(
     let resp = http
         .post(format!(
             "{}/api/v1/approvals/{}/respond",
-            base_url, approval_id
+            base_url, urlencoding::encode(&approval_id)
         ))
         .json(&body)
         .send()
@@ -1061,7 +1061,7 @@ pub async fn get_knowledge_item(
 
     let http = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = http
-        .get(format!("{}/api/v1/articles/{}", base_url, article_id))
+        .get(format!("{}/api/v1/articles/{}", base_url, urlencoding::encode(&article_id)))
         .send()
         .await
         .map_err(|e| {

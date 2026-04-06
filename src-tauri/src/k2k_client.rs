@@ -304,7 +304,7 @@ impl K2KIntegration {
             let resp = http
                 .post(format!(
                     "{}/api/v1/conversations/{}/messages",
-                    base_url, conv_id
+                    base_url, urlencoding::encode(conv_id)
                 ))
                 .json(&serde_json::json!({
                     "role": role,
@@ -350,7 +350,7 @@ impl K2KIntegration {
         let resp = http
             .post(format!(
                 "{}/api/v1/conversations/{}/extract",
-                base_url, conv_id
+                base_url, urlencoding::encode(conv_id)
             ))
             .send()
             .await
@@ -445,7 +445,7 @@ impl K2KIntegration {
         }
 
         let resp = http
-            .patch(format!("{}/api/v1/articles/{}", base_url, article_id))
+            .patch(format!("{}/api/v1/articles/{}", base_url, urlencoding::encode(article_id)))
             .json(&payload)
             .send()
             .await
