@@ -13,6 +13,7 @@ interface MemoryEntry {
   created_at: string;
   last_accessed: string;
   access_count: number;
+  metadata: Record<string, string>;
 }
 
 interface K2KSearchResult {
