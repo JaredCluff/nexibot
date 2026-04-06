@@ -552,9 +552,10 @@ pub async fn start_discord_bot(app_state: AppState) -> Result<(), String> {
 
     info!("[DISCORD] Starting Discord bot...");
 
-    // Spawn session cleanup task
+    // Spawn session cleanup task; abort it when the bot exits to prevent stale
+    // Arc references accumulating across bot restarts within the same session.
     let cleanup_state = bot_state.clone();
-    tokio::spawn(session_cleanup_loop(cleanup_state));
+    let cleanup_handle = tokio::spawn(session_cleanup_loop(cleanup_state));
 
     let intents = serenity_model::GatewayIntents::GUILD_MESSAGES
         | serenity_model::GatewayIntents::DIRECT_MESSAGES
@@ -575,6 +576,7 @@ pub async fn start_discord_bot(app_state: AppState) -> Result<(), String> {
 
     let run_result = client.start().await;
     DISCORD_BOT_RUNNING.store(false, Ordering::SeqCst);
+    cleanup_handle.abort();
 
     if let Err(e) = run_result {
         error!("[DISCORD] Discord bot error: {}", e);
