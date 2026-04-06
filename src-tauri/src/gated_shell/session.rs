@@ -129,7 +129,7 @@ impl ShellSession {
             .map_err(|e| anyhow!("Failed to get PTY reader: {}", e))?;
 
         // Spawn OS thread for blocking PTY reads → tokio channel
-        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let (tx, mut rx) = mpsc::channel::<String>(256);
         let tx_clone = tx;
         std::thread::spawn(move || {
             use std::io::BufRead;
@@ -143,7 +143,7 @@ impl ShellSession {
                         break;
                     }
                     Ok(_) => {
-                        if tx_clone.send(line.clone()).is_err() {
+                        if tx_clone.blocking_send(line.clone()).is_err() {
                             break;
                         }
                     }

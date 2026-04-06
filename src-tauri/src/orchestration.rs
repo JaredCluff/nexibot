@@ -232,7 +232,7 @@ impl OrchestrationManager {
                 let cwd = std::env::current_dir().unwrap_or_default();
                 // Spawn async worktree creation as best-effort (non-blocking)
                 let spawn_id_for_wt = spawn_id.clone();
-                tokio::spawn(async move {
+                let _ = tokio::spawn(async move {
                     if let Some(git_root) = crate::tools::worktree::find_git_root(&cwd).await {
                         match crate::tools::worktree::create_agent_worktree(&git_root, &spawn_id_for_wt).await {
                             Ok(path) => {

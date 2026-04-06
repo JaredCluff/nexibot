@@ -357,7 +357,7 @@ impl AgentOrchestrator {
                 self.active_tasks.clone();
             let tid = task_id.clone();
 
-            tokio::spawn(async move {
+            let _ = tokio::spawn(async move {
                 // Mark running.
                 {
                     let mut tasks = active_tasks.write().await;
