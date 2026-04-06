@@ -74,8 +74,9 @@ impl TaskManager {
                 .map(|(k, t)| (k.clone(), t.created_at))
                 .collect();
             done.sort_by_key(|(_, ts)| *ts);
+            let evict_count = done.len().saturating_sub(MAX_FINISHED_TASKS);
             done.into_iter()
-                .take(self.tasks.len().saturating_sub(MAX_FINISHED_TASKS))
+                .take(evict_count)
                 .map(|(k, _)| k)
                 .collect()
         };

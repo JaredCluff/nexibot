@@ -116,6 +116,7 @@ function App() {
 
   // Listen for defense model loading events
   useEffect(() => {
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
     const unlistenLoading = listen('defense:loading', () => {
       setDefenseStatus('Loading defense models...');
     });
@@ -130,10 +131,12 @@ function App() {
         return;
       }
       // Auto-hide after 3 seconds
-      setTimeout(() => setDefenseStatus(null), 3000);
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => setDefenseStatus(null), 3000);
     });
 
     return () => {
+      clearTimeout(hideTimer);
       unlistenLoading.then(f => f());
       unlistenLoaded.then(f => f());
     };

@@ -235,7 +235,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
       }, 5000);
     }).then(fn => unsubs.push(fn));
 
-    listen<{ task_id: string }>('task:failed', (e) => {
+    listen<{ task_id: string; error: string }>('task:failed', (e) => {
       setActiveTasks(prev => prev.map(t =>
         t.id === e.payload.task_id ? { ...t, status: 'failed' as const } : t
       ));
