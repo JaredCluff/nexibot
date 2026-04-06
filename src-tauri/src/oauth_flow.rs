@@ -9,7 +9,7 @@
 use anyhow::{Context, Result};
 use axum::{extract::Query, response::Html, routing::get, Router};
 use base64::Engine;
-use rand::Rng;
+use rand::{Rng, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -145,9 +145,9 @@ pub async fn start_oauth_flow(provider: &str) -> Result<OAuthResult> {
     Ok(result)
 }
 
-/// Generate random state parameter
+/// Generate random state parameter using the OS RNG for cryptographic quality.
 fn generate_state() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = OsRng;
     let random_bytes: Vec<u8> = (0..32).map(|_| rng.gen::<u8>()).collect();
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&random_bytes)
 }
@@ -339,7 +339,7 @@ async fn handle_oauth_callback(
         "anthropic" => {
             exchange_anthropic_code(&code, &oauth_context.code_verifier, &state_from_code).await
         }
-        "google" => exchange_google_code(&code, &oauth_context.code_verifier).await,
+        "google" => exchange_google_code(&code, &oauth_context.code_verifier, &oauth_context.callback_url).await,
         "openai" => exchange_openai_code(&code).await,
         _ => Err(anyhow::anyhow!(
             "Token exchange not implemented for provider: {}",
@@ -533,7 +533,7 @@ fn build_google_oauth_url(callback_url: &str, state: &str, code_challenge: &str)
 }
 
 /// Exchange Google authorization code for tokens
-async fn exchange_google_code(code: &str, code_verifier: &str) -> Result<OAuthResult> {
+async fn exchange_google_code(code: &str, code_verifier: &str, callback_url: &str) -> Result<OAuthResult> {
     info!("[OAUTH] Exchanging Google authorization code for tokens");
 
     let client = reqwest::Client::new();
@@ -544,7 +544,7 @@ async fn exchange_google_code(code: &str, code_verifier: &str) -> Result<OAuthRe
             "code": code,
             "client_id": "google-client-id-placeholder",
             "client_secret": "google-client-secret-placeholder",
-            "redirect_uri": "http://localhost/callback",
+            "redirect_uri": callback_url,
             "grant_type": "authorization_code",
             "code_verifier": code_verifier,
         }))
