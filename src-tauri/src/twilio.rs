@@ -612,7 +612,7 @@ async fn send_twilio_sms_checked(app_state: &AppState, to: &str, body: &str) -> 
         account_sid
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     match client
         .post(&url)
         .basic_auth(&account_sid, Some(&auth_token))
