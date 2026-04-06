@@ -9,6 +9,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+use crate::security::ssrf::{self, SsrfPolicy};
+
 /// Subscription status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SubscriptionStatus {
@@ -97,6 +99,8 @@ impl SubscriptionManager {
         // Call Knowledge Nexus subscription API
         let client = reqwest::Client::new();
         let url = format!("{}/api/subscriptions/check", self.router_url);
+        ssrf::validate_outbound_request(&url, &SsrfPolicy::default(), &[])
+            .map_err(|e| anyhow::anyhow!("Subscription check URL blocked by SSRF policy: {}", e))?;
 
         let response = client
             .get(&url)
@@ -167,6 +171,8 @@ impl SubscriptionManager {
         // Request credential provisioning from Knowledge Nexus
         let client = reqwest::Client::new();
         let url = format!("{}/api/subscriptions/provision", self.router_url);
+        ssrf::validate_outbound_request(&url, &SsrfPolicy::default(), &[])
+            .map_err(|e| anyhow::anyhow!("Subscription provision URL blocked by SSRF policy: {}", e))?;
 
         let response = client
             .post(&url)

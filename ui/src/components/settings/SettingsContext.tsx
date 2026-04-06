@@ -414,9 +414,12 @@ export interface PlatformInfo {
 
 export interface DefenseStatus {
   enabled: boolean;
+  initialized: boolean;
   deberta_loaded: boolean;
-  deberta_healthy: boolean;
-  llama_guard_available: boolean;
+  llama_guard_loaded: boolean;
+  deberta_threshold: number;
+  llama_guard_mode: string;
+  llama_guard_api_url: string;
 }
 
 export interface SoulTemplate {
