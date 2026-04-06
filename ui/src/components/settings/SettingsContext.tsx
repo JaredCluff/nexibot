@@ -127,6 +127,11 @@ export interface NexiBotConfig {
   mcp: {
     enabled: boolean;
     servers: MCPServerConfig[];
+    tool_search: {
+      enabled: boolean;
+      top_k: number;
+      similarity_threshold: number;
+    };
   };
   computer_use: {
     enabled: boolean;
