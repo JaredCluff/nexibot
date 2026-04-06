@@ -536,6 +536,27 @@ async fn fetch_botframework_jwks() -> Result<HashMap<String, (String, String)>> 
         .json::<BotFrameworkOpenIdConfig>()
         .await?;
 
+    // Validate the JWKS URI before fetching: must be HTTPS and on a
+    // Microsoft-owned domain.  This prevents an attacker who can MITM the
+    // OpenID discovery request from injecting an arbitrary jwks_uri that
+    // would cause the app to fetch from an internal/attacker-controlled host.
+    const ALLOWED_JWKS_HOSTS: &[&str] = &[
+        "login.botframework.com",
+        "login.microsoftonline.com",
+        "login.windows.net",
+    ];
+    {
+        let parsed = url::Url::parse(&openid_cfg.jwks_uri)
+            .map_err(|e| anyhow::anyhow!("Bot Framework JWKS URI is not a valid URL: {}", e))?;
+        if parsed.scheme() != "https" {
+            anyhow::bail!("Bot Framework JWKS URI must use HTTPS, got: {}", parsed.scheme());
+        }
+        let host = parsed.host_str().unwrap_or("");
+        if !ALLOWED_JWKS_HOSTS.iter().any(|&allowed| host == allowed || host.ends_with(&format!(".{}", allowed))) {
+            anyhow::bail!("Bot Framework JWKS URI host '{}' is not in the Microsoft allowlist", host);
+        }
+    }
+
     let jwks = client
         .get(openid_cfg.jwks_uri)
         .send()
