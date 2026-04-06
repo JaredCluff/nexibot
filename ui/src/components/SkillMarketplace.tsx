@@ -38,7 +38,7 @@ interface SecurityFinding {
 
 interface SecurityReport {
   skill_name: string;
-  risk_level: string;   // "Safe" | "Low" | "Medium" | "High" | "Critical"
+  risk_level: string;   // "Safe" | "Caution" | "Warning" | "Dangerous"
   overall_score: number; // 0.0 (dangerous) – 1.0 (safe)
   findings: SecurityFinding[];
   summary: string;
