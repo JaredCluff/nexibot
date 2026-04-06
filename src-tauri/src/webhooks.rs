@@ -438,15 +438,36 @@ async fn health_handler() -> Json<serde_json::Value> {
         .await
         .is_ok();
 
-    // Check Ollama connectivity
+    // Check Ollama connectivity — validate URL against SSRF policy before use
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-    let ollama_healthy = reqwest::Client::new()
-        .get(format!("{}/api/tags", ollama_url))
-        .timeout(std::time::Duration::from_secs(2))
-        .send()
-        .await
-        .is_ok();
+    let ollama_healthy = {
+        let allowed = ollama_url == "http://localhost:11434"
+            || ollama_url.starts_with("http://localhost:")
+            || ollama_url.starts_with("http://127.0.0.1:");
+        if allowed {
+            reqwest::Client::new()
+                .get(format!("{}/api/tags", ollama_url))
+                .timeout(std::time::Duration::from_secs(2))
+                .send()
+                .await
+                .is_ok()
+        } else {
+            match crate::security::ssrf::validate_outbound_request(
+                &ollama_url,
+                &crate::security::ssrf::SsrfPolicy::default(),
+                &[],
+            ) {
+                Ok(()) => reqwest::Client::new()
+                    .get(format!("{}/api/tags", ollama_url))
+                    .timeout(std::time::Duration::from_secs(2))
+                    .send()
+                    .await
+                    .is_ok(),
+                Err(_) => false,
+            }
+        }
+    };
 
     let overall = if bridge_healthy {
         "healthy"

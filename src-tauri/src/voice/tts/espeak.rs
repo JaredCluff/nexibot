@@ -7,6 +7,7 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::process::Command;
+use tokio::task;
 use tracing::{debug, info};
 
 use super::TtsBackend;
@@ -67,14 +68,23 @@ impl TtsBackend for EspeakTts {
 
         debug!("[TTS] Synthesizing with espeak-ng: {}", text);
 
-        // espeak-ng --stdout outputs WAV to stdout
-        let output = Command::new("espeak-ng")
-            .arg("-v")
-            .arg(&self.voice)
-            .arg("--stdout")
-            .arg(text)
-            .output()
-            .context("Failed to execute espeak-ng")?;
+        let voice = self.voice.clone();
+        let text_owned = text.to_string();
+
+        // Run in spawn_blocking: espeak-ng is a synchronous child process that can
+        // take noticeable time; blocking the async executor would stall other tasks.
+        let output = task::spawn_blocking(move || {
+            // espeak-ng --stdout outputs WAV to stdout
+            Command::new("espeak-ng")
+                .arg("-v")
+                .arg(&voice)
+                .arg("--stdout")
+                .arg(&text_owned)
+                .output()
+                .context("Failed to execute espeak-ng")
+        })
+        .await
+        .context("espeak-ng task panicked")??;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
