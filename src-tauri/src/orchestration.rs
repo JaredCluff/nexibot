@@ -99,6 +99,9 @@ pub struct SpawnConfig {
 // OrchestrationManager
 // ---------------------------------------------------------------------------
 
+/// Maximum completed/failed/cancelled spawns retained for history.
+const MAX_COMPLETED_SPAWNS: usize = 1000;
+
 /// Manages the lifecycle of spawned subagents, enforcing depth and
 /// concurrency limits while tracking parent-child relationships.
 pub struct OrchestrationManager {
@@ -334,7 +337,7 @@ impl OrchestrationManager {
             spawn_id, spawn.agent_id, spawn.depth
         );
 
-        self.completed_spawns.push(spawn);
+        self.push_completed(spawn);
         Ok(())
     }
 
@@ -359,7 +362,7 @@ impl OrchestrationManager {
             spawn_id, error, spawn.agent_id, spawn.depth
         );
 
-        self.completed_spawns.push(spawn);
+        self.push_completed(spawn);
         Ok(())
     }
 
@@ -378,7 +381,7 @@ impl OrchestrationManager {
             spawn_id, spawn.agent_id
         );
 
-        self.completed_spawns.push(spawn);
+        self.push_completed(spawn);
         Ok(())
     }
 
@@ -393,7 +396,7 @@ impl OrchestrationManager {
             if let Some(mut spawn) = self.active_spawns.remove(id) {
                 spawn.status = SubagentStatus::Cancelled;
                 spawn.completed_at = Some(Utc::now());
-                self.completed_spawns.push(spawn);
+                self.push_completed(spawn);
                 cancelled += 1;
             }
         }
@@ -427,6 +430,15 @@ impl OrchestrationManager {
             .values()
             .filter(|s| s.status == SubagentStatus::Pending || s.status == SubagentStatus::Running)
             .count()
+    }
+
+    /// Push a spawn onto the completed list, evicting the oldest if over cap.
+    fn push_completed(&mut self, spawn: SubagentSpawn) {
+        self.completed_spawns.push(spawn);
+        if self.completed_spawns.len() > MAX_COMPLETED_SPAWNS {
+            let excess = self.completed_spawns.len() - MAX_COMPLETED_SPAWNS;
+            self.completed_spawns.drain(..excess);
+        }
     }
 
     /// Remove completed spawns older than `max_age`.

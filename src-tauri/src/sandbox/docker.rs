@@ -142,7 +142,7 @@ impl DockerSandbox {
 
         // Keep container running with a sleep command
         args.push("sleep".to_string());
-        args.push(format!("{}", self.config.timeout_seconds + 30));
+        args.push(format!("{}", self.config.timeout_seconds.saturating_add(30)));
 
         info!(
             "[SANDBOX] Creating container: image={}, memory={}, cpus={}, network={}",
