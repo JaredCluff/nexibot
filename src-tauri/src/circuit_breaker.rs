@@ -150,6 +150,9 @@ impl Default for CircuitBreakerConfig {
     }
 }
 
+/// Maximum number of circuit breakers retained in the registry.
+const MAX_CIRCUIT_BREAKERS: usize = 1000;
+
 /// Registry of circuit breakers keyed by agent ID.
 pub struct CircuitBreakerRegistry {
     breakers: HashMap<String, CircuitBreaker>,
@@ -185,6 +188,13 @@ impl CircuitBreakerRegistry {
                 agent_id, breaker.state, breaker.failure_count
             );
         }
+
+        // Evict Closed breakers with zero failures if registry is over capacity
+        if self.breakers.len() > MAX_CIRCUIT_BREAKERS {
+            self.breakers
+                .retain(|_, b| !(b.state == CircuitState::Closed && b.failure_count == 0));
+        }
+
         allowed
     }
 

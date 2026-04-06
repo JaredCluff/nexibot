@@ -134,7 +134,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   });
 
   // Agents
-  const [agents, setAgents] = useState<{ id: string; name: string; model: string | null; is_default: boolean }[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string; avatar: string | null; model: string | null; is_default: boolean; channel_bindings: { channel: string; peer_id: string | null }[] }[]>([]);
   const [activeAgent, setActiveAgent] = useState<string>('');
   const [agentSwitching, setAgentSwitching] = useState(false);
 
@@ -197,7 +197,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   // Reload messages when session changes
   useEffect(() => {
     if (!sessionId) return;
-    invoke<{ id: string; title: string | null; started_at: string; last_activity: string; messages: { role: string; content: string }[] }>('get_current_session')
+    invoke<{ id: string; title: string | null; started_at: string; last_activity: string; messages: { role: string; content: string; timestamp: string }[] }>('get_current_session')
       .then((session) => {
         const loaded: Message[] = session.messages
           .filter((m) => m.role !== 'system')

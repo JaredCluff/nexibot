@@ -281,8 +281,8 @@ export function ModelsTab() {
         </label>
         <button className="test-button" onClick={async () => {
           try {
-            const models = await invoke<string[]>('discover_ollama_models');
-            notifyInfo('Ollama', `Found ${models.length} model(s): ${models.join(', ') || 'none'}`);
+            const models = await invoke<{ name: string; size: number | null; modified_at: string | null }[]>('discover_ollama_models');
+            notifyInfo('Ollama', `Found ${models.length} model(s): ${models.map(m => m.name).join(', ') || 'none'}`);
           } catch (error) {
             notifyError('Ollama', `Ollama not available: ${error}`);
           }
