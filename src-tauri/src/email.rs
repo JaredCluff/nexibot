@@ -240,6 +240,11 @@ impl ChannelAdapter for EmailAdapter {
 // EmailManager -- orchestrates polling, threading, and sending
 // ---------------------------------------------------------------------------
 
+/// Maximum conversation threads retained in memory.
+const MAX_EMAIL_THREADS: usize = 5000;
+/// Maximum messages retained per thread.
+const MAX_MESSAGES_PER_THREAD: usize = 500;
+
 /// Manages IMAP polling, thread tracking, and SMTP sending.
 pub struct EmailManager {
     config: EmailConfig,
@@ -674,7 +679,9 @@ impl EmailManager {
                     // Add message to existing thread
                     if let Some(thread) = self.threads.get_mut(&tid) {
                         thread.last_activity = message.received_at;
-                        thread.messages.push(message.clone());
+                        if thread.messages.len() < MAX_MESSAGES_PER_THREAD {
+                            thread.messages.push(message.clone());
+                        }
                     }
                     return tid;
                 }
@@ -688,7 +695,9 @@ impl EmailManager {
                     let tid = tid.clone();
                     if let Some(thread) = self.threads.get_mut(&tid) {
                         thread.last_activity = message.received_at;
-                        thread.messages.push(message.clone());
+                        if thread.messages.len() < MAX_MESSAGES_PER_THREAD {
+                            thread.messages.push(message.clone());
+                        }
                     }
                     return tid;
                 }
@@ -708,7 +717,17 @@ impl EmailManager {
             }
         }
 
-        // Strategy 4: Create a new thread
+        // Strategy 4: Create a new thread — evict oldest if at capacity
+        if self.threads.len() >= MAX_EMAIL_THREADS {
+            if let Some(oldest_id) = self
+                .threads
+                .iter()
+                .min_by_key(|(_, t)| t.last_activity)
+                .map(|(k, _)| k.clone())
+            {
+                self.threads.remove(&oldest_id);
+            }
+        }
         let thread_id = message.message_id.clone();
         let thread = EmailThread {
             thread_id: thread_id.clone(),
