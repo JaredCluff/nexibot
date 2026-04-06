@@ -10,6 +10,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Datelike, Duration, NaiveDateTime, NaiveTime, Timelike, Utc, Weekday};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
@@ -88,10 +89,16 @@ fn parse_cron_field(field: &str, min: u32, max: u32) -> Result<Vec<u32>> {
 
         match step {
             Some(step) => {
+                if step == 0 {
+                    anyhow::bail!("Cron step value must be > 0");
+                }
                 let mut v = start;
                 while v <= end {
                     values.push(v);
-                    v += step;
+                    match v.checked_add(step) {
+                        Some(next) => v = next,
+                        None => break, // step would wrap past u32::MAX; no more values
+                    }
                 }
             }
             None => {
@@ -257,7 +264,7 @@ pub struct Scheduler {
     config: Arc<RwLock<NexiBotConfig>>,
     claude_client: Arc<RwLock<ClaudeClient>>,
     notification_dispatcher: Arc<NotificationDispatcher>,
-    results: Arc<RwLock<Vec<TaskExecutionResult>>>,
+    results: Arc<RwLock<VecDeque<TaskExecutionResult>>>,
 }
 
 impl Scheduler {
@@ -270,13 +277,13 @@ impl Scheduler {
             config,
             claude_client,
             notification_dispatcher,
-            results: Arc::new(RwLock::new(Vec::new())),
+            results: Arc::new(RwLock::new(VecDeque::new())),
         }
     }
 
     /// Get recent execution results.
     pub async fn get_results(&self) -> Vec<TaskExecutionResult> {
-        self.results.read().await.clone()
+        self.results.read().await.iter().cloned().collect()
     }
 
     /// Execute a specific task by sending its prompt to Claude.
@@ -340,13 +347,13 @@ impl Scheduler {
             }
         }
 
-        // Store result in ring buffer
+        // Store result in ring buffer (O(1) push/pop with VecDeque)
         {
             let mut results = self.results.write().await;
-            results.push(result.clone());
-            if results.len() > MAX_RESULTS {
-                results.remove(0);
+            if results.len() >= MAX_RESULTS {
+                results.pop_front();
             }
+            results.push_back(result.clone());
         }
 
         info!(
