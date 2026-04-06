@@ -15,8 +15,9 @@ export interface GatewayConfig {
   enabled: boolean;
   port: number;
   bind_address: string;
-  auth_mode: 'Token' | 'Password' | 'Open';
+  auth_mode: 'token' | 'password' | 'open' | 'tailscale_proxy';
   max_connections: number;
+  tls_enabled: boolean;
 }
 
 export interface SandboxConfig {

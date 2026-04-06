@@ -441,6 +441,7 @@ impl ClaudeClient {
         // Process SSE stream in real-time (true streaming, not buffered)
         let mut full_response = String::new();
         let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER: usize = 1024 * 1024; // 1 MB
 
         while let Some(chunk_result) = response.chunk().await.transpose() {
             let chunk_bytes = match chunk_result {
@@ -453,6 +454,9 @@ impl ClaudeClient {
             };
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER {
+                anyhow::bail!("Streaming line buffer exceeded 1 MB — possible malformed response");
+            }
 
             // Process complete lines from the buffer
             while let Some(newline_pos) = line_buffer.find('\n') {
@@ -576,6 +580,7 @@ impl ClaudeClient {
         let mut full_response = String::new();
         let mut line_buffer = String::new();
         let mut stream_error: Option<String> = None;
+        const MAX_LINE_BUFFER_TTS: usize = 1024 * 1024; // 1 MB
 
         use futures_util::StreamExt;
         let mut byte_stream = response.bytes_stream();
@@ -591,6 +596,10 @@ impl ClaudeClient {
 
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER_TTS {
+                warn!("[BRIDGE] TTS streaming line buffer exceeded 1 MB, aborting stream");
+                break;
+            }
 
             // Process complete lines from the buffer
             while let Some(newline_pos) = line_buffer.find('\n') {
@@ -1645,11 +1654,15 @@ impl ClaudeClient {
             std::collections::HashMap::new();
         let mut reasoning = String::new();
         let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER_OPENAI: usize = 1024 * 1024; // 1 MB
 
         while let Some(chunk_result) = response.chunk().await.transpose() {
             let chunk_bytes = chunk_result.context(format!("Failed to read streaming chunk from {}", provider))?;
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER_OPENAI {
+                anyhow::bail!("{} streaming line buffer exceeded 1 MB — possible malformed response", provider);
+            }
 
             while let Some(newline_pos) = line_buffer.find('\n') {
                 let line = line_buffer[..newline_pos].trim_end_matches('\r').to_string();
@@ -2042,11 +2055,15 @@ impl ClaudeClient {
             std::collections::HashMap::new();
 
         let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER_OLLAMA: usize = 1024 * 1024; // 1 MB
 
         while let Some(chunk_result) = response.chunk().await.transpose() {
             let chunk_bytes = chunk_result.context("Failed to read streaming chunk from Ollama")?;
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER_OLLAMA {
+                anyhow::bail!("Ollama streaming line buffer exceeded 1 MB — possible malformed response");
+            }
 
             // Process complete lines from the buffer
             while let Some(newline_pos) = line_buffer.find('\n') {
@@ -2839,11 +2856,15 @@ impl ClaudeClient {
         let mut stop_reason = "end_turn".to_string();
         let mut current_tool_use: Option<(String, String, String)> = None;
         let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER_BRIDGE: usize = 1024 * 1024; // 1 MB
 
         while let Some(chunk_result) = response.chunk().await.transpose() {
             let chunk_bytes = chunk_result.context("Failed to read streaming chunk")?;
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER_BRIDGE {
+                anyhow::bail!("Bridge streaming line buffer exceeded 1 MB — possible malformed response");
+            }
 
             // Process complete lines from the buffer
             while let Some(newline_pos) = line_buffer.find('\n') {
@@ -3458,6 +3479,7 @@ impl ClaudeClient {
         let mut stop_reason = "end_turn".to_string();
         let mut current_tool_use: Option<(String, String, String)> = None; // (id, name, input_json)
         let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER_TOOL: usize = 1024 * 1024; // 1 MB
 
         while let Some(chunk_result) = response.chunk().await.transpose() {
             let chunk_bytes = match chunk_result {
@@ -3470,6 +3492,9 @@ impl ClaudeClient {
             };
             let chunk_text = String::from_utf8_lossy(&chunk_bytes);
             line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER_TOOL {
+                anyhow::bail!("Bridge streaming line buffer exceeded 1 MB — possible malformed response");
+            }
 
             // Process complete lines from the buffer
             while let Some(newline_pos) = line_buffer.find('\n') {

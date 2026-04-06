@@ -160,6 +160,17 @@ async fn api_update_config(
             config.ollama.enabled = enabled;
         }
         if let Some(url) = ollama.get("url").and_then(|v| v.as_str()) {
+            if let Err(e) = crate::security::ssrf::validate_outbound_request(
+                url,
+                &crate::security::ssrf::SsrfPolicy::default(),
+                &[],
+            ) {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": format!("Invalid Ollama URL: {}", e) })),
+                )
+                    .into_response();
+            }
             config.ollama.url = url.to_string();
         }
         if let Some(model) = ollama.get("model").and_then(|v| v.as_str()) {

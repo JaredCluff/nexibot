@@ -255,10 +255,14 @@ async fn parse_sse_stream(
     let mut current_tool_use: Option<(String, String, String)> = None;
 
     let mut line_buffer = String::new();
+    const MAX_LINE_BUFFER: usize = 1024 * 1024; // 1 MB
 
     while let Some(chunk) = response.chunk().await? {
         let chunk_text = String::from_utf8_lossy(&chunk);
         line_buffer.push_str(&chunk_text);
+        if line_buffer.len() > MAX_LINE_BUFFER {
+            anyhow::bail!("Anthropic streaming line buffer exceeded 1 MB — possible malformed response");
+        }
 
         // Process complete lines from the buffer
         while let Some(newline_pos) = line_buffer.find('\n') {
