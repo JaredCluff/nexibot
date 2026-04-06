@@ -126,7 +126,7 @@ async fn search_brave(
     num_results: u32,
     api_key: &str,
 ) -> Result<Vec<SearchResult>, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .get("https://api.search.brave.com/res/v1/web/search")
         .header("X-Subscription-Token", api_key)
@@ -182,7 +182,7 @@ async fn search_tavily(
     num_results: u32,
     api_key: &str,
 ) -> Result<Vec<SearchResult>, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let resp = client
         .post("https://api.tavily.com/search")
         .json(&json!({

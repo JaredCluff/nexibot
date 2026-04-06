@@ -423,7 +423,10 @@ impl BridgeManager {
 
     /// Check bridge health
     pub async fn check_health(&self) -> Result<BridgeHealth> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         let health_url = format!("{}/health", self.bridge_url);
 
         let response = client
