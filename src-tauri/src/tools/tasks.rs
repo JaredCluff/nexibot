@@ -43,6 +43,8 @@ pub struct BackgroundTask {
 
 // ─── Task Store ─────────────────────────────────────────────────────────────
 
+const MAX_FINISHED_TOOL_TASKS: usize = 500;
+
 pub struct TaskStore {
     tasks: HashMap<String, BackgroundTask>,
     pub data_dir: PathBuf,
@@ -62,6 +64,21 @@ impl TaskStore {
 
     pub fn insert(&mut self, task: BackgroundTask) {
         self.tasks.insert(task.id.clone(), task);
+        // Evict oldest finished tasks to bound memory growth
+        let finished_count = self.tasks.values()
+            .filter(|t| matches!(t.status, TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled))
+            .count();
+        if finished_count > MAX_FINISHED_TOOL_TASKS {
+            let mut finished: Vec<_> = self.tasks.values()
+                .filter(|t| matches!(t.status, TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled))
+                .map(|t| (t.id.clone(), t.created_at))
+                .collect();
+            finished.sort_by_key(|(_, ts)| *ts);
+            let to_remove = finished_count - MAX_FINISHED_TOOL_TASKS;
+            for (id, _) in finished.into_iter().take(to_remove) {
+                self.tasks.remove(&id);
+            }
+        }
     }
 
     pub fn get(&self, id: &str) -> Option<&BackgroundTask> {
@@ -179,15 +196,18 @@ impl Tool for TaskCreateTool {
             let out_file = tokio::fs::File::create(&output_path).await;
             let status = if let Ok(file) = out_file {
                 let file = file.into_std().await;
-                let stderr_file = file.try_clone().unwrap();
-                tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
-                    .stdout(std::process::Stdio::from(file))
-                    .stderr(std::process::Stdio::from(stderr_file))
-                    .status()
-                    .await
-                    .ok()
+                if let Ok(stderr_file) = file.try_clone() {
+                    tokio::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&command)
+                        .stdout(std::process::Stdio::from(file))
+                        .stderr(std::process::Stdio::from(stderr_file))
+                        .status()
+                        .await
+                        .ok()
+                } else {
+                    None
+                }
             } else {
                 None
             };

@@ -100,7 +100,7 @@ interface ToolApprovalRequest {
   tool_name: string;
   reason: string;
   details?: string;
-  timeout_secs?: number;
+  timeout_secs: number;
 }
 
 function toolDisplayName(toolName: string): string {
