@@ -4,11 +4,11 @@ import { notifyError } from '../shared/notify';
 import './HistorySidebar.css';
 
 interface ConversationSession {
-  session_id: string;
-  title: string;
+  id: string;
+  title: string | null;
   started_at: string;
-  last_active: string;
-  message_count: number;
+  last_activity: string;
+  messages: { role: string; content: string }[];
 }
 
 interface HistorySidebarProps {
@@ -61,8 +61,8 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
     setLoading(true);
     try {
       const result = await invoke<ConversationSession[]>('list_conversation_sessions');
-      // Sort by last_active descending
-      result.sort((a, b) => new Date(b.last_active).getTime() - new Date(a.last_active).getTime());
+      // Sort by last_activity descending
+      result.sort((a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime());
       setSessions(result);
     } catch (error) {
       notifyError('History', `Failed to load sessions: ${error}`);
@@ -78,7 +78,7 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
   // Group sessions by date category
   const grouped: Record<string, ConversationSession[]> = {};
   for (const session of sessions) {
-    const group = getDateGroup(session.last_active);
+    const group = getDateGroup(session.last_activity);
     if (!grouped[group]) grouped[group] = [];
     grouped[group].push(session);
   }
@@ -112,17 +112,17 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
               <div className="session-group-label">{group}</div>
               {items.map(session => (
                 <button
-                  key={session.session_id}
-                  className={`session-item ${session.session_id === currentSessionId ? 'active' : ''}`}
-                  aria-current={session.session_id === currentSessionId ? 'true' : undefined}
+                  key={session.id}
+                  className={`session-item ${session.id === currentSessionId ? 'active' : ''}`}
+                  aria-current={session.id === currentSessionId ? 'true' : undefined}
                   onClick={() => onSessionSelect(session)}
                 >
                   <span className="session-title">
                     {session.title || 'Untitled'}
                   </span>
                   <span className="session-meta">
-                    <span className="session-date">{getRelativeDate(session.last_active)}</span>
-                    <span className="session-count">{session.message_count} msgs</span>
+                    <span className="session-date">{getRelativeDate(session.last_activity)}</span>
+                    <span className="session-count">{session.messages.length} msgs</span>
                   </span>
                 </button>
               ))}

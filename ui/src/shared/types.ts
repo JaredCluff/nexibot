@@ -33,6 +33,8 @@ export interface VoiceStatus {
   stt_backend: string;
   tts_backend: string;
   is_sleeping: boolean;
+  voice_response_enabled: boolean;
+  wakeword_enabled: boolean;
 }
 
 export interface PushToTalkResponse {
@@ -51,10 +53,11 @@ export interface SessionOverrides {
 export interface AvailableModel {
   id: string;
   display_name: string;
-  alias: string | null;
+  alias?: string | null;
   provider: string;
-  tier: string;
+  tier?: string;
   available: boolean;
+  size_score?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,14 +76,10 @@ export interface ProviderStatus {
 // ---------------------------------------------------------------------------
 
 export interface ConversationSession {
-  session_id: string;
-  title: string;
+  id: string;
+  title: string | null;
   started_at: string;
-  last_active: string;
-  message_count: number;
-}
-
-export interface CurrentSession {
+  last_activity: string;
   messages: { role: string; content: string }[];
 }
 
@@ -129,6 +128,13 @@ export interface SkillMetadata {
   user_invocable: boolean;
 }
 
+export interface SkillInstallInfo {
+  slug: string;
+  version: string;
+  installed_at: string;
+  security_score: number;
+}
+
 export interface Skill {
   id: string;
   metadata: SkillMetadata;
@@ -136,6 +142,7 @@ export interface Skill {
   path: string;
   scripts: string[];
   references: string[];
+  install_info?: SkillInstallInfo;
 }
 
 export interface SkillTemplate {

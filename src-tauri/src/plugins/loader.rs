@@ -1,6 +1,6 @@
 //! Plugin discovery and loading.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use super::registry::PluginRegistry;
@@ -10,15 +10,28 @@ use super::registry::PluginRegistry;
 /// Each subdirectory is expected to contain plugin metadata.
 /// Currently a placeholder for future dynamic loading support.
 pub async fn discover_plugins(plugin_dir: &Path) -> Vec<String> {
-    let mut discovered = Vec::new();
-
     if !plugin_dir.exists() {
         info!(
             "[PLUGIN_LOADER] Plugin directory does not exist: {:?}",
             plugin_dir
         );
-        return discovered;
+        return Vec::new();
     }
+
+    let plugin_dir = plugin_dir.to_path_buf();
+    let result = tokio::task::spawn_blocking(move || discover_plugins_blocking(&plugin_dir))
+        .await
+        .unwrap_or_else(|e| {
+            warn!("[PLUGIN_LOADER] Plugin discovery task panicked: {}", e);
+            Vec::new()
+        });
+
+    info!("[PLUGIN_LOADER] Discovered {} plugins", result.len());
+    result
+}
+
+fn discover_plugins_blocking(plugin_dir: &PathBuf) -> Vec<String> {
+    let mut discovered = Vec::new();
 
     let entries = match std::fs::read_dir(plugin_dir) {
         Ok(e) => e,
@@ -57,7 +70,6 @@ pub async fn discover_plugins(plugin_dir: &Path) -> Vec<String> {
         }
     }
 
-    info!("[PLUGIN_LOADER] Discovered {} plugins", discovered.len());
     discovered
 }
 

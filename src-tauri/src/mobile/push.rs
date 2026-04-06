@@ -117,8 +117,18 @@ impl ApnsClient {
             }
         }
 
-        // (Re-)sign the JWT.
-        let token = self.sign_jwt()?;
+        // (Re-)sign the JWT. Reading the .p8 key file is blocking I/O, so
+        // run it off the async executor to avoid stalling other tasks.
+        let key_path = self.config.key_path.clone();
+        let key_id = self.config.key_id.clone();
+        let team_id = self.config.team_id.clone();
+        let token = tokio::task::spawn_blocking(move || {
+            ApnsClient::sign_jwt_with(&key_path, &key_id, &team_id)
+        })
+        .await
+        .context("APNs JWT signing task panicked")?
+        .context("APNs JWT signing failed")?;
+
         info!("[APNs] Issued new provider JWT for team {}", self.config.team_id);
         *cache = Some(ApnsTokenCache {
             token: token.clone(),
@@ -129,17 +139,21 @@ impl ApnsClient {
 
     /// Sign a new APNs JWT using ES256 and the `.p8` key.
     fn sign_jwt(&self) -> Result<String> {
-        let key_pem = std::fs::read_to_string(&self.config.key_path)
-            .with_context(|| format!("Cannot read APNs key file: {}", self.config.key_path))?;
+        Self::sign_jwt_with(&self.config.key_path, &self.config.key_id, &self.config.team_id)
+    }
+
+    fn sign_jwt_with(key_path: &str, key_id: &str, team_id: &str) -> Result<String> {
+        let key_pem = std::fs::read_to_string(key_path)
+            .with_context(|| format!("Cannot read APNs key file: {}", key_path))?;
 
         let encoding_key = EncodingKey::from_ec_pem(key_pem.as_bytes())
             .context("Failed to parse APNs ES256 key")?;
 
         let mut header = Header::new(Algorithm::ES256);
-        header.kid = Some(self.config.key_id.clone());
+        header.kid = Some(key_id.to_string());
 
         let claims = ApnsJwtClaims {
-            iss: self.config.team_id.clone(),
+            iss: team_id.to_string(),
             iat: Utc::now().timestamp(),
         };
 

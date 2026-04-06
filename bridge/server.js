@@ -19,6 +19,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { timingSafeEqual } from 'node:crypto';
 
 import { normalizeMessages, validateAndRepairMessages } from './lib/normalize.js';
 import { keyFingerprint } from './lib/utils.js';
@@ -56,7 +57,13 @@ app.use((req, res, next) => {
   if (normalizedPath === '/health') return next();  // health endpoint is always open
 
   const provided = req.headers['x-bridge-secret'];
-  if (!provided || provided !== BRIDGE_SECRET) {
+  if (!provided) {
+    return res.status(401).json({ error: 'Unauthorized: missing or invalid X-Bridge-Secret' });
+  }
+  // Use constant-time comparison to prevent timing side-channel attacks.
+  const providedBuf = Buffer.from(provided);
+  const secretBuf = Buffer.from(BRIDGE_SECRET);
+  if (providedBuf.length !== secretBuf.length || !timingSafeEqual(providedBuf, secretBuf)) {
     return res.status(401).json({ error: 'Unauthorized: missing or invalid X-Bridge-Secret' });
   }
   next();
