@@ -196,8 +196,8 @@ impl ComputerUseManager {
 
     fn get_optional_coords(&self, input: &serde_json::Value) -> (Option<i32>, Option<i32>) {
         if let Some(coord) = input.get("coordinate") {
-            let x = coord.get(0).and_then(|v| v.as_i64()).map(|v| v as i32);
-            let y = coord.get(1).and_then(|v| v.as_i64()).map(|v| v as i32);
+            let x = coord.get(0).and_then(|v| v.as_i64()).and_then(|v| i32::try_from(v).ok());
+            let y = coord.get(1).and_then(|v| v.as_i64()).and_then(|v| i32::try_from(v).ok());
             (x, y)
         } else {
             (None, None)

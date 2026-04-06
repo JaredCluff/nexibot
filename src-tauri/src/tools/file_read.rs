@@ -46,8 +46,8 @@ impl Tool for FileReadTool {
         };
 
         let path = PathBuf::from(path_str);
-        let offset = input["offset"].as_u64().map(|v| v as usize);
-        let limit = input["limit"].as_u64().map(|v| v as usize);
+        let offset = input["offset"].as_u64().and_then(|v| usize::try_from(v).ok());
+        let limit = input["limit"].as_u64().and_then(|v| usize::try_from(v).ok());
 
         match read_file_smart(&path, offset, limit, &ctx).await {
             Ok(output) => ToolResult::ok(output),
