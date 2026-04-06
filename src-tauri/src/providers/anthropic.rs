@@ -338,6 +338,23 @@ async fn parse_sse_stream(
         }
     }
 
+    // Flush any tool use that started but never received content_block_stop
+    // (can happen on abrupt stream termination). Log a warning so this is
+    // observable rather than silently discarded.
+    if let Some((id, name, input_json)) = current_tool_use.take() {
+        warn!(
+            "[ANTHROPIC] Tool use '{}' (id={}) incomplete at stream end — no content_block_stop",
+            name, id
+        );
+        let input: serde_json::Value = if input_json.is_empty() {
+            json!({})
+        } else {
+            serde_json::from_str(&input_json).unwrap_or_else(|_| json!({}))
+        };
+        raw_content.push(json!({"type": "tool_use", "id": id, "name": name, "input": input}));
+        tool_uses.push(LlmToolUse { id, name, input });
+    }
+
     if !full_text.is_empty() {
         let mut final_content = vec![json!({ "type": "text", "text": full_text })];
         final_content.extend(raw_content.clone());
