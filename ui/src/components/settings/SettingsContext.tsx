@@ -500,7 +500,7 @@ export interface AgentInfo {
 export interface OAuthProfile {
   provider: string;
   profile_name: string;
-  expires_at: string | null;
+  expires_at: number; // Unix timestamp (seconds) from Rust u64
   token_type: string;
   scope: string | null;
 }
@@ -509,7 +509,7 @@ export interface OAuthStatus {
   provider: string;
   profile_name: string;
   is_expiring: boolean;
-  expires_at: string | null;
+  expires_at: number; // Unix timestamp (seconds) from Rust u64
   has_refresh_token: boolean;
 }
 
@@ -527,6 +527,8 @@ export interface VoiceServiceStatus {
   stt_backend: string;
   tts_backend: string;
   is_sleeping: boolean;
+  voice_response_enabled: boolean;
+  wakeword_enabled: boolean;
 }
 
 // ─── Context value ───────────────────────────────────────────────────────────

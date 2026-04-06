@@ -23,6 +23,7 @@ use crate::messenger::MessengerObserver;
 use crate::rocketchat::RocketChatObserver;
 use crate::router::{self, IncomingMessage, RouteOptions, RouterError};
 use crate::security::exec_approval::ApprovalMode;
+use crate::security::external_content;
 use crate::session_overrides::SessionOverrides;
 use crate::signal::SignalObserver;
 use crate::slack::SlackObserver;
@@ -1522,14 +1523,16 @@ pub(crate) async fn execute_tool_call<'obs>(
             .execute_skill_script(&skill_id, &script, input.as_deref())
             .await
         {
-            Ok(result) if result.success => result.stdout,
+            Ok(result) if result.success => {
+                external_content::wrap_external_content(&result.stdout, "skill-script-stdout")
+            }
             Ok(result) => format!(
                 "Script exited with code {}.\n{}",
                 result.exit_code,
                 if result.stdout.is_empty() {
                     "(no output)".to_string()
                 } else {
-                    result.stdout
+                    external_content::wrap_external_content(&result.stdout, "skill-script-stdout")
                 }
             ),
             Err(e) => format!("Skill execution failed: {}", e),
