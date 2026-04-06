@@ -332,7 +332,8 @@ pub async fn start_signal_listener(app_state: AppState) -> Result<()> {
     let cleanup_state = state.clone();
     tokio::spawn(session_cleanup_loop(cleanup_state));
 
-    // Main polling loop
+    // Main polling loop — exponential backoff on consecutive errors (2s..64s).
+    let mut consecutive_errors: u32 = 0;
     loop {
         // Allow runtime disabling without restart.
         {
@@ -345,12 +346,20 @@ pub async fn start_signal_listener(app_state: AppState) -> Result<()> {
 
         match poll_signal_messages(&client, &api_url, &phone_number).await {
             Ok(envelopes) => {
+                consecutive_errors = 0;
                 for envelope in envelopes {
                     handle_signal_envelope(&envelope, &state, &api_url, &phone_number).await;
                 }
             }
             Err(e) => {
-                warn!("[SIGNAL] Poll error: {}", e);
+                consecutive_errors = consecutive_errors.saturating_add(1);
+                let backoff_secs = (2u64 << consecutive_errors.min(5)).min(64);
+                warn!(
+                    "[SIGNAL] Poll error (consecutive: {}): {}. Retrying in {}s",
+                    consecutive_errors, e, backoff_secs
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)).await;
+                continue;
             }
         }
 
