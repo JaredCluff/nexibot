@@ -460,6 +460,9 @@ impl Scheduler {
             }
             if let Some(last_run) = task.last_run {
                 if should_have_run_since(task, last_run, now) {
+                    let jitter_ms = (rand::random::<u32>() % 3000) as u64;
+                    tokio::time::sleep(std::time::Duration::from_millis(jitter_ms)).await;
+
                     info!("[SCHEDULER] Missed task '{}', running now", task.name);
                     match self.execute_task(&task.id).await {
                         Ok(r) => info!(
@@ -494,6 +497,11 @@ impl Scheduler {
 
             if let Some(last_run) = task.last_run {
                 if should_have_run_since(task, last_run, now) {
+                    // Jitter up to 3s to prevent thundering herd when multiple
+                    // tasks are missed simultaneously (e.g., app was offline).
+                    let jitter_ms = (rand::random::<u32>() % 3000) as u64;
+                    tokio::time::sleep(std::time::Duration::from_millis(jitter_ms)).await;
+
                     info!("[SCHEDULER] Missed task '{}', running now", task.name);
                     let result = self.execute_task(&task.id).await;
                     if let Ok(result) = &result {
