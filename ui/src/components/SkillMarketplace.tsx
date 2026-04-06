@@ -59,23 +59,21 @@ interface InstallResult {
 
 function riskColor(level: string): string {
   switch (level.toLowerCase()) {
-    case 'safe':     return '#a6e3a1';
-    case 'low':      return '#a6e3a1';
-    case 'medium':   return '#f9e2af';
-    case 'high':     return '#fab387';
-    case 'critical': return '#f38ba8';
-    default:         return '#6c7086';
+    case 'safe':      return '#a6e3a1';
+    case 'caution':   return '#f9e2af';
+    case 'warning':   return '#fab387';
+    case 'dangerous': return '#f38ba8';
+    default:          return '#6c7086';
   }
 }
 
 function riskIcon(level: string): string {
   switch (level.toLowerCase()) {
-    case 'safe':
-    case 'low':     return '✓';
-    case 'medium':  return '⚠';
-    case 'high':
-    case 'critical': return '✕';
-    default:        return '?';
+    case 'safe':      return '✓';
+    case 'caution':   return '⚠';
+    case 'warning':   return '⚠';
+    case 'dangerous': return '✕';
+    default:          return '?';
   }
 }
 

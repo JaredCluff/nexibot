@@ -238,6 +238,7 @@ impl ClawHubClient {
 
     /// Search ClawHub marketplace.
     pub async fn search(&self, query: &str, limit: u32) -> Result<Vec<ClawHubSkillSummary>> {
+        let limit = limit.min(1000);
         info!("[CLAWHUB] Searching for: {} (limit: {})", query, limit);
 
         let resp = self
