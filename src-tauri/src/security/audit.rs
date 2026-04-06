@@ -1845,6 +1845,54 @@ fn check_plaintext_secrets(config: &NexiBotConfig) -> Option<SecurityAuditFindin
 }
 
 // ---------------------------------------------------------------------------
+// Hook command audit (SEC-C1)
+// ---------------------------------------------------------------------------
+
+/// Audit a set of configured hook commands for shell metacharacter injection
+/// patterns that could be exploited via prompt injection.
+///
+/// This is a warning-level check, not a hard block.  Hook commands are
+/// intentionally user-configurable; the finding is meant to prompt review.
+pub fn audit_hook_commands(
+    hooks: &[crate::hooks::HookConfig],
+) -> Vec<SecurityAuditFinding> {
+    let mut findings = Vec::new();
+
+    let suspicious: Vec<_> = hooks
+        .iter()
+        .filter(|h| h.enabled)
+        .filter_map(|h| h.command.as_deref())
+        .filter(|cmd| cmd.contains("$(") || cmd.contains('`'))
+        .collect();
+
+    if suspicious.is_empty() {
+        return findings;
+    }
+
+    findings.push(SecurityAuditFinding {
+        id: "cfg-hook-shell-metachar".into(),
+        severity: SecurityAuditSeverity::Medium,
+        title: "Hook commands contain shell metacharacters".into(),
+        description: format!(
+            "{} configured hook command(s) contain shell command substitution (`$(` or backtick) \
+             patterns. Hook commands execute with the privileges of the NexiBot process. If any \
+             hook command incorporates unsanitized LLM output or external input, these patterns \
+             could enable remote code execution via prompt injection.",
+            suspicious.len()
+        ),
+        fix_hint: Some(
+            "Review all hook commands containing `$(` or backtick characters. Ensure \
+             they do not interpolate untrusted content. Consider removing shell substitution \
+             and using fixed-argument commands wherever possible."
+                .into(),
+        ),
+        auto_fixable: false,
+    });
+
+    findings
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

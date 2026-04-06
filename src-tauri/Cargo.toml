@@ -207,6 +207,9 @@ lsp-types = "0.97"
 # Image processing for file read tool
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 
+# URL encoding (for connector URL injection prevention)
+urlencoding = "2"
+
 # macOS-specific dependencies for Speech framework FFI and Computer Use
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

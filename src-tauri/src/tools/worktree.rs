@@ -203,8 +203,6 @@ pub async fn create_agent_worktree(
 
 /// Remove an agent worktree. Requires git_root to be passed explicitly
 /// (since the worktree directory is being deleted).
-// TODO: Call from subagent_executor when a Worktree-isolated agent completes or is cancelled.
-#[allow(dead_code)]
 pub async fn remove_agent_worktree(git_root: &Path, worktree_path: &Path, branch: &str) {
     let _ = run_git(git_root, &[
         "worktree", "remove", "--force",

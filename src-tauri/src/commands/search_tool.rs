@@ -251,12 +251,16 @@ async fn search_duckduckgo(
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let resp = client
+    let mut search_req = client
         .post(format!("{}/api/search", bridge_url))
         .json(&serde_json::json!({
             "query": query,
             "num_results": num_results,
-        }))
+        }));
+    if let Some(secret) = crate::bridge::get_bridge_secret() {
+        search_req = search_req.header("x-bridge-secret", secret);
+    }
+    let resp = search_req
         .send()
         .await
         .map_err(|e| format!("Bridge search request failed: {}", e))?;

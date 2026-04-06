@@ -93,7 +93,11 @@ impl Default for DefenseConfig {
             llama_guard_mode: "api".to_string(),
             llama_guard_api_url: "http://localhost:11434".to_string(),
             allow_remote_llama_guard: false,
-            fail_open: true,
+            // fail_open defaults to false: when the user explicitly enables the defense
+            // pipeline, it should fail-closed (block requests) if no models are loaded
+            // rather than silently pass everything through. The pipeline is disabled by
+            // default (enabled: false), so this only takes effect when the user opts in.
+            fail_open: false,
         }
     }
 }
@@ -550,8 +554,8 @@ mod tests {
         assert_eq!(config.deberta_threshold, 0.85);
         assert!(!config.allow_remote_llama_guard);
         assert!(
-            config.fail_open,
-            "fail_open must default to true to prevent bricking the app"
+            !config.fail_open,
+            "fail_open must default to false (fail-closed) for secure defaults"
         );
     }
 
@@ -609,11 +613,11 @@ mod tests {
     }
 
     #[test]
-    fn test_fail_open_defaults_to_true() {
+    fn test_fail_open_defaults_to_false() {
         let config = DefenseConfig::default();
         assert!(
-            config.fail_open,
-            "fail_open must default to true to prevent bricking the app"
+            !config.fail_open,
+            "fail_open must default to false (fail-closed) for secure-by-default behavior"
         );
     }
 

@@ -118,10 +118,14 @@ impl LlmClient for OpenAICompatibleClient {
                 request_body["tools"] = serde_json::Value::Array(converted_tools);
             }
 
-            let response = self
+            let mut req = self
                 .http_client
                 .post(format!("{}/api/openai/messages", self.bridge_url))
-                .header("content-type", "application/json")
+                .header("content-type", "application/json");
+            if let Some(secret) = crate::bridge::get_bridge_secret() {
+                req = req.header("x-bridge-secret", secret);
+            }
+            let response = req
                 .json(&request_body)
                 .send()
                 .await

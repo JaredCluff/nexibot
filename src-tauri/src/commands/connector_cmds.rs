@@ -11,6 +11,14 @@ use tracing::{info, warn};
 
 use super::AppState;
 
+// ── URL encoding helper ───────────────────────────────────────────────────────
+
+/// URL-encode a path segment, refusing to allow path traversal via
+/// un-encoded slashes or other characters that have special meaning in URLs.
+fn encode_path_segment(s: &str) -> String {
+    urlencoding::encode(s).into_owned()
+}
+
 // ── Response types ────────────────────────────────────────────────────────────
 
 /// Metadata for a single supported connector type.
@@ -140,7 +148,8 @@ pub async fn poll_connector_status(
     state: State<'_, AppState>,
 ) -> Result<ConnectorSyncStatus, String> {
     let (base, token) = kn_api_creds(&state).await?;
-    let url = format!("{base}/connectors/{connector_id}/sync-status");
+    let safe_id = encode_path_segment(&connector_id);
+    let url = format!("{base}/connectors/{safe_id}/sync-status");
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
@@ -192,7 +201,8 @@ pub async fn delete_connector(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let (base, token) = kn_api_creds(&state).await?;
-    let url = format!("{base}/connectors/{connector_id}");
+    let safe_id = encode_path_segment(&connector_id);
+    let url = format!("{base}/connectors/{safe_id}");
     let client = reqwest::Client::new();
     let resp = client
         .delete(&url)

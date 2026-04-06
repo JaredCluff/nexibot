@@ -455,7 +455,7 @@ impl SkillLifecycleManager {
                 // Build everything we need for the LLM call, then drop the lock
                 // BEFORE any .await.
                 let creation_work = {
-                    let mgr = manager.lock().unwrap();
+                    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
                     mgr.store_recent_turn(&summary.turn_id, &summary.tools_used);
                     let recent = mgr.load_recent_tool_sets();
                     let score = score_turn(&summary, &recent);
@@ -497,12 +497,12 @@ impl SkillLifecycleManager {
                             match parse_and_write_skill(&response, &skills_manager, false).await {
                                 Ok(skill_id) => {
                                     info!("[SKILL_LIFECYCLE] Auto-created skill: {}", skill_id);
-                                    let mgr = manager.lock().unwrap();
+                                    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
                                     mgr.mark_creation_created(&turn_id, &skill_id);
                                 } // lock released
                                 Err(e) => {
                                     warn!("[SKILL_LIFECYCLE] Failed to write skill: {}", e);
-                                    let mgr = manager.lock().unwrap();
+                                    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
                                     mgr.mark_creation_failed(&turn_id);
                                 } // lock released
                             }
@@ -515,13 +515,13 @@ impl SkillLifecycleManager {
                     // ── Phase 3: improvement jobs ──────────────────────────
                     // Collect candidates synchronously, then do async LLM work.
                     let candidates = {
-                        let mgr = manager.lock().unwrap();
+                        let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
                         mgr.get_improvement_candidates(improvement_uses)
                     }; // lock released
 
                     for (skill_id, _count) in candidates {
                         let usage_log = {
-                            let mgr = manager.lock().unwrap();
+                            let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
                             mgr.recent_usage(&skill_id, 10)
                         }; // lock released
 

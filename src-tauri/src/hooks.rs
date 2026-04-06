@@ -185,6 +185,36 @@ impl HookHandler for CommandHookHandler {
             return Ok(HookResult::default());
         }
 
+        // Warn when a hook command contains patterns that are commonly associated
+        // with prompt-injection-driven RCE: command substitution ($(...)), backtick
+        // execution, or a curl/wget pipe chain.  These are intentional user-configured
+        // commands, so we do NOT block them — we log a security audit trail so the
+        // operator can review.
+        if self.command.contains("$(") {
+            warn!(
+                "[HOOKS] SECURITY: command hook for {:?} contains shell command substitution '$(' — \
+                 review for potential prompt-injection RCE: {:?}",
+                point, self.command
+            );
+        }
+        if self.command.contains('`') {
+            warn!(
+                "[HOOKS] SECURITY: command hook for {:?} contains backtick execution — \
+                 review for potential prompt-injection RCE: {:?}",
+                point, self.command
+            );
+        }
+        let cmd_trimmed = self.command.trim_start().to_ascii_lowercase();
+        if (cmd_trimmed.starts_with("curl") || cmd_trimmed.starts_with("wget"))
+            && self.command.contains('|')
+        {
+            warn!(
+                "[HOOKS] SECURITY: command hook for {:?} pipes curl/wget output to a shell — \
+                 review for potential prompt-injection RCE: {:?}",
+                point, self.command
+            );
+        }
+
         let context_json = serde_json::to_string(context)?;
 
         let mut cmd = {

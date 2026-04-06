@@ -5522,6 +5522,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "urlencoding",
  "uuid",
  "walkdir",
  "webpki-roots 0.26.11",
