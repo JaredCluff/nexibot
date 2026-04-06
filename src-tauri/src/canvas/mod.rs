@@ -92,6 +92,9 @@ pub struct CanvasState {
     pub layout: CanvasLayout,
 }
 
+/// Maximum number of panels retained in the canvas at once.
+const MAX_PANELS: usize = 200;
+
 /// Manages canvas panels and layout.
 ///
 /// All mutations return enough information for the caller to emit
@@ -114,6 +117,18 @@ impl CanvasManager {
         let id = panel.id.clone();
         debug!("[CANVAS] Creating panel '{}': {}", id, panel.title);
         self.state.panels.insert(id.clone(), panel);
+        // Evict the oldest panel if over the cap
+        if self.state.panels.len() > MAX_PANELS {
+            if let Some(oldest_id) = self
+                .state
+                .panels
+                .iter()
+                .min_by_key(|(_, p)| p.created_at)
+                .map(|(k, _)| k.clone())
+            {
+                self.state.panels.remove(&oldest_id);
+            }
+        }
         id
     }
 
