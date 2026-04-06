@@ -387,6 +387,120 @@ export interface NexiBotConfig {
     url: string;
     model: string;
   };
+  gmail?: {
+    enabled: boolean;
+    client_id: string;
+    client_secret: string;
+    refresh_token: string;
+    from_address: string;
+    allowed_senders: string[];
+    label: string;
+    poll_interval_seconds: number;
+    max_messages_per_poll: number;
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  bluebubbles?: {
+    enabled: boolean;
+    server_url: string;
+    password: string;
+    allowed_handles: string[];
+    admin_handles: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  google_chat?: {
+    enabled: boolean;
+    incoming_webhook_url: string;
+    hmac_secret: string;
+    verification_token: string;
+    allowed_spaces: string[];
+    admin_user_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  mattermost?: {
+    enabled: boolean;
+    server_url: string;
+    bot_token: string;
+    team_name?: string;
+    allowed_channel_ids: string[];
+    admin_user_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  messenger?: {
+    enabled: boolean;
+    page_access_token: string;
+    verify_token: string;
+    app_secret: string;
+    allowed_sender_ids: string[];
+    admin_sender_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  instagram?: {
+    enabled: boolean;
+    access_token: string;
+    instagram_account_id: string;
+    verify_token: string;
+    app_secret: string;
+    allowed_sender_ids: string[];
+    admin_sender_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  line?: {
+    enabled: boolean;
+    channel_access_token: string;
+    channel_secret: string;
+    allowed_user_ids: string[];
+    admin_user_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  twilio?: {
+    enabled: boolean;
+    account_sid: string;
+    auth_token: string;
+    from_number: string;
+    webhook_url: string;
+    allowed_numbers: string[];
+    admin_numbers: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  mastodon?: {
+    enabled: boolean;
+    instance_url: string;
+    access_token: string;
+    respond_to_mentions: boolean;
+    allowed_account_ids: string[];
+    admin_account_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  logging: {
+    enabled: boolean;
+    level: string;
+    file_enabled: boolean;
+    file_path?: string;
+    max_file_size_mb: number;
+    max_files: number;
+    console_enabled: boolean;
+    redact_secrets: boolean;
+    ring_buffer_size: number;
+  };
+  nats: {
+    enabled: boolean;
+    url: string;
+    inbound_subject: string;
+  };
+  defaults?: {
+    provider: string;
+    model: string;
+    backup_model?: string;
+  };
   gateway: GatewayConfig;
   sandbox: SandboxConfig;
   key_vault: {

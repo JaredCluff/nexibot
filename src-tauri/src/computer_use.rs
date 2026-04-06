@@ -98,12 +98,16 @@ impl ComputerUseManager {
         match action {
             "screenshot" => self.handle_screenshot().await,
             "mouse_move" => {
+                let coord = input["coordinate"]
+                    .as_array()
+                    .filter(|a| a.len() >= 2)
+                    .context("coordinate must be an array of [x, y]")?;
                 let x = i32::try_from(
-                    input["coordinate"][0].as_i64().context("Missing x coordinate")?,
+                    coord[0].as_i64().context("Missing x coordinate")?,
                 )
                 .context("X coordinate out of i32 range")?;
                 let y = i32::try_from(
-                    input["coordinate"][1].as_i64().context("Missing y coordinate")?,
+                    coord[1].as_i64().context("Missing y coordinate")?,
                 )
                 .context("Y coordinate out of i32 range")?;
                 native_control::mouse_move(x, y)?;
