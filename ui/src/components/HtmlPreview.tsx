@@ -34,7 +34,7 @@ function HtmlPreview({ content, title }: HtmlPreviewProps) {
           <iframe
             className="html-preview-iframe"
             srcDoc={content}
-            sandbox="allow-scripts"
+            sandbox=""
             title={title || 'HTML Preview'}
           />
         )}

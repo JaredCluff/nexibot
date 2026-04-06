@@ -398,16 +398,20 @@ async fn process_whatsapp_payload(
                     }
                 }
 
-                // Message deduplication using message id + sender as dedup key
+                // Message deduplication using message id + sender as dedup key.
+                // Messages without an ID cannot be deduplicated safely — skip them
+                // rather than risk processing duplicates on webhook retries.
                 {
                     let msg_id = message.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                    if !msg_id.is_empty() {
-                        let dedup_key = format!("{}:{}", from, msg_id);
-                        let mut dedup = state.msg_dedup.lock().await;
-                        if dedup.put(dedup_key, ()).is_some() {
-                            debug!("[WHATSAPP] Duplicate message from {}, skipping", from);
-                            continue;
-                        }
+                    if msg_id.is_empty() {
+                        warn!("[WHATSAPP] Message from {} missing ID field, skipping (cannot deduplicate)", from);
+                        continue;
+                    }
+                    let dedup_key = format!("{}:{}", from, msg_id);
+                    let mut dedup = state.msg_dedup.lock().await;
+                    if dedup.put(dedup_key, ()).is_some() {
+                        debug!("[WHATSAPP] Duplicate message from {}, skipping", from);
+                        continue;
                     }
                 }
 
