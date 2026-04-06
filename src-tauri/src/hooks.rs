@@ -309,6 +309,11 @@ impl HookHandler for CommandHookHandler {
 // Hook manager
 // ---------------------------------------------------------------------------
 
+/// Maximum trait-object handlers per hook point.
+const MAX_HANDLERS_PER_POINT: usize = 50;
+/// Maximum external command hooks.
+const MAX_COMMAND_HOOKS: usize = 100;
+
 /// Central registry that dispatches hook invocations.
 pub struct HookManager {
     /// Trait-object handlers registered per hook point.
@@ -329,12 +334,21 @@ impl HookManager {
 
     /// Register a trait-object handler for a specific hook point.
     pub fn register_handler(&mut self, point: HookPoint, handler: Box<dyn HookHandler>) {
+        let vec = self.handlers.entry(point).or_default();
+        if vec.len() >= MAX_HANDLERS_PER_POINT {
+            warn!("[HOOKS] Handler limit ({}) reached for {:?}, ignoring", MAX_HANDLERS_PER_POINT, point);
+            return;
+        }
         info!("[HOOKS] Registered handler for {:?}", point);
-        self.handlers.entry(point).or_default().push(handler);
+        vec.push(handler);
     }
 
     /// Add an external command hook from configuration.
     pub fn add_command_hook(&mut self, config: HookConfig) {
+        if self.command_hooks.len() >= MAX_COMMAND_HOOKS {
+            warn!("[HOOKS] Command hook limit ({}) reached, ignoring {:?}", MAX_COMMAND_HOOKS, config.command);
+            return;
+        }
         info!(
             "[HOOKS] Added command hook for {:?}: {:?}",
             config.point, config.command
