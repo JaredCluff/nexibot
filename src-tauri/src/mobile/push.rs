@@ -520,9 +520,8 @@ pub fn create_message_notification(
     preview: &str,
 ) -> PushNotification {
     let body = if preview.len() > 100 {
-        let mut truncated = preview[..97].to_string();
-        truncated.push_str("...");
-        truncated
+        let b = preview.char_indices().take_while(|(i, _)| *i < 97).last().map(|(i, c)| i + c.len_utf8()).unwrap_or(0);
+        format!("{}...", &preview[..b])
     } else {
         preview.to_string()
     };
@@ -556,9 +555,8 @@ pub fn create_completion_notification(device_token: &str, task_name: &str) -> Pu
 /// Create a push notification for an error.
 pub fn create_error_notification(device_token: &str, error: &str) -> PushNotification {
     let body = if error.len() > 100 {
-        let mut truncated = error[..97].to_string();
-        truncated.push_str("...");
-        truncated
+        let b = error.char_indices().take_while(|(i, _)| *i < 97).last().map(|(i, c)| i + c.len_utf8()).unwrap_or(0);
+        format!("{}...", &error[..b])
     } else {
         error.to_string()
     };

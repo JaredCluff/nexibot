@@ -600,6 +600,7 @@ interface BackgroundTask {
   updated_at: string;
   progress: string | null;
   result_summary: string | null;
+  notify_target: { type: string; [key: string]: unknown } | null;
 }
 
 function BackgroundTasksSection() {

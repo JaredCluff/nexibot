@@ -48,6 +48,12 @@ export interface SessionOverrides {
   thinking_budget: number | null;
   verbose: boolean;
   provider: string | null;
+  sandbox: {
+    memory_limit: string | null;
+    cpu_limit: number | null;
+    timeout_seconds: number | null;
+    additional_blocked_paths: string[] | null;
+  } | null;
 }
 
 export interface AvailableModel {
