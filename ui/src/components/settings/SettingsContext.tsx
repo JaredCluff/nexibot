@@ -953,7 +953,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setCurrentSoul(soul.content || '');
     } catch { /* not critical */ }
     try {
-      const status = await invoke<string | { status: string }>('get_bridge_status');
+      const status = await invoke<'NotInstalled' | 'Stopped' | 'Starting' | 'Running' | 'Unhealthy' | { Error: string }>('get_bridge_status');
       if (typeof status === 'string') {
         setBridgeStatus(status);
       } else if (status && typeof status === 'object') {
