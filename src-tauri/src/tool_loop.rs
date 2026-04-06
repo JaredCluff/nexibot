@@ -8,6 +8,11 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+/// Maximum number of MCP tools that can be dynamically added to the active tool set
+/// within a single tool-loop execution. Prevents unbounded context window growth
+/// when many distinct MCP tool names are referenced across iterations.
+const MAX_ACTIVE_MCP_TOOLS: usize = 50;
+
 use async_trait::async_trait;
 use futures_util::future::join_all;
 use tracing::{debug, error, info, warn};
@@ -1421,11 +1426,18 @@ pub async fn execute_tool_loop(
             {
                 let mcp = state.mcp_manager.read().await;
                 if let Some(tool_def) = mcp.get_tool_by_name(&tool_use.name) {
-                    info!(
-                        "[{}] Dynamically adding MCP tool '{}' to active tool set",
-                        label, tool_use.name
-                    );
-                    active_tools.push(tool_def);
+                    if active_tools.len() < MAX_ACTIVE_MCP_TOOLS {
+                        info!(
+                            "[{}] Dynamically adding MCP tool '{}' to active tool set",
+                            label, tool_use.name
+                        );
+                        active_tools.push(tool_def);
+                    } else {
+                        warn!(
+                            "[{}] Active tool limit ({}) reached, skipping dynamic add of '{}'",
+                            label, MAX_ACTIVE_MCP_TOOLS, tool_use.name
+                        );
+                    }
                 }
             }
 

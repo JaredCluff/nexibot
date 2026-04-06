@@ -142,20 +142,35 @@ pub fn assess_command_risk(command: &str) -> CommandRisk {
         }
     }
 
-    // Simple python/node one-liners are typically safe
+    // Python/node one-liners: only classify as Safe using a positive allowlist.
+    // A denylist ("import os", "subprocess", etc.) can be bypassed via
+    // alternative forms like `from os import system` or `__import__('os')`.
     if (base_cmd == "python3" || base_cmd == "python" || base_cmd == "node")
         && (lower.contains("-c ") || lower.contains("-e "))
-        && !lower.contains("import os")
-        && !lower.contains("subprocess")
-        && !lower.contains("child_process")
-        && !lower.contains("exec(")
-        && !lower.contains("eval(")
     {
+        let is_truly_safe = (lower.contains("print(") || lower.contains("console.log("))
+            && !lower.contains("import ")
+            && !lower.contains("require(")
+            && !lower.contains("__import__")
+            && !lower.contains("exec(")
+            && !lower.contains("eval(")
+            && !lower.contains("system(")
+            && !lower.contains("subprocess")
+            && !lower.contains("child_process")
+            && !lower.contains("open(");
+        if is_truly_safe {
+            debug!(
+                "[SANDBOX_POLICY] Command assessed as Safe (simple script): {}",
+                command
+            );
+            return CommandRisk::Safe;
+        }
+        // All other python/node inline code defaults to Moderate (not Safe)
         debug!(
-            "[SANDBOX_POLICY] Command assessed as Safe (simple script): {}",
+            "[SANDBOX_POLICY] Command assessed as Moderate (inline script): {}",
             command
         );
-        return CommandRisk::Safe;
+        return CommandRisk::Moderate;
     }
 
     // Unknown commands default to Moderate

@@ -9,9 +9,11 @@ use tracing::{info, warn};
 pub struct AuthProfile {
     pub provider: String, // "anthropic" or "openai"
     pub profile_name: String,
-    /// OAuth access token — never include in log output.
+    /// OAuth access token — never include in log output and never sent to frontend.
+    #[serde(skip_serializing)]
     pub access_token: String,
-    /// OAuth refresh token — never include in log output.
+    /// OAuth refresh token — never include in log output and never sent to frontend.
+    #[serde(skip_serializing)]
     pub refresh_token: Option<String>,
     pub expires_at: u64,    // Unix timestamp
     #[allow(dead_code)]

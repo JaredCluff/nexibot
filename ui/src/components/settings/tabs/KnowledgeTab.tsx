@@ -24,6 +24,20 @@ interface K2KSearchResult {
   content: string;
 }
 
+interface K2KSearchResponse {
+  results: K2KSearchResult[];
+  total_results: number;
+  error: string | null;
+}
+
+interface AgentCapabilityInfo {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  version: string;
+}
+
 interface AgentTaskState {
   task_id: string;
   status: string;
@@ -318,8 +332,8 @@ export function KnowledgeTab() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && k2kQuery.trim()) {
                   setSearchingK2k(true);
-                  invoke<K2KSearchResult[]>('search_k2k', { query: k2kQuery, topK: k2kTopK, federated: k2kFederated })
-                    .then(setK2kResults)
+                  invoke<K2KSearchResponse>('search_k2k', { query: k2kQuery, topK: k2kTopK, federated: k2kFederated })
+                    .then(resp => setK2kResults(resp.results))
                     .catch((error) => notifyError('K2K', `Search failed: ${error}`))
                     .finally(() => setSearchingK2k(false));
                 }
@@ -338,8 +352,8 @@ export function KnowledgeTab() {
             <button className="primary" disabled={searchingK2k || !k2kQuery.trim()} onClick={async () => {
               setSearchingK2k(true);
               try {
-                const results = await invoke<K2KSearchResult[]>('search_k2k', { query: k2kQuery, topK: k2kTopK, federated: k2kFederated });
-                setK2kResults(results);
+                const resp = await invoke<K2KSearchResponse>('search_k2k', { query: k2kQuery, topK: k2kTopK, federated: k2kFederated });
+                setK2kResults(resp.results);
               } catch (error) {
                 notifyError('K2K', `Search failed: ${error}`);
               } finally {
@@ -403,9 +417,10 @@ export function KnowledgeTab() {
             <button disabled={loadingCapabilities} onClick={async () => {
               setLoadingCapabilities(true);
               try {
-                const caps = await invoke<string[]>('list_agent_capabilities');
-                setAgentCapabilities(caps);
-                if (caps.length > 0 && !selectedCapability) setSelectedCapability(caps[0]);
+                const caps = await invoke<AgentCapabilityInfo[]>('list_agent_capabilities');
+                const capNames = caps.map(c => c.name);
+                setAgentCapabilities(capNames);
+                if (capNames.length > 0 && !selectedCapability) setSelectedCapability(capNames[0]);
               } catch (error) {
                 notifyError('Agent Tasks', `Failed to load capabilities: ${error}`);
               } finally {
