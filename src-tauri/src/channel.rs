@@ -251,7 +251,7 @@ async fn send_whatsapp_text(app_state: &crate::commands::AppState, to: &str, tex
     let phone_id = phone_number_id;
     let token = access_token;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let url = format!("https://graph.facebook.com/v18.0/{}/messages", phone_id);
     let body = serde_json::json!({
         "messaging_product": "whatsapp",

@@ -385,7 +385,7 @@ pub async fn start_matrix_sync(app_state: AppState) -> Result<()> {
     }
 
     let state = Arc::new(MatrixBotState::new(app_state));
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     info!(
         "[MATRIX] Starting Matrix sync loop (homeserver: {}, user: {})",
@@ -966,7 +966,7 @@ pub async fn send_matrix_message(
     text: &str,
     txn_id: &str,
 ) -> Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     // URL-encode the room_id (it contains special chars like ! and :)
     let encoded_room_id = encode_room_id(room_id);

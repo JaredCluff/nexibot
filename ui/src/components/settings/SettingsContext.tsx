@@ -552,6 +552,9 @@ export interface NexiBotConfig {
     enabled: boolean;
     kn_server_url: string;
     service_token?: string;
+    instance_id?: string;
+    heartbeat_interval_secs: number;
+    cached_policy?: Record<string, unknown>;
   };
   external_skill_dirs: string[];
   auto_discover_formats: string[];

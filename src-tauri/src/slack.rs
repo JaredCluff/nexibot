@@ -558,7 +558,7 @@ async fn send_slack_message_checked(app_state: &AppState, channel: &str, text: &
         return false;
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let body = serde_json::json!({
         "channel": channel,
         "text": text,
