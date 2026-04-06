@@ -1436,7 +1436,9 @@ impl VoiceService {
                                                                 ).await;
                                                             }
                                                             drop(text_tx);
-                                                            let _ = tts_handle.await;
+                                                            if let Err(e) = tts_handle.await {
+                                                                error!("[VOICE] TTS consumer task panicked: {}", e);
+                                                            }
                                                             // Drain sink
                                                             loop {
                                                                 if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) { break; }
@@ -1539,7 +1541,9 @@ impl VoiceService {
                                                 drop(text_tx); // Signal EOF to TTS consumer
 
                                                 info!("[VOICE] Claude voice response: {} chars", response.len());
-                                                let _ = tts_handle.await;
+                                                if let Err(e) = tts_handle.await {
+                                                    error!("[VOICE] TTS consumer task panicked: {}", e);
+                                                }
 
                                                 // Wait for sink to finish playing (exit early if cancelled)
                                                 loop {

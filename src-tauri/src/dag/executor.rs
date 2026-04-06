@@ -491,7 +491,9 @@ async fn execution_loop(
 
         // Wait for all tasks in this round to complete
         for handle in handles {
-            let _ = handle.await;
+            if let Err(e) = handle.await {
+                error!("[DAG] Task thread panicked during round execution: {}", e);
+            }
         }
 
         // Emit progress
