@@ -1814,6 +1814,8 @@ async fn handle_command(
                 }
                 return;
             }
+            // Cap the list shown to the user at 50 sessions to bound memory usage
+            let sessions: Vec<_> = sessions.into_iter().take(50).collect();
             let mut list = String::from("📋 Previous sessions:\n\n");
             for (i, s) in sessions.iter().enumerate() {
                 list.push_str(&format!(
@@ -1974,6 +1976,14 @@ async fn session_cleanup_loop(state: Arc<TelegramBotState>) {
                 evict_count,
                 sessions.len()
             );
+        }
+
+        // Evict stale LLM locks for chats that no longer have active sessions
+        {
+            let active_chat_ids: std::collections::HashSet<i64> =
+                sessions.keys().copied().collect();
+            let mut locks = state.chat_llm_locks.lock().await;
+            locks.retain(|id, _| active_chat_ids.contains(id));
         }
     }
 }
