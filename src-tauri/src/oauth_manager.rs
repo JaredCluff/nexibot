@@ -216,8 +216,8 @@ impl OAuthManager {
                             retry_count, MAX_RETRIES
                         );
 
-                        // Exponential backoff: 1s, 2s, 4s
-                        let backoff = std::time::Duration::from_secs(2_u64.pow(retry_count - 1));
+                        // Exponential backoff: 1s, 2s, 4s (exponent capped at 63)
+                        let backoff = std::time::Duration::from_secs(2_u64.pow((retry_count - 1).min(63)));
                         tokio::time::sleep(backoff).await;
                         continue;
                     }

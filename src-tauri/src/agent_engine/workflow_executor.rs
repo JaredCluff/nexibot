@@ -443,14 +443,15 @@ impl WorkflowExecutor {
         steps: Vec<&WorkflowStep>,
         ctx: &ExecutionContext,
     ) -> Vec<(String, StepResult)> {
-        let mut handles = Vec::new();
+        let mut handles: Vec<(String, tokio::task::JoinHandle<(String, StepResult)>)> = Vec::new();
 
         for step in steps {
             let dispatch = self.dispatch.clone();
+            let step_id = step.id.clone();
             let step = step.clone();
             let ctx_vars = ctx.vars().clone();
 
-            handles.push(tokio::spawn(async move {
+            handles.push((step_id, tokio::spawn(async move {
                 let step_start = Instant::now();
                 let _exec_ctx = ExecutionContext::from_inputs(&ctx_vars);
                 let input = substitute_value(&step.input, &ctx_vars);
@@ -500,15 +501,25 @@ impl WorkflowExecutor {
                         duration_ms: step_start.elapsed().as_millis() as u64,
                     },
                 )
-            }));
+            })));
         }
 
         let mut results = Vec::new();
-        for handle in handles {
+        for (step_id, handle) in handles {
             match handle.await {
                 Ok(r) => results.push(r),
                 Err(e) => {
-                    error!("[WF_EXECUTOR] Parallel step join error: {}", e);
+                    error!("[WF_EXECUTOR] Parallel step '{}' join error (task panicked or cancelled): {}", step_id, e);
+                    results.push((
+                        step_id.clone(),
+                        StepResult {
+                            step_id,
+                            status: "failed".to_string(),
+                            output: None,
+                            error: Some(format!("task panicked or was cancelled: {}", e)),
+                            duration_ms: 0,
+                        },
+                    ));
                 }
             }
         }
