@@ -207,9 +207,11 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
 
     let bot_state = Arc::new(TelegramBotState::new(app_state));
 
-    // Spawn session cleanup task
+    // Spawn session cleanup task. Move the handle into the polling loop so it
+    // is aborted when the polling loop exits (prevents stale Arc accumulation
+    // across repeated restarts within the same app session).
     let cleanup_state = bot_state.clone();
-    tokio::spawn(session_cleanup_loop(cleanup_state));
+    let cleanup_handle = tokio::spawn(session_cleanup_loop(cleanup_state));
 
     // Stop flag: set to true by the caller to request graceful shutdown.
     let stop_flag = Arc::new(AtomicBool::new(false));
@@ -266,6 +268,9 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
             tokio::time::sleep(backoff).await;
             backoff = (backoff * 2).min(std::time::Duration::from_secs(64));
         }
+        // Polling loop has exited — abort the cleanup task so its Arc
+        // references don't linger across bot restarts.
+        cleanup_handle.abort();
     });
 
     Ok(Some(stop_flag))

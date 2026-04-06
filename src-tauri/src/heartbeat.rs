@@ -152,6 +152,8 @@ pub struct HeartbeatManager {
     last_heartbeat: Arc<RwLock<Option<DateTime<Utc>>>>,
     /// Injected after AppState is constructed (deferred to break the init cycle).
     services: Arc<RwLock<Option<HeartbeatServices>>>,
+    /// Handle to the background task so stop() can abort it immediately.
+    task_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 /// Services needed by the heartbeat catch-up scan.
@@ -169,6 +171,7 @@ impl HeartbeatManager {
             is_running: Arc::new(RwLock::new(false)),
             last_heartbeat: Arc::new(RwLock::new(None)),
             services: Arc::new(RwLock::new(None)),
+            task_handle: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -219,7 +222,7 @@ impl HeartbeatManager {
         let last_heartbeat_clone = self.last_heartbeat.clone();
         let services_clone = self.services.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             // Don't let individual heartbeat failures stop the loop
             loop {
                 // Check if still running
@@ -273,13 +276,23 @@ impl HeartbeatManager {
             }
         });
 
+        if let Ok(mut guard) = self.task_handle.lock() {
+            *guard = Some(handle);
+        }
+
         Ok(())
     }
 
     /// Stop the heartbeat loop
     pub async fn stop(&self) -> Result<()> {
-        let mut is_running = self.is_running.write().await;
-        *is_running = false;
+        *self.is_running.write().await = false;
+        // Abort the background task immediately rather than waiting up to
+        // `interval_seconds` for it to notice the flag change.
+        if let Ok(mut guard) = self.task_handle.lock() {
+            if let Some(handle) = guard.take() {
+                handle.abort();
+            }
+        }
         info!("[HEARTBEAT] Stopping heartbeat loop");
         Ok(())
     }
