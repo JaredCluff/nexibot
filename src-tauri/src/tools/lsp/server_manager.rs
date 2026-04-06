@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+const MAX_OPENED_FILES: usize = 500;
+
 pub struct ServerEntry {
     pub name: String,
     pub command: String,
@@ -91,6 +93,11 @@ impl LspServerManager {
                 .ok_or_else(|| anyhow::anyhow!("Server '{}' not found after ensure_started", server_name))?;
             if let Some(client) = &entry.client {
                 client.open_file(&uri, lang_id, &content).await?;
+                if self.opened_files.len() >= MAX_OPENED_FILES {
+                    if let Some(evict_key) = self.opened_files.keys().next().cloned() {
+                        self.opened_files.remove(&evict_key);
+                    }
+                }
                 self.opened_files.insert(uri.clone(), server_name.clone());
             }
         }

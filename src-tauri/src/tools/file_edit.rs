@@ -25,13 +25,15 @@ impl Tool for FileEditTool {
         })
     }
 
-    async fn check_permissions(&self, input: &Value, _ctx: &ToolContext) -> PermissionDecision {
+    async fn check_permissions(&self, input: &Value, ctx: &ToolContext) -> PermissionDecision {
         match input["file_path"].as_str() {
             None => PermissionDecision::Deny("file_path is required".to_string()),
             Some(p) => {
                 let path = Path::new(p);
                 if is_dangerous_path(path) {
                     PermissionDecision::Deny(format!("Editing {} is not allowed", p))
+                } else if let Err(e) = crate::security::path_validation::validate_path_within(path, &ctx.working_dir) {
+                    PermissionDecision::Deny(format!("Path not allowed: {}", e))
                 } else {
                     PermissionDecision::Allow
                 }
@@ -39,11 +41,14 @@ impl Tool for FileEditTool {
         }
     }
 
-    async fn call(&self, input: Value, _ctx: ToolContext) -> ToolResult {
+    async fn call(&self, input: Value, ctx: ToolContext) -> ToolResult {
         let file_path = match input["file_path"].as_str() {
             Some(p) => PathBuf::from(p),
             None => return ToolResult::err("file_path is required"),
         };
+        if let Err(e) = crate::security::path_validation::validate_path_within(&file_path, &ctx.working_dir) {
+            return ToolResult::err(format!("Path not allowed: {}", e));
+        }
         let old_string = match input["old_string"].as_str() {
             Some(s) => s.to_string(),
             None => return ToolResult::err("old_string is required"),
@@ -334,5 +339,19 @@ mod tests {
         let result = apply_edit(&path, "", "fn main() {}\n", false).await;
         assert!(result.is_ok());
         assert!(path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_permission_blocks_path_outside_working_dir() {
+        let tool = FileEditTool;
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::tool_registry::ToolContext {
+            session_key: "s".into(),
+            agent_id: "a".into(),
+            working_dir: tmp.path().to_path_buf(),
+        };
+        let input = serde_json::json!({"file_path": "/etc/hosts", "old_string": "a", "new_string": "b"});
+        let decision = tool.check_permissions(&input, &ctx).await;
+        assert!(matches!(decision, PermissionDecision::Deny(_)));
     }
 }
