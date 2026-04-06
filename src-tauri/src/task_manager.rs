@@ -31,6 +31,9 @@ pub struct BackgroundTask {
     pub notify_target: Option<NotificationTarget>,
 }
 
+/// Maximum number of completed/failed tasks to retain before evicting oldest.
+const MAX_FINISHED_TASKS: usize = 500;
+
 pub struct TaskManager {
     tasks: HashMap<String, BackgroundTask>,
 }
@@ -47,7 +50,7 @@ impl TaskManager {
         description: &str,
         notify_target: Option<NotificationTarget>,
     ) -> String {
-        let id = Uuid::new_v4().to_string()[..8].to_string();
+        let id = Uuid::new_v4().to_string();
         let now = Utc::now();
         let task = BackgroundTask {
             id: id.clone(),
@@ -60,6 +63,25 @@ impl TaskManager {
             notify_target,
         };
         self.tasks.insert(id.clone(), task);
+        // Evict oldest finished tasks if we exceed the cap
+        let finished: Vec<String> = {
+            let mut done: Vec<_> = self
+                .tasks
+                .iter()
+                .filter(|(_, t)| {
+                    matches!(t.status, TaskStatus::Completed | TaskStatus::Failed)
+                })
+                .map(|(k, t)| (k.clone(), t.created_at))
+                .collect();
+            done.sort_by_key(|(_, ts)| *ts);
+            done.into_iter()
+                .take(self.tasks.len().saturating_sub(MAX_FINISHED_TASKS))
+                .map(|(k, _)| k)
+                .collect()
+        };
+        for k in finished {
+            self.tasks.remove(&k);
+        }
         id
     }
 

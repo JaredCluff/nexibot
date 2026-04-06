@@ -335,7 +335,7 @@ impl SqliteMemoryStore {
     pub fn search_fts(&self, query: &str, limit: usize) -> Result<Vec<(MemoryRecord, f64)>> {
         let query_words: Vec<String> = query
             .split_whitespace()
-            .filter(|w| w.len() > 1)
+            .filter(|w| !w.is_empty())
             .map(|w| {
                 // Escape FTS5 special characters and quote each term
                 let escaped = w.replace('"', "\"\"");
