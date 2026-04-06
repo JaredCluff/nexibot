@@ -502,6 +502,10 @@ impl EmailManager {
                 anyhow::bail!("IMAP password must not contain line endings");
             }
 
+            if folder.contains('\r') || folder.contains('\n') {
+                anyhow::bail!("IMAP folder must not contain line endings");
+            }
+
             // LOGIN
             send_cmd(&format!(
                 "LOGIN \"{}\" \"{}\"",

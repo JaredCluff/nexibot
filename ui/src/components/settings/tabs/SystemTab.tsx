@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useSettings } from '../SettingsContext';
+import { useSettings, Soul } from '../SettingsContext';
 import { InfoTip } from '../shared/InfoTip';
 import { TagInput } from '../shared/TagInput';
 import { SENSITIVE_PATH_SUGGESTIONS } from '../shared/suggestions';
@@ -286,7 +286,7 @@ export function SystemTab() {
               onChange={async (e) => {
                 if (e.target.value) {
                   try {
-                    const soul = await invoke<{ content: string }>('load_soul_template', { templateName: e.target.value });
+                    const soul = await invoke<Soul>('load_soul_template', { templateName: e.target.value });
                     setCurrentSoul(soul.content || '');
                   } catch (error) {
                     notifyError('Soul', `Failed to load template: ${error}`);

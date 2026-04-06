@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import type { Skill, SkillTemplate } from '../../shared/types';
 
 // ─── Config types (local to settings) ────────────────────────────────────────
 
@@ -421,6 +422,14 @@ export interface DefenseStatus {
 export interface SoulTemplate {
   name: string;
   description: string;
+  path: string;
+}
+
+export interface Soul {
+  path: string;
+  content: string;
+  last_modified: string;
+  version: string;
 }
 
 export interface HeartbeatConfig {
@@ -566,8 +575,8 @@ export interface SettingsContextValue {
   schedulerResults: TaskExecutionResult[];
   loadSchedulerData: () => Promise<void>;
   // Skills
-  skills: any[];
-  skillTemplates: any[];
+  skills: Skill[];
+  skillTemplates: SkillTemplate[];
   loadSkillsData: () => Promise<void>;
   // Startup
   startupConfig: { nexibot_at_login: boolean; k2k_agent_at_login: boolean; k2k_agent_binary: string };
@@ -627,8 +636,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
   const [schedulerEnabled, setSchedulerEnabled] = useState(false);
   const [schedulerResults, setSchedulerResults] = useState<TaskExecutionResult[]>([]);
-  const [skills, setSkills] = useState<any[]>([]);
-  const [skillTemplates, setSkillTemplates] = useState<any[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillTemplates, setSkillTemplates] = useState<SkillTemplate[]>([]);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [startupConfig, setStartupConfig] = useState({ nexibot_at_login: false, k2k_agent_at_login: false, k2k_agent_binary: '' });
@@ -748,11 +757,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const loadSkillsData = useCallback(async () => {
     try {
-      const loadedSkills = await invoke<any[]>('list_skills');
+      const loadedSkills = await invoke<Skill[]>('list_skills');
       setSkills(loadedSkills);
     } catch { /* not critical */ }
     try {
-      const templates = await invoke<any[]>('list_skill_templates');
+      const templates = await invoke<SkillTemplate[]>('list_skill_templates');
       setSkillTemplates(templates);
     } catch { /* not critical */ }
   }, []);

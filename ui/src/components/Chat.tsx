@@ -197,7 +197,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   // Reload messages when session changes
   useEffect(() => {
     if (!sessionId) return;
-    invoke<{ messages: { role: string; content: string }[] }>('get_current_session')
+    invoke<{ id: string; title: string | null; started_at: string; last_activity: string; messages: { role: string; content: string }[] }>('get_current_session')
       .then((session) => {
         const loaded: Message[] = session.messages
           .filter((m) => m.role !== 'system')

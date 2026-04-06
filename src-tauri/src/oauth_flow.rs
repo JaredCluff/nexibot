@@ -192,7 +192,13 @@ async fn run_callback_server(
     );
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            warn!("[OAUTH] Failed to bind callback server on {}: {}", addr, e);
+            return;
+        }
+    };
 
     info!("[OAUTH] Callback server listening on {}", addr);
 

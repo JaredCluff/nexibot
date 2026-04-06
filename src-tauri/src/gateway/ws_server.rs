@@ -217,14 +217,20 @@ impl GatewayServer {
                                      disallowed header '{}' (CVE-2026-25253 URL injection prevention)",
                                     header_name
                                 );
-                                return Err(tokio_tungstenite::tungstenite::http::Response::builder()
+                                let resp = tokio_tungstenite::tungstenite::http::Response::builder()
                                     .status(tokio_tungstenite::tungstenite::http::StatusCode::FORBIDDEN)
                                     .body(Some(format!(
                                         "Connection rejected: disallowed header '{}' \
                                          (CVE-2026-25253 URL injection prevention)",
                                         header_name
-                                    )))
-                                    .unwrap());
+                                    )));
+                                return Err(match resp {
+                                    Ok(r) => r,
+                                    Err(e) => {
+                                        warn!("[GATEWAY] Failed to build rejection response: {}", e);
+                                        return Err(tokio_tungstenite::tungstenite::http::Response::new(None));
+                                    }
+                                });
                             }
                         }
 
