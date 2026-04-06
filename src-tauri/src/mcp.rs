@@ -184,7 +184,14 @@ impl MCPManager {
             cmd.arg(arg);
         }
         for (key, value) in &config.env {
-            cmd.env(key, value);
+            // Only allow env var names that consist of ASCII alphanumerics and
+            // underscores — this blocks LD_PRELOAD-style attacks where a
+            // malicious config injects metacharacters or shell-special names.
+            if key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                cmd.env(key, value);
+            } else {
+                warn!("[MCP] Rejected unsafe env var name for server '{}': {:?}", config.name, key);
+            }
         }
 
         // Spawn the child process transport + initialization with timeout

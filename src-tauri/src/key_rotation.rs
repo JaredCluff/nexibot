@@ -513,8 +513,8 @@ impl KeyRotationManager {
                                 "API key for {} expires in {} days",
                                 provider, days_until_expiry
                             );
+                            warn!("[KEY_ROTATION] {}", warning);
                             warnings.push((provider.clone(), warning));
-                            warn!("[KEY_ROTATION] {}", warnings.last().unwrap().1);
                         } else if days_until_expiry <= 0 {
                             error!("[KEY_ROTATION] API key for {} has EXPIRED", provider);
                         }

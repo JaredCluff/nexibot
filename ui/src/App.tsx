@@ -11,7 +11,7 @@ import NotificationToast from './components/NotificationToast';
 import Canvas, { Artifact } from './components/Canvas';
 import ShellViewerApp from './components/ShellViewerApp';
 import YoloApprovalBanner from './components/YoloApprovalBanner';
-import { notifyError } from './shared/notify';
+import { notifyError, notifyInfo } from './shared/notify';
 import './App.css';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: string }> {
@@ -100,6 +100,17 @@ function App() {
       );
     }).then((fn) => { unlisten = fn; });
 
+    return () => { unlisten?.(); };
+  }, []);
+
+  // Listen for K2K Agent Hub notifications
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen<{ type?: string; message?: string; text?: string }>('k2k:notification', (event) => {
+      const payload = event.payload;
+      const text = payload.message || payload.text || JSON.stringify(payload);
+      notifyInfo('K2K Agent Hub', text);
+    }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
 

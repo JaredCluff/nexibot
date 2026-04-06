@@ -1170,6 +1170,10 @@ fn encode_ogg_opus(pcm_i16: &[i16], input_sample_rate: u32) -> Result<Vec<u8>, S
     use audiopus::coder::Encoder as OpusEncoder;
     use audiopus::{Application, Bitrate, Channels, SampleRate, Signal};
 
+    if input_sample_rate == 0 {
+        return Err("Invalid audio: sample rate is 0".to_string());
+    }
+
     // Opus requires one of: 8000, 12000, 16000, 24000, 48000
     let opus_rate = if input_sample_rate <= 8000 {
         SampleRate::Hz8000
