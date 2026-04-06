@@ -92,6 +92,9 @@ const TTL_SECONDS: i64 = 900;
 /// Maximum total active pairing requests system-wide.
 /// Prevents resource exhaustion from a flood of pairing requests.
 const MAX_ACTIVE_PAIRING_REQUESTS: usize = 20;
+/// Maximum entries in the rate-limit shadow map (in-memory).
+/// Prevents unbounded growth when many unique senders attempt pairing.
+const MAX_SHADOW_ENTRIES: usize = 1000;
 /// Maximum pairing attempts per IP/user per 15 minutes.
 const PAIRING_RATE_LIMIT_MAX_ATTEMPTS: u32 = 5;
 /// Sliding window for pairing rate limit (15 minutes).
@@ -150,6 +153,46 @@ impl PairingManager {
             || self.runtime_whatsapp_allowlist.contains(phone)
     }
 
+    /// Evict expired or excess entries from the rate-limit shadow map.
+    /// Removes entries whose rate-limit window has expired first,
+    /// then evicts oldest by window_start if still over MAX_SHADOW_ENTRIES.
+    fn evict_shadow_if_needed(&mut self) {
+        if self.rate_limit_shadow.len() < MAX_SHADOW_ENTRIES {
+            return;
+        }
+
+        let window_secs = PAIRING_RATE_LIMIT_WINDOW_SECONDS as i64;
+        let lockout_secs = PAIRING_RATE_LIMIT_LOCKOUT_SECONDS as i64;
+        let now = Utc::now();
+
+        // Remove entries that are no longer active (window expired and not locked)
+        self.rate_limit_shadow.retain(|_, shadow| {
+            let locked = shadow.locked_until.as_deref()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                .is_some_and(|dt| dt.with_timezone(&Utc) > now);
+
+            let window_start = DateTime::parse_from_rfc3339(&shadow.window_start)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or(now);
+            let window_active = (now - window_start).num_seconds() < window_secs.max(lockout_secs);
+
+            locked || window_active
+        });
+
+        // If still over limit, evict oldest by window_start
+        if self.rate_limit_shadow.len() >= MAX_SHADOW_ENTRIES {
+            let mut keys_by_age: Vec<(String, String)> = self.rate_limit_shadow
+                .iter()
+                .map(|(k, v)| (k.clone(), v.window_start.clone()))
+                .collect();
+            keys_by_age.sort_by(|a, b| a.1.cmp(&b.1));
+            let evict_count = self.rate_limit_shadow.len().saturating_sub(MAX_SHADOW_ENTRIES / 2);
+            for (key, _) in keys_by_age.into_iter().take(evict_count) {
+                self.rate_limit_shadow.remove(&key);
+            }
+        }
+    }
+
     /// Create a pairing request for an unknown sender.
     /// Returns the generated code on success.
     ///
@@ -165,6 +208,7 @@ impl PairingManager {
     ) -> Result<String> {
         // Rate limit check: prevent brute-force pairing code generation
         let rate_key = format!("{}:{}", channel, sender_id);
+        self.evict_shadow_if_needed();
         match self.rate_limiter.check(&rate_key) {
             Err(e) => {
                 // Update shadow state to reflect lockout so it can be persisted
