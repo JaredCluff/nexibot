@@ -89,6 +89,20 @@ function App() {
     return () => { unlisten?.(); };
   }, []);
 
+  // Listen for canvas:panel-updated events from Tauri backend
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    listen<{ panel_id: string; content: string; updated_at: string }>('canvas:panel-updated', (event) => {
+      const { panel_id, content } = event.payload;
+      setArtifacts((prev) =>
+        prev.map((a) => a.id === panel_id ? { ...a, content } : a)
+      );
+    }).then((fn) => { unlisten = fn; });
+
+    return () => { unlisten?.(); };
+  }, []);
+
   // Listen for defense model loading events
   useEffect(() => {
     const unlistenLoading = listen('defense:loading', () => {

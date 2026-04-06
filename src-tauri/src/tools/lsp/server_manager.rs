@@ -87,14 +87,16 @@ impl LspServerManager {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let lang_id = language_id_for_extension(ext);
             let content = tokio::fs::read_to_string(path).await.unwrap_or_default();
-            let entry = self.servers.get(&server_name).unwrap();
+            let entry = self.servers.get(&server_name)
+                .ok_or_else(|| anyhow::anyhow!("Server '{}' not found after ensure_started", server_name))?;
             if let Some(client) = &entry.client {
                 client.open_file(&uri, lang_id, &content).await?;
                 self.opened_files.insert(uri.clone(), server_name.clone());
             }
         }
 
-        let entry = self.servers.get(&server_name).unwrap();
+        let entry = self.servers.get(&server_name)
+            .ok_or_else(|| anyhow::anyhow!("Server '{}' not found after ensure_started", server_name))?;
         match &entry.client {
             Some(client) => client.request(method, params).await,
             None => Err(anyhow::anyhow!("Server not running")),

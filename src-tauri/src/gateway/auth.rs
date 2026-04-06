@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use argon2::password_hash::SaltString;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -317,10 +317,17 @@ impl GatewayAuth {
 
 /// Hash a password using Argon2id with a random salt. Returns PHC-format string.
 #[allow(dead_code)]
+fn argon2_strong() -> Argon2<'static> {
+    // 64 MiB memory, 3 iterations, 1-way parallelism — stronger than the
+    // argon2 crate's default (19 MiB / 2 iter) for a desktop app in 2026.
+    let params = Params::new(64 * 1024, 3, 1, None)
+        .expect("invariant: hard-coded Argon2 params are valid");
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
+
 fn hash_password_argon2(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
+    let hash = argon2_strong()
         .hash_password(password.as_bytes(), &salt)
         .map_err(|e| anyhow::anyhow!("Argon2id hashing failed: {}", e))?;
     Ok(hash.to_string())
@@ -335,6 +342,8 @@ fn verify_password_argon2(password: &str, hash_str: &str) -> bool {
             return false;
         }
     };
+    // Argon2::verify_password reads params from the PHC string, so existing
+    // hashes created with the old default params remain verifiable.
     Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok()

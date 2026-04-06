@@ -439,7 +439,7 @@ export function SkillsTab() {
                     name: template.name,
                     description: template.description,
                     content: template.content,
-                    userInvocable: template.user_invocable,
+                    userInvocable: template.user_invocable ?? true,
                   });
                   loadSkillsData();
                 } catch (error) {

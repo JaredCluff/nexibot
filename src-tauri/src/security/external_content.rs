@@ -93,7 +93,7 @@ static INJECTION_PATTERNS: LazyLock<Vec<(&str, Regex, PatternSeverity)>> = LazyL
         ),
         (
             "boundary_escape",
-            Regex::new(r"<<<|>>>|\[\[SYSTEM\]\]|\{\{system\}\}").expect("invariant: literal regex is valid"),
+            Regex::new(r"\[\[SYSTEM\]\]|\{\{system\}\}").expect("invariant: literal regex is valid"),
             PatternSeverity::Medium,
         ),
         (
@@ -137,6 +137,54 @@ pub fn build_safe_external_prompt(user_query: &str, external_content: &str) -> S
     )
 }
 
+/// Check whether a `<<<` or `>>>` occurrence at `pos` in `text` is part of one of
+/// the known sentinel strings and should therefore be ignored.
+///
+/// The two sentinels are:
+///   `<<<EXTERNAL_UNTRUSTED_CONTENT>>>`
+///   `<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>`
+fn is_sentinel_angle(text: &str, pos: usize, token: &str) -> bool {
+    // Build the two full sentinel strings we want to exclude.
+    const SENTINELS: &[&str] = &[BOUNDARY_START, BOUNDARY_END];
+
+    for sentinel in SENTINELS {
+        // Find every occurrence of the sentinel in the text and check whether
+        // `pos` falls inside it.
+        let mut search_start = 0;
+        while let Some(offset) = text[search_start..].find(sentinel) {
+            let abs_start = search_start + offset;
+            let abs_end = abs_start + sentinel.len();
+            // Does the matched token overlap with this sentinel occurrence?
+            if pos >= abs_start && pos + token.len() <= abs_end {
+                return true;
+            }
+            search_start = abs_start + 1;
+        }
+    }
+    false
+}
+
+/// Scan `text` for `<<<` or `>>>` tokens that are NOT part of the known sentinel
+/// boundary strings. Returns a finding for each non-sentinel occurrence.
+fn detect_angle_bracket_escapes(text: &str) -> Vec<SuspiciousPattern> {
+    let mut findings = Vec::new();
+    for token in &["<<<", ">>>"] {
+        let mut search_start = 0;
+        while let Some(offset) = text[search_start..].find(token) {
+            let abs_pos = search_start + offset;
+            if !is_sentinel_angle(text, abs_pos, token) {
+                findings.push(SuspiciousPattern {
+                    pattern_name: "boundary_escape",
+                    matched_text: token.to_string(),
+                    severity: PatternSeverity::Medium,
+                });
+            }
+            search_start = abs_pos + 1;
+        }
+    }
+    findings
+}
+
 /// Detect suspicious patterns that may indicate prompt injection attempts.
 pub fn detect_suspicious_patterns(text: &str) -> Vec<SuspiciousPattern> {
     let mut findings = Vec::new();
@@ -150,6 +198,10 @@ pub fn detect_suspicious_patterns(text: &str) -> Vec<SuspiciousPattern> {
             });
         }
     }
+
+    // Separately handle <<</>>>> with sentinel-context exclusion to avoid
+    // false positives on git conflict markers, ASCII art, etc.
+    findings.extend(detect_angle_bracket_escapes(text));
 
     findings
 }
