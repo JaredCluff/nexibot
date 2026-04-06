@@ -60,7 +60,12 @@ impl DeBERTaDetector {
         security_level: SecurityLevel,
     ) -> Result<Self> {
         let base_path = if let Some(p) = model_path {
-            std::path::PathBuf::from(p)
+            let pb = std::path::PathBuf::from(p);
+            // Reject path traversal in config-supplied model paths.
+            if pb.components().any(|c| c == std::path::Component::ParentDir) {
+                anyhow::bail!("Invalid model_path '{}': parent-directory traversal not allowed", p);
+            }
+            pb
         } else {
             let data_dir = directories::ProjectDirs::from("ai", "nexibot", "desktop")
                 .ok_or_else(|| anyhow::anyhow!("Failed to get project directories"))?

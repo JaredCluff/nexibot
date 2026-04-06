@@ -98,12 +98,14 @@ impl ComputerUseManager {
         match action {
             "screenshot" => self.handle_screenshot().await,
             "mouse_move" => {
-                let x = input["coordinate"][0]
-                    .as_i64()
-                    .context("Missing x coordinate")? as i32;
-                let y = input["coordinate"][1]
-                    .as_i64()
-                    .context("Missing y coordinate")? as i32;
+                let x = i32::try_from(
+                    input["coordinate"][0].as_i64().context("Missing x coordinate")?,
+                )
+                .context("X coordinate out of i32 range")?;
+                let y = i32::try_from(
+                    input["coordinate"][1].as_i64().context("Missing y coordinate")?,
+                )
+                .context("Y coordinate out of i32 range")?;
                 native_control::mouse_move(x, y)?;
                 Ok(json!({"status": "ok", "action": "mouse_move", "x": x, "y": y}))
             }
@@ -156,8 +158,14 @@ impl ComputerUseManager {
                     native_control::mouse_move(x, y)?;
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-                let delta_x = input.get("delta_x").and_then(|d| d.as_i64()).unwrap_or(0) as i32;
-                let delta_y = input.get("delta_y").and_then(|d| d.as_i64()).unwrap_or(0) as i32;
+                let delta_x = i32::try_from(
+                    input.get("delta_x").and_then(|d| d.as_i64()).unwrap_or(0),
+                )
+                .context("delta_x out of i32 range")?;
+                let delta_y = i32::try_from(
+                    input.get("delta_y").and_then(|d| d.as_i64()).unwrap_or(0),
+                )
+                .context("delta_y out of i32 range")?;
                 native_control::scroll(delta_x, delta_y)?;
                 Ok(
                     json!({"status": "ok", "action": "scroll", "delta_x": delta_x, "delta_y": delta_y}),
