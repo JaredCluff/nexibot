@@ -30,6 +30,7 @@ pub struct BrowserManager {
     pub config: BrowserConfig,
     browser: Arc<RwLock<Option<Browser>>>,
     active_page: Arc<RwLock<Option<Page>>>,
+    handler_task: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl BrowserManager {
@@ -40,6 +41,7 @@ impl BrowserManager {
             config,
             browser: Arc::new(RwLock::new(None)),
             active_page: Arc::new(RwLock::new(None)),
+            handler_task: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -404,6 +406,10 @@ impl BrowserManager {
             }
 
             "close" => {
+                // Abort CDP handler task before dropping browser
+                if let Some(task) = self.handler_task.write().await.take() {
+                    task.abort();
+                }
                 // Drop page and browser
                 {
                     let mut page_guard = self.active_page.write().await;
@@ -582,14 +588,15 @@ impl BrowserManager {
             anyhow::anyhow!("Failed to launch Chrome browser: {}", e)
         })?;
 
-        // Spawn the handler to process CDP events
-        tokio::spawn(async move {
+        // Spawn the handler to process CDP events; store handle for cleanup on close
+        let handle = tokio::spawn(async move {
             while let Some(event) = handler.next().await {
                 if let Err(e) = event {
                     warn!("[BROWSER] CDP event error: {}", e);
                 }
             }
         });
+        *self.handler_task.write().await = Some(handle);
 
         *self.browser.write().await = Some(browser);
         info!("[BROWSER] Browser launched");

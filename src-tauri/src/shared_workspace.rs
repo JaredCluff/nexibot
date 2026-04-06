@@ -76,13 +76,18 @@ impl SharedWorkspace {
 
         let scoped = Self::scoped_key(orchestration_id, key);
 
-        // Check entry count (only for new entries)
+        // For new entries: lazily evict expired entries when near capacity so
+        // that a workspace full of expired-but-not-yet-cleaned entries doesn't
+        // permanently block writes.
         if !self.data.contains_key(&scoped) && self.data.len() >= self.max_entries {
-            return Err(format!(
-                "Workspace full: {} entries (max {})",
-                self.data.len(),
-                self.max_entries
-            ));
+            self.clear_expired();
+            if self.data.len() >= self.max_entries {
+                return Err(format!(
+                    "Workspace full: {} entries (max {})",
+                    self.data.len(),
+                    self.max_entries
+                ));
+            }
         }
 
         let entry = WorkspaceEntry {

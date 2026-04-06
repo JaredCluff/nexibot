@@ -41,6 +41,7 @@ interface AutonomousModeConfig {
   settings_modification: CapabilityAutonomy;
   memory_modification: CapabilityAutonomy;
   soul_modification: CapabilityAutonomy;
+  nats_publish: CapabilityAutonomy;
 }
 
 const LEVEL_COLORS: Record<AutonomyLevel, string> = {
@@ -214,6 +215,7 @@ function AutonomousModePanel() {
         <CapabilityRow label="Settings" description="Modify NexiBot configuration" value={config.settings_modification.level} onChange={(l) => update(c => ({ ...c, settings_modification: { level: l } }))} disabled={disabled} />
         <CapabilityRow label="Memory" description="Add/modify persistent memories" value={config.memory_modification.level} onChange={(l) => update(c => ({ ...c, memory_modification: { level: l } }))} disabled={disabled} />
         <CapabilityRow label="Soul / Personality" description="Modify SOUL.md personality" value={config.soul_modification.level} onChange={(l) => update(c => ({ ...c, soul_modification: { level: l } }))} disabled={disabled} />
+        <CapabilityRow label="NATS Publish" description="Publish messages to NATS subjects" value={config.nats_publish.level} onChange={(l) => update(c => ({ ...c, nats_publish: { level: l } }))} disabled={disabled} />
       </div>
 
       {/* Hard Limits (read-only) */}
