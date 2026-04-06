@@ -97,7 +97,7 @@ impl SubscriptionManager {
         info!("[SUBSCRIPTION] Checking {} subscription", provider.as_str());
 
         // Call Knowledge Nexus subscription API
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         let url = format!("{}/api/subscriptions/check", self.router_url);
         ssrf::validate_outbound_request(&url, &SsrfPolicy::default(), &[])
             .map_err(|e| anyhow::anyhow!("Subscription check URL blocked by SSRF policy: {}", e))?;
@@ -169,7 +169,7 @@ impl SubscriptionManager {
         }
 
         // Request credential provisioning from Knowledge Nexus
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
         let url = format!("{}/api/subscriptions/provision", self.router_url);
         ssrf::validate_outbound_request(&url, &SsrfPolicy::default(), &[])
             .map_err(|e| anyhow::anyhow!("Subscription provision URL blocked by SSRF policy: {}", e))?;

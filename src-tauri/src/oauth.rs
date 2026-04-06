@@ -100,7 +100,7 @@ impl AuthProfile {
 
     /// Refresh Anthropic OAuth token
     async fn refresh_anthropic(&mut self, refresh_token: &str) -> Result<()> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
         let response = client
             .post("https://console.anthropic.com/v1/oauth/token")
@@ -138,7 +138,7 @@ impl AuthProfile {
 
     /// Refresh OpenAI OAuth token via Auth0
     async fn refresh_openai(&mut self, refresh_token: &str) -> Result<()> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
         // OpenAI uses auth.openai.com — same as Codex CLI
         let response = client

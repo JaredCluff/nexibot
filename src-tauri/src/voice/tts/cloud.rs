@@ -61,7 +61,7 @@ impl TtsBackend for ElevenLabsTts {
 
         debug!("[TTS] Synthesizing with ElevenLabs: {}", text);
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
         // Call ElevenLabs TTS API
         let url = format!(
@@ -164,7 +164,7 @@ impl TtsBackend for CartesiaTts {
             self.speed
         );
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
         // Default voice: "Confident British Man"
         let voice_id = self
