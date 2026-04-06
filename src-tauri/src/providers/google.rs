@@ -256,7 +256,11 @@ impl LlmClient for GoogleGeminiClient {
 
         let resp: serde_json::Value = response.json().await?;
 
-        let candidate = &resp["candidates"][0];
+        let candidate = resp
+            .get("candidates")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .ok_or_else(|| anyhow::anyhow!("Empty or missing 'candidates' in Gemini response"))?;
         let parts = candidate["content"]["parts"]
             .as_array()
             .cloned()

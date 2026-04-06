@@ -909,7 +909,10 @@ impl SkillsManager {
             return String::new();
         }
 
-        let mut context = String::from("# Available Skills\n\n");
+        // Boundary markers signal to the model that skill content is user-controlled
+        // and may contain adversarial prompts (second-order prompt injection defense,
+        // consistent with soul.rs's <SOUL_CONTENT> markers).
+        let mut context = String::from("# Available Skills\n\n<SKILLS_CONTENT>\n");
         context.push_str("I have access to the following skills:\n\n");
 
         for skill in model_skills {
@@ -925,6 +928,7 @@ impl SkillsManager {
             context.push_str(&format!("{}\n\n", skill.content));
         }
 
+        context.push_str("</SKILLS_CONTENT>\n");
         context
     }
 }
