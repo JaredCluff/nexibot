@@ -61,9 +61,8 @@ impl CompactResponse {
     /// Create a compact response from a full response.
     pub fn from_full(response: &MobileResponse) -> Self {
         let text = if response.text.len() > 500 {
-            let mut truncated = response.text[..497].to_string();
-            truncated.push_str("...");
-            truncated
+            let b = response.text.char_indices().take_while(|(i, _)| *i < 497).last().map(|(i, c)| i + c.len_utf8()).unwrap_or(0);
+            format!("{}...", &response.text[..b])
         } else {
             response.text.clone()
         };
