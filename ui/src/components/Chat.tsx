@@ -200,7 +200,6 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
       const map: Record<string, string> = { ...FALLBACK_DISPLAY };
       for (const m of models) {
         map[m.id] = m.display_name;
-        if (m.alias) map[m.alias] = m.display_name;
       }
       setModelDisplayNames(map);
     }).catch((e) => notifyError('Models', `Failed to load available models: ${e}`));
@@ -478,7 +477,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
           for (const [provider, list] of Object.entries(grouped)) {
             out += `**${provider}**${list[0]?.available ? '' : ' *(no API key)*'}\n`;
             for (const m of list) {
-              const alias = m.alias ? `\`${m.alias}\`` : m.id;
+              const alias = m.id;
               const cur = overrides.model === m.id ? ' ← current' : '';
               const unavail = !m.available ? ' *(configure in Settings → Models)*' : '';
               out += `  ${alias} — ${m.display_name}${cur}${unavail}\n`;
