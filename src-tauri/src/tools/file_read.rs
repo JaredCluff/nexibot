@@ -25,7 +25,7 @@ impl Tool for FileReadTool {
     fn is_read_only(&self, _: &Value) -> bool { true }
     fn is_concurrency_safe(&self) -> bool { true }
 
-    async fn check_permissions(&self, input: &Value, _ctx: &ToolContext) -> PermissionDecision {
+    async fn check_permissions(&self, input: &Value, ctx: &ToolContext) -> PermissionDecision {
         let path_str = match input["path"].as_str() {
             Some(p) => p,
             None => return PermissionDecision::Deny("path is required".to_string()),
@@ -35,6 +35,9 @@ impl Tool for FileReadTool {
             return PermissionDecision::Deny(
                 format!("Reading {} is not allowed (device/proc file)", path_str)
             );
+        }
+        if let Err(e) = crate::security::path_validation::validate_path_within(&path, &ctx.working_dir) {
+            return PermissionDecision::Deny(format!("Path not allowed: {}", e));
         }
         PermissionDecision::Allow
     }
@@ -46,6 +49,11 @@ impl Tool for FileReadTool {
         };
 
         let path = PathBuf::from(path_str);
+
+        if let Err(e) = crate::security::path_validation::validate_path_within(&path, &ctx.working_dir) {
+            return ToolResult::err(format!("Path not allowed: {}", e));
+        }
+
         let offset = input["offset"].as_u64().and_then(|v| usize::try_from(v).ok());
         let limit = input["limit"].as_u64().and_then(|v| usize::try_from(v).ok());
 
@@ -104,8 +112,7 @@ async fn read_file_smart(
         total
     };
 
-    // FileReadState recording is handled by the command layer; ctx is available for future use
-    let _ = ctx;
+    let _ = ctx; // reserved for future per-session read tracking
 
     let selected: Vec<String> = lines[start..end]
         .iter()
@@ -284,6 +291,20 @@ mod tests {
             working_dir: std::path::PathBuf::from("/tmp"),
         };
         let input = serde_json::json!({"path": "/dev/null"});
+        let decision = tool.check_permissions(&input, &ctx).await;
+        assert!(matches!(decision, PermissionDecision::Deny(_)));
+    }
+
+    #[tokio::test]
+    async fn test_permission_blocks_path_outside_working_dir() {
+        let tool = FileReadTool;
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = ToolContext {
+            session_key: "s".into(),
+            agent_id: "a".into(),
+            working_dir: tmp.path().to_path_buf(),
+        };
+        let input = serde_json::json!({"path": "/etc/passwd"});
         let decision = tool.check_permissions(&input, &ctx).await;
         assert!(matches!(decision, PermissionDecision::Deny(_)));
     }

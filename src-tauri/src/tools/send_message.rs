@@ -153,7 +153,33 @@ impl Tool for SendMessageTool {
     }
 }
 
+const MAX_IN_PROCESS_QUEUES: usize = 200;
+
 impl SendMessageTool {
+    /// Register an in-process delivery channel for an agent.
+    ///
+    /// Evicts closed (terminated) channels first, then falls back to removing
+    /// an arbitrary entry when the map is at capacity.
+    pub async fn register_queue(
+        &self,
+        agent_id: String,
+        tx: tokio::sync::mpsc::UnboundedSender<AgentMessage>,
+    ) {
+        let mut queues = self.in_process_queues.write().await;
+        queues.retain(|_, sender| !sender.is_closed());
+        if queues.len() >= MAX_IN_PROCESS_QUEUES {
+            if let Some(key) = queues.keys().next().cloned() {
+                queues.remove(&key);
+            }
+        }
+        queues.insert(agent_id, tx);
+    }
+
+    /// Remove an agent's in-process delivery channel (call when agent exits).
+    pub async fn unregister_queue(&self, agent_id: &str) {
+        self.in_process_queues.write().await.remove(agent_id);
+    }
+
     async fn deliver(&self, agent_id: &str, msg: AgentMessage) -> anyhow::Result<()> {
         let queues = self.in_process_queues.read().await;
         if let Some(tx) = queues.get(agent_id) {
