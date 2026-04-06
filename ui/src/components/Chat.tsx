@@ -276,7 +276,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   // Scheduler task events
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
-    listen<{ task_name: string; response: string; success: boolean }>('scheduler:task-complete', (event) => {
+    listen<{ task_id: string; task_name: string; response: string; timestamp: string; success: boolean }>('scheduler:task-complete', (event) => {
       const { task_name, response, success } = event.payload;
       setMessages((prev) => [...prev, {
         id: makeId(),

@@ -687,9 +687,7 @@ export interface TaskExecutionResult {
 export interface AvailableModel {
   id: string;
   display_name: string;
-  alias?: string | null;
   provider: string;
-  tier?: string;
   available: boolean;
   size_score?: number;
 }
