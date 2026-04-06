@@ -385,7 +385,7 @@ pub struct VoiceService {
     /// Persistent audio sink for non-blocking, interruptible playback
     audio_sink: Arc<std::sync::Mutex<Option<rodio::Sink>>>,
     /// Voice event channel sender
-    event_tx: Option<mpsc::UnboundedSender<VoiceEvent>>,
+    event_tx: Option<mpsc::Sender<VoiceEvent>>,
     /// Processing loop handle
     processing_handle: Option<tokio::task::JoinHandle<()>>,
     /// Audio capture thread handle
@@ -538,7 +538,7 @@ impl VoiceService {
         }
 
         // Create event channel
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::channel(32);
         self.event_tx = Some(event_tx.clone());
 
         // Get config values for audio thread
@@ -583,7 +583,7 @@ impl VoiceService {
                     move |score, recent_audio| {
                         // Wake word detected callback (includes recent audio for STT confirmation)
                         if let Err(e) =
-                            event_tx.send(VoiceEvent::WakeWordDetected(score, recent_audio))
+                            event_tx.try_send(VoiceEvent::WakeWordDetected(score, recent_audio))
                         {
                             error!("[VOICE] Failed to send wake word event: {}", e);
                         }
@@ -656,7 +656,7 @@ impl VoiceService {
     /// Force return to wake-word-idle mode; cancels any running pipeline.
     pub async fn force_stop(&self) -> anyhow::Result<()> {
         if let Some(ref tx) = self.event_tx {
-            let _ = tx.send(VoiceEvent::ForceStop);
+            let _ = tx.try_send(VoiceEvent::ForceStop);
         }
         Ok(())
     }
@@ -1283,7 +1283,7 @@ impl VoiceService {
                                             let app_state_pipeline = app_state.clone();
                                             let tts_enabled = voice_response_flag.load(std::sync::atomic::Ordering::SeqCst);
                                             let pipeline_task = tokio::spawn(async move {
-                                                let (text_tx, mut text_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                                                let (text_tx, mut text_rx) = tokio::sync::mpsc::channel::<String>(256);
 
                                                 // TTS consumer sub-task (conditionally active based on voice_response_enabled)
                                                 let tts_clone = pipeline_tts.clone();
@@ -1394,7 +1394,7 @@ impl VoiceService {
                                                         &all_tools,
                                                         &overrides,
                                                         Some(&crate::channel::ChannelSource::Voice),
-                                                        move |chunk| { let _ = text_tx_clone.send(chunk); },
+                                                        move |chunk| { let _ = text_tx_clone.try_send(chunk); },
                                                     ).await {
                                                         Ok(r) => r,
                                                         Err(e) => {
