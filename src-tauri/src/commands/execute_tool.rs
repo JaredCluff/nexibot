@@ -22,7 +22,7 @@ use crate::gated_shell::GatedShell;
 use crate::guardrails::Guardrails;
 use crate::sandbox::{SandboxConfig, SandboxFallback, docker::DockerSandbox};
 use crate::sandbox::policy::{SandboxPolicy, should_sandbox};
-use crate::security::credentials;
+use crate::security::{credentials, external_content};
 use crate::security::env_sanitize::{build_safe_env, SanitizeOptions};
 use crate::security::exec_approval::ExecApprovalManager;
 use crate::security::safe_bins;
@@ -450,8 +450,9 @@ pub async fn execute_execute_tool(
         exit_code, duration_ms
     );
 
+    let wrapped_stdout = external_content::wrap_external_content(&stdout_final, "shell-command-stdout");
     json!({
-        "stdout": stdout_final,
+        "stdout": wrapped_stdout,
         "stderr": stderr_final,
         "exit_code": exit_code,
         "duration_ms": duration_ms,

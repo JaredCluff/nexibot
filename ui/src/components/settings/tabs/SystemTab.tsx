@@ -110,7 +110,7 @@ export function SystemTab() {
             <span>
               {oauthStatus.provider}: {oauthStatus.profile_name}
               {oauthStatus.is_expiring && ' (expiring soon)'}
-              {oauthStatus.expires_at && <span className="hint"> — expires {new Date(oauthStatus.expires_at).toLocaleDateString()}</span>}
+              {oauthStatus.expires_at && <span className="hint"> — expires {new Date(oauthStatus.expires_at * 1000).toLocaleDateString()}</span>}
             </span>
           </div>
         )}
@@ -125,7 +125,7 @@ export function SystemTab() {
               <span className="mcp-server-name">{profile.provider}</span>
               <span className="mcp-server-command">{profile.profile_name}</span>
               {profile.expires_at && (
-                <span className="mcp-tool-count">Expires: {new Date(profile.expires_at).toLocaleDateString()}</span>
+                <span className="mcp-tool-count">Expires: {new Date(profile.expires_at * 1000).toLocaleDateString()}</span>
               )}
               <button
                 className="mcp-remove-btn"
