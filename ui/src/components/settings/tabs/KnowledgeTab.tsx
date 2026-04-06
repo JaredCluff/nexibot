@@ -25,9 +25,9 @@ interface K2KSearchResult {
 
 interface AgentTaskState {
   task_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  progress: number;
-  result: string | null;
+  status: string;
+  progress: number | null;
+  result: unknown | null;
   error: string | null;
 }
 
@@ -482,13 +482,13 @@ export function KnowledgeTab() {
                       style={task.status === 'pending' || task.status === 'running' ? { backgroundColor: 'var(--warning)' } : undefined} />
                     <span className="mcp-server-name">{task.task_id}</span>
                     <span className="mcp-server-command">{task.status}</span>
-                    {task.progress > 0 && (
+                    {task.progress != null && task.progress > 0 && (
                       <span className="mcp-tool-count">{task.progress}%</span>
                     )}
                   </div>
-                  {task.result && (
+                  {task.result != null && (
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0', whiteSpace: 'pre-wrap', maxHeight: '150px', overflow: 'auto' }}>
-                      {task.result}
+                      {typeof task.result === 'string' ? task.result : JSON.stringify(task.result, null, 2)}
                     </div>
                   )}
                   {task.error && (

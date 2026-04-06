@@ -341,8 +341,8 @@ impl Tool for TaskOutputTool {
             Some(i) => i,
             None => return ToolResult::err("id is required"),
         };
-        let offset = input["offset"].as_u64().unwrap_or(0) as usize;
-        let limit = input["limit"].as_u64().unwrap_or(65536) as usize;
+        let offset = input["offset"].as_u64().and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
+        let limit = input["limit"].as_u64().and_then(|v| usize::try_from(v).ok()).unwrap_or(65536);
 
         let store = self.0.read().await;
         let task = match store.get(id) {

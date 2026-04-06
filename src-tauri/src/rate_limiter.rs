@@ -104,7 +104,7 @@ impl RateLimiter {
         record.failures.push(now);
 
         // Check if threshold exceeded
-        if record.failures.len() as u32 >= self.config.max_attempts {
+        if record.failures.len() >= self.config.max_attempts as usize {
             let lockout_duration = std::time::Duration::from_secs(self.config.lockout_secs);
             record.locked_until = Some(now + lockout_duration);
             warn!(

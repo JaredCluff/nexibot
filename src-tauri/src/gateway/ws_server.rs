@@ -620,10 +620,14 @@ impl GatewayServer {
     fn extract_credentials(json: &str) -> AuthCredentials {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
             if let Some(token) = value.get("token").and_then(|v| v.as_str()) {
-                return AuthCredentials::Token(token.to_string());
+                if !token.is_empty() {
+                    return AuthCredentials::Token(token.to_string());
+                }
             }
             if let Some(password) = value.get("password").and_then(|v| v.as_str()) {
-                return AuthCredentials::Password(password.to_string());
+                if !password.is_empty() {
+                    return AuthCredentials::Password(password.to_string());
+                }
             }
         }
         AuthCredentials::None
