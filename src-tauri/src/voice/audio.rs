@@ -326,6 +326,9 @@ pub fn run_audio_capture_loop(
         // Check for shutdown signal
         if exit_signal.load(Ordering::SeqCst) {
             info!("[AUDIO] Exit signal received, shutting down audio capture loop");
+            // Explicitly stop the stream before returning to release the audio device
+            // promptly rather than relying on implicit drop.
+            drop(stream);
             break Ok(());
         }
 

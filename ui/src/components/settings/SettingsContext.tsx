@@ -69,12 +69,15 @@ export interface NexiBotConfig {
     stt_wakeword_enabled: boolean;
     stt_require_both: boolean;
     voice_response_enabled: boolean;
+    unload_models_after_idle_secs: number;
   };
   vad: {
     enabled: boolean;
     threshold: number;
     min_speech_duration_ms: number;
     min_silence_duration_ms: number;
+    require_silero: boolean;
+    push_to_talk: boolean;
   };
   stt: {
     enabled: boolean;
@@ -82,6 +85,13 @@ export interface NexiBotConfig {
     deepgram_api_key?: string;
     openai_api_key?: string;
     sensevoice_model_path?: string;
+    deepgram_rate_limit: {
+      enabled: boolean;
+      calls_per_minute: number;
+      monthly_budget_secs: number;
+      block_on_budget_exhausted: boolean;
+    };
+    preferred_language?: string;
   };
   tts: {
     enabled: boolean;
@@ -89,10 +99,14 @@ export interface NexiBotConfig {
     macos_voice: string;
     elevenlabs_api_key?: string;
     cartesia_api_key?: string;
+    cartesia_voice_id?: string;
+    cartesia_model?: string;
+    cartesia_speed?: number;
     piper_model_path?: string;
     piper_voice?: string;
     espeak_voice?: string;
     windows_voice?: string;
+    auto_language_detection: boolean;
   };
   mcp: {
     enabled: boolean;
@@ -183,6 +197,7 @@ export interface NexiBotConfig {
     model: string;
     max_tokens: number;
     organization_id?: string;
+    use_bridge: boolean;
   };
   webhooks: {
     enabled: boolean;
@@ -326,6 +341,7 @@ export interface NexiBotConfig {
     allowed_session_ids: string[];
     admin_session_ids: string[];
     dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
   };
   startup: {
     nexibot_at_login: boolean;
@@ -335,11 +351,13 @@ export interface NexiBotConfig {
   google?: {
     api_key?: string;
     default_model: string;
+    use_bridge: boolean;
   };
   deepseek?: {
     api_key?: string;
     api_url: string;
     default_model: string;
+    use_bridge: boolean;
   };
   github_copilot?: {
     token?: string;
@@ -349,6 +367,25 @@ export interface NexiBotConfig {
     api_key?: string;
     api_url: string;
     default_model: string;
+  };
+  cerebras?: {
+    api_key?: string;
+    model: string;
+    max_tokens: number;
+  };
+  qwen?: {
+    api_key?: string;
+    api_url: string;
+    default_model: string;
+  };
+  ollama?: {
+    enabled: boolean;
+    url: string;
+    model: string;
+  };
+  lmstudio?: {
+    url: string;
+    model: string;
   };
   gateway: GatewayConfig;
   sandbox: SandboxConfig;
