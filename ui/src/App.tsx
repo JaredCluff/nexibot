@@ -56,6 +56,7 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(undefined);
   const [canvasOpen, setCanvasOpen] = useState(false);
+  const MAX_ARTIFACTS = 200;
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [defenseStatus, setDefenseStatus] = useState<string | null>(null);
 
@@ -82,7 +83,10 @@ function App() {
       if (!artifact.id) {
         artifact.id = `artifact-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       }
-      setArtifacts((prev) => [...prev, artifact]);
+      setArtifacts((prev) => {
+        const next = [...prev, artifact];
+        return next.length > MAX_ARTIFACTS ? next.slice(next.length - MAX_ARTIFACTS) : next;
+      });
       setCanvasOpen(true);
     }).then((fn) => { unlisten = fn; });
 
@@ -150,9 +154,12 @@ function App() {
       content: code,
       title: language ? `${language} snippet` : 'Code snippet',
     };
-    setArtifacts((prev) => [...prev, artifact]);
+    setArtifacts((prev) => {
+      const next = [...prev, artifact];
+      return next.length > MAX_ARTIFACTS ? next.slice(next.length - MAX_ARTIFACTS) : next;
+    });
     setCanvasOpen(true);
-  }, []);
+  }, [MAX_ARTIFACTS]);
 
   const handleRemoveArtifact = useCallback((id: string) => {
     setArtifacts((prev) => {
