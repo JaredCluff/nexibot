@@ -77,8 +77,8 @@ function App() {
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
 
-    listen<Artifact>('canvas:push', (event) => {
-      const artifact = event.payload;
+    listen<Omit<Artifact, 'id'> & { id?: string }>('canvas:push', (event) => {
+      const artifact = event.payload as Artifact;
       if (!artifact.id) {
         artifact.id = `artifact-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       }
