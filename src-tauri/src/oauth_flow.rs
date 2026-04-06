@@ -302,9 +302,10 @@ async fn handle_oauth_callback(
             .map(|s| s.to_string())
             .unwrap_or_default();
 
-        // Validate the embedded state — don't silently fall back to the expected
-        // value if it is absent or mismatched.
-        if !embedded_state.is_empty() && embedded_state != oauth_context.expected_state {
+        // Validate the embedded state — reject both absent (empty) and mismatched values.
+        // Using `!=` alone is correct: if embedded_state is empty it cannot equal a
+        // non-empty expected_state, so empty states are rejected as CSRF violations.
+        if embedded_state != oauth_context.expected_state {
             warn!("[OAUTH] Embedded state in code does not match expected state — possible CSRF");
             if let Some(tx) = result_tx.lock().await.take() {
                 let _ = tx.send(Err(anyhow::anyhow!(
