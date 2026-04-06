@@ -27,12 +27,16 @@ interface ToolBlockedPayload {
 }
 
 interface ToolApprovalExpiredPayload {
+  request_id: string;
   tool_name: string;
 }
 
 interface ToolApprovalRequestPayload {
+  request_id: string;
   tool_name: string;
   reason: string;
+  timeout_secs: number;
+  details?: string;
 }
 
 let nextId = 0;
