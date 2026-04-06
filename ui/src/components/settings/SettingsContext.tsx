@@ -1045,7 +1045,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setOauthProfiles(profiles);
     } catch { /* not critical */ }
     try {
-      const status = await invoke<OAuthStatus>('get_oauth_status');
+      const status = await invoke<OAuthStatus | null>('get_oauth_status');
       setOauthStatus(status);
     } catch { /* not critical */ }
   }, []);
