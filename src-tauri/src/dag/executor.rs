@@ -308,19 +308,36 @@ async fn execution_loop(
             let retry_delay_ms = task.retry_delay_ms;
             let attempt = task.attempt;
 
+            const DAG_TASK_TIMEOUT_SECS: u64 = 600; // 10 minutes per task
             let executor_clone = executor.clone();
             let handle = tokio::spawn(async move {
                 let exec = executor_clone.read().await;
-                let result = exec
-                    .execute(
-                        &agent_config,
-                        &full_description,
-                        &format!("dag_{}", run_id_owned),
-                        &state_clone,
-                        Some(&format!("dag_{}", &run_id_owned[..8])),
-                    )
-                    .await;
+                let exec_future = exec.execute(
+                    &agent_config,
+                    &full_description,
+                    &format!("dag_{}", run_id_owned),
+                    &state_clone,
+                    Some(&format!("dag_{}", &run_id_owned[..8])),
+                );
+                let timeout_result = tokio::time::timeout(
+                    Duration::from_secs(DAG_TASK_TIMEOUT_SECS),
+                    exec_future,
+                ).await;
                 drop(exec);
+                let result = match timeout_result {
+                    Ok(r) => r,
+                    Err(_) => {
+                        let timeout_msg = format!("Task timed out after {}s", DAG_TASK_TIMEOUT_SECS);
+                        warn!("[DAG_EXECUTOR] Task '{}' {}", task_key, timeout_msg);
+                        {
+                            let s = store_clone.lock().unwrap_or_else(|e| e.into_inner());
+                            let _ = s.update_task_status(&task_id, &DagTaskStatus::Failed, None, Some(&timeout_msg));
+                            let _ = s.add_history(&run_id_owned, Some(&task_id), "task_failed", Some(&timeout_msg));
+                        }
+                        emit_event(&app_handle_clone, "dag:task-failed", serde_json::json!({ "run_id": run_id_owned, "task_id": task_id, "task_key": task_key, "error": timeout_msg, "will_retry": false }));
+                        return;
+                    }
+                };
 
                 if result.success {
                     let output_preview = if result.output.len() > 200 {
