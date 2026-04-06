@@ -81,7 +81,7 @@ export interface ConversationSession {
   title: string | null;
   started_at: string;
   last_activity: string;
-  messages: { role: string; content: string; timestamp?: string }[];
+  messages: { role: string; content: string; timestamp: string }[];
 }
 
 // ---------------------------------------------------------------------------
