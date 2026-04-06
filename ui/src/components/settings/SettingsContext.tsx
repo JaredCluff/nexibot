@@ -224,6 +224,7 @@ export interface NexiBotConfig {
     allowed_chat_ids: number[];
     admin_chat_ids: number[];
     voice_enabled: boolean;
+    voice_response: boolean;
     dm_policy: 'Allowlist' | 'Pairing';
     tool_policy: ChannelToolPolicy;
   };
@@ -273,6 +274,7 @@ export interface NexiBotConfig {
     tenant_id?: string;
     allowed_team_ids: string[];
     admin_user_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
     tool_policy: ChannelToolPolicy;
   };
   matrix: {
