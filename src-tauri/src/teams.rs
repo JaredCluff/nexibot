@@ -527,7 +527,7 @@ impl TeamsBotState {
 }
 
 async fn fetch_botframework_jwks() -> Result<HashMap<String, (String, String)>> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let openid_cfg = client
         .get("https://login.botframework.com/v1/.well-known/openidconfiguration")
         .send()
@@ -1224,7 +1224,7 @@ pub async fn send_teams_reply(
         ));
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     // Bot Framework v3 API endpoint for sending activities
     let url = format!(
@@ -1267,7 +1267,7 @@ pub async fn get_bot_token(
     app_password: &str,
     tenant_id: Option<&str>,
 ) -> Result<String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     let tenant = tenant_id.unwrap_or("botframework.com");
     let url = format!(

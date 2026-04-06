@@ -321,7 +321,7 @@ pub async fn start_signal_listener(app_state: AppState) -> Result<()> {
     }
 
     let state = Arc::new(SignalBotState::new(app_state));
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
 
     info!(
         "[SIGNAL] Starting Signal listener (polling {} for {})",
@@ -749,7 +749,7 @@ async fn handle_command(
 
 /// Send a text message via the Signal CLI REST API.
 pub async fn send_signal_message(api_url: &str, from: &str, to: &str, text: &str) -> Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     let url = format!("{}/v2/send", api_url);
 
     let body = json!({

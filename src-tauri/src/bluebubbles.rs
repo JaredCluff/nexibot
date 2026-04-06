@@ -661,7 +661,7 @@ async fn send_bluebubbles_message_checked(
         "tempGuid": temp_guid,
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)).timeout(std::time::Duration::from_secs(30)).build().unwrap_or_else(|_| reqwest::Client::new());
     match client.post(&url).json(&body).send().await {
         Ok(resp) if resp.status().is_success() => {
             info!("[BLUEBUBBLES] Message sent to chat {}", chat_guid);
