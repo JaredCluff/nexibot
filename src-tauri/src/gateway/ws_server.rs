@@ -272,11 +272,7 @@ impl GatewayServer {
                         if let Some(origin) = req.headers().get("origin") {
                             let origin_str = origin.to_str().unwrap_or("");
                             let allowed = origin_str.is_empty()
-                                || origin_str.starts_with("http://localhost")
-                                || origin_str.starts_with("http://127.0.0.1")
-                                || origin_str.starts_with("https://localhost")
-                                || origin_str.starts_with("https://127.0.0.1")
-                                || origin_str.starts_with("tauri://localhost");
+                                || is_localhost_origin(origin_str);
                             if !allowed {
                                 warn!(
                                     "[GATEWAY] Rejected WebSocket upgrade: untrusted Origin '{}'",
@@ -712,6 +708,35 @@ impl GatewayServer {
 }
 
 // ---------------------------------------------------------------------------
+// Origin validation helper
+// ---------------------------------------------------------------------------
+
+/// Validate that a WebSocket `Origin` header identifies a localhost source.
+///
+/// Uses proper URL parsing to prevent prefix-matching bypasses such as
+/// `http://localhost.attacker.com` which would fool a naive `starts_with` check.
+/// Only the scheme + host (and optional port) are inspected; paths are ignored.
+fn is_localhost_origin(origin: &str) -> bool {
+    // Allow the Tauri internal scheme without further parsing
+    if origin == "tauri://localhost" || origin.starts_with("tauri://localhost/") {
+        return true;
+    }
+    match url::Url::parse(origin) {
+        Ok(parsed) => {
+            let scheme = parsed.scheme();
+            if scheme != "http" && scheme != "https" {
+                return false;
+            }
+            match parsed.host_str() {
+                Some("localhost") | Some("127.0.0.1") | Some("::1") => true,
+                _ => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -974,5 +999,30 @@ mod tests {
         let conns = server.connections.read().await;
         assert!(conns.contains_key("conn-1"));
         assert!(!conns.contains_key("conn-stale"));
+    }
+
+    #[test]
+    fn test_is_localhost_origin_allows_localhost() {
+        assert!(is_localhost_origin("http://localhost"));
+        assert!(is_localhost_origin("http://localhost:3000"));
+        assert!(is_localhost_origin("https://localhost"));
+        assert!(is_localhost_origin("http://127.0.0.1"));
+        assert!(is_localhost_origin("http://127.0.0.1:8080"));
+        assert!(is_localhost_origin("tauri://localhost"));
+    }
+
+    #[test]
+    fn test_is_localhost_origin_blocks_prefix_bypass() {
+        // These would fool a `starts_with("http://localhost")` check
+        assert!(!is_localhost_origin("http://localhost.attacker.com"));
+        assert!(!is_localhost_origin("http://localhost.attacker.com:3000"));
+        assert!(!is_localhost_origin("http://127.0.0.1.evil.com"));
+    }
+
+    #[test]
+    fn test_is_localhost_origin_blocks_remote_origins() {
+        assert!(!is_localhost_origin("https://example.com"));
+        assert!(!is_localhost_origin("http://192.168.1.1"));
+        assert!(!is_localhost_origin("http://10.0.0.1"));
     }
 }

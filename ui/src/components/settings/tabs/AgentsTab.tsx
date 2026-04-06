@@ -153,7 +153,7 @@ export function AgentsTab() {
                   <span className={`mcp-status-dot`} style={{ backgroundColor: agent.id === activeGuiAgent ? 'var(--success)' : 'var(--text-secondary)' }} />
                   <span className="mcp-server-name">{agent.name}</span>
                   <span className="mcp-server-command">{agent.model || 'default model'}</span>
-                  {agent.provider && <span className="mcp-tool-count">{agent.provider}</span>}
+
                   {agent.is_default && <span className="mcp-tool-count">default</span>}
                 </div>
                 {agent.channel_bindings.length > 0 && (
