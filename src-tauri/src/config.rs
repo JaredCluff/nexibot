@@ -1262,20 +1262,16 @@ impl NexiBotConfig {
     /// Apply version migrations to a config loaded from an older version.
     fn apply_migrations(config: &mut Self) {
         // Migration v1 -> v2: Defense pipeline defaults changed.
-        // For existing users who had the old defaults (enabled=true, fail_open=false),
-        // switch to safe defaults so they don't get blocked after updating.
+        // Disable defense for existing users who had it accidentally enabled so they
+        // aren't blocked on model-download failures after updating.
+        // Preserve the user's existing fail_open value — do NOT overwrite it.
         if config.config_version < 2 {
             tracing::info!("[CONFIG] Migration v1→v2: Changing defense defaults to safe values");
-            // If defense was enabled with fail_open=false (the old problematic defaults),
-            // set fail_open=true so users aren't blocked when models fail to load.
-            if config.defense.enabled && !config.defense.fail_open {
-                config.defense.fail_open = true;
-                tracing::info!("[CONFIG] Migration v1→v2: Set defense.fail_open=true (was false)");
-            }
             // Disable defense by default — users who want it can re-enable it.
             // This prevents the DeBERTa model download + fail-closed blocking on fresh installs.
             config.defense.enabled = false;
             tracing::info!("[CONFIG] Migration v1→v2: Set defense.enabled=false (opt-in only)");
+            // NOTE: fail_open is intentionally left as-is (preserve user's setting).
         }
     }
 

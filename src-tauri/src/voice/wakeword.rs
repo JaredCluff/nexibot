@@ -314,10 +314,12 @@ impl WakeWordDetector {
     }
 
     /// Download a model from URL to the specified path, verifying its SHA-256 digest.
-    // TODO: This sync fn uses reqwest::blocking::Client which will block the async runtime
-    // if called from an async context (e.g., via WakeWordDetector::new() on a tokio thread).
-    // Wrap in tokio::task::spawn_blocking() when WakeWordDetector::new() becomes async,
-    // or convert to async reqwest::Client.
+    ///
+    /// This function (and `WakeWordDetector::new()`) must only be called from a blocking
+    /// context. The call site in `voice/audio.rs` uses `std::thread::spawn`, which is a
+    /// true OS thread, so blocking here is safe. Do NOT call `WakeWordDetector::new()`
+    /// directly from a tokio async task — use `tokio::task::spawn_blocking` if that ever
+    /// becomes necessary.
     fn download_model(url: &str, dest: &PathBuf, expected_sha256: &str) -> anyhow::Result<()> {
         info!("[WAKE] Downloading from: {}", url);
 

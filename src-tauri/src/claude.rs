@@ -337,7 +337,7 @@ impl ClaudeClient {
                     {
                         let now_ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
+                            .unwrap_or_default()
                             .as_millis() as u64;
                         if expires_at_ms <= now_ms + 60_000 {
                             // Token expired or expiring within 1 minute
@@ -407,10 +407,14 @@ impl ClaudeClient {
         info!("[BRIDGE] OAuth: {}", Self::is_oauth_token(&api_key));
 
         // Make streaming request to bridge
-        let mut response = match self
+        let mut bridge_req = self
             .http_client
             .post(format!("{}/api/messages/stream", self.bridge_url))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            bridge_req = bridge_req.header("x-bridge-secret", secret);
+        }
+        let mut response = match bridge_req
             .json(&request_body)
             .send()
             .await
@@ -538,10 +542,14 @@ impl ClaudeClient {
             max_tokens
         );
 
-        let response = match self
+        let mut voice_req = self
             .http_client
             .post(format!("{}/api/messages/stream", self.bridge_url))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            voice_req = voice_req.header("x-bridge-secret", secret);
+        }
+        let response = match voice_req
             .json(&request_body)
             .send()
             .await
@@ -1875,7 +1883,7 @@ impl ClaudeClient {
         model: &str,
         system_prompt: &str,
         messages: &[Message],
-        _tools: &[serde_json::Value],
+        tools: &[serde_json::Value],
         max_tokens: usize,
     ) -> Result<ClaudeMessageResult> {
         let api_key = self.get_provider_api_key(LlmProvider::DeepSeek).await?;
@@ -1884,7 +1892,7 @@ impl ClaudeClient {
 
         let stripped_model = model.strip_prefix("deepseek/").unwrap_or(model);
 
-        let request_body = serde_json::json!({
+        let mut request_body = serde_json::json!({
             "apiKey": api_key,
             "model": stripped_model,
             "max_tokens": max_tokens,
@@ -1892,18 +1900,25 @@ impl ClaudeClient {
             "messages": messages,
         });
 
-        // TODO: Forward tools in Anthropic format — the bridge DeepSeek plugin
-        // handles conversion to OpenAI format internally.
+        // Forward tools in Anthropic format. The bridge DeepSeek plugin converts
+        // them to OpenAI format internally.
+        if !tools.is_empty() {
+            request_body["tools"] = serde_json::json!(tools);
+        }
 
         info!(
             "[DEEPSEEK] Sending request via bridge (model: {})",
             stripped_model
         );
 
-        let response = self
+        let mut deepseek_req = self
             .http_client
             .post(format!("{}/api/deepseek/messages", bridge_url))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            deepseek_req = deepseek_req.header("x-bridge-secret", secret);
+        }
+        let response = deepseek_req
             .json(&request_body)
             .send()
             .await
@@ -2325,10 +2340,14 @@ impl ClaudeClient {
             tools.len()
         );
 
-        let response = match self
+        let mut tool_req = self
             .http_client
             .post(format!("{}{}", self.bridge_url, endpoint))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            tool_req = tool_req.header("x-bridge-secret", secret);
+        }
+        let response = match tool_req
             .json(&request_body)
             .send()
             .await
@@ -2585,10 +2604,14 @@ impl ClaudeClient {
             provider
         );
 
-        let response = self
+        let mut cont_req = self
             .http_client
             .post(format!("{}{}", self.bridge_url, endpoint))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            cont_req = cont_req.header("x-bridge-secret", secret);
+        }
+        let response = cont_req
             .json(&request_body)
             .send()
             .await
@@ -2791,10 +2814,14 @@ impl ClaudeClient {
             provider
         );
 
-        let mut response = self
+        let mut stream_cont_req = self
             .http_client
             .post(format!("{}{}", self.bridge_url, endpoint))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            stream_cont_req = stream_cont_req.header("x-bridge-secret", secret);
+        }
+        let mut response = stream_cont_req
             .json(&request_body)
             .send()
             .await
@@ -3393,10 +3420,14 @@ impl ClaudeClient {
         );
 
         // Make streaming request to bridge
-        let mut response = match self
+        let mut stream_tools_req = self
             .http_client
             .post(format!("{}{}", self.bridge_url, endpoint))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            stream_tools_req = stream_tools_req.header("x-bridge-secret", secret);
+        }
+        let mut response = match stream_tools_req
             .json(&request_body)
             .send()
             .await
@@ -3713,10 +3744,14 @@ impl ClaudeClient {
             split_point
         );
 
-        let response = self
+        let mut compact_req = self
             .http_client
             .post(format!("{}/api/messages", self.bridge_url))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            compact_req = compact_req.header("x-bridge-secret", secret);
+        }
+        let response = compact_req
             .json(&request_body)
             .send()
             .await

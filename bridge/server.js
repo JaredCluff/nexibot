@@ -43,6 +43,22 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// Shared-secret guard: when BRIDGE_SECRET is set (i.e. the Rust backend started
+// this process), every non-health request must carry a matching
+// X-Bridge-Secret header.  If the env var is absent (standalone / dev mode)
+// the check is skipped for backward compatibility.
+const BRIDGE_SECRET = process.env.BRIDGE_SECRET || null;
+app.use((req, res, next) => {
+  if (!BRIDGE_SECRET) return next();          // no secret configured — allow all
+  if (req.path === '/health') return next();  // health endpoint is always open
+
+  const provided = req.headers['x-bridge-secret'];
+  if (!provided || provided !== BRIDGE_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized: missing or invalid X-Bridge-Secret' });
+  }
+  next();
+});
+
 // Track loaded plugins
 const loadedPlugins = [];
 // Track SDK v2 plugin instances for health reporting

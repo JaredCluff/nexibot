@@ -85,11 +85,11 @@ impl GoogleGeminiClient {
     async fn send_via_bridge(
         &self,
         messages: &[Message],
-        _tools: &[serde_json::Value],
+        tools: &[serde_json::Value],
         system_prompt: &str,
         _streaming: bool,
     ) -> Result<LlmMessageResult> {
-        let request_body = json!({
+        let mut request_body = json!({
             "apiKey": self.api_key,
             "model": self.model_id,
             "max_tokens": self.max_tokens,
@@ -97,16 +97,23 @@ impl GoogleGeminiClient {
             "messages": messages,
         });
 
-        // TODO: Forward tools in Anthropic format — the bridge Google plugin
-        // handles conversion to Gemini format internally.
+        // Forward tools in Anthropic format. The bridge Google plugin converts
+        // them to Gemini function declarations internally.
+        if !tools.is_empty() {
+            request_body["tools"] = json!(tools);
+        }
 
         let endpoint = format!("{}/api/google/messages", self.bridge_url);
         info!("[GOOGLE] Sending request via bridge (model: {})", self.model_id);
 
-        let response = self
+        let mut req = self
             .http_client
             .post(&endpoint)
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            req = req.header("x-bridge-secret", secret);
+        }
+        let response = req
             .json(&request_body)
             .send()
             .await

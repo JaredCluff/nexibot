@@ -71,9 +71,6 @@ impl SttBackend for SenseVoiceStt {
         self.model_exists()
     }
 
-    // TODO: initialize() performs blocking file I/O (model loading via sherpa-rs ONNX)
-    // inside an async fn. Wrap the recognizer creation in tokio::task::spawn_blocking()
-    // when feasible (&mut self borrow makes this non-trivial).
     async fn initialize(&mut self) -> Result<()> {
         let model_path = self.get_model_path()?;
 
@@ -96,7 +93,7 @@ impl SttBackend for SenseVoiceStt {
             ));
         }
 
-        let config = sherpa_rs::sense_voice::SenseVoiceConfig {
+        let ort_config = sherpa_rs::sense_voice::SenseVoiceConfig {
             model: model_path.to_string_lossy().to_string(),
             tokens: tokens_path.to_string_lossy().to_string(),
             language: "auto".to_string(),
@@ -104,8 +101,14 @@ impl SttBackend for SenseVoiceStt {
             ..Default::default()
         };
 
-        let recognizer = sherpa_rs::sense_voice::SenseVoiceRecognizer::new(config)
-            .map_err(|e| anyhow::anyhow!("Failed to create SenseVoice recognizer: {}", e))?;
+        // SenseVoiceRecognizer::new() performs blocking ONNX model loading.
+        // Run it on the blocking thread pool to avoid stalling the async runtime.
+        let recognizer = tokio::task::spawn_blocking(move || {
+            sherpa_rs::sense_voice::SenseVoiceRecognizer::new(ort_config)
+                .map_err(|e| anyhow::anyhow!("Failed to create SenseVoice recognizer: {}", e))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SenseVoice init task panicked: {}", e))??;
 
         *self.recognizer.lock().unwrap_or_else(|e| {
             error!("[STT] SenseVoice recognizer mutex poisoned during initialize: {}", e);

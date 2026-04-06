@@ -310,8 +310,16 @@ async fn execute_single_subtask(
         .await;
 
     // Update orchestration manager and circuit breaker.
-    {
+    // Capture worktree info before marking the spawn complete so we can clean up
+    // after the lock is released (worktree removal is async and must not hold the lock).
+    let worktree_cleanup = {
         let mut orch = state.orchestration_manager.write().await;
+        // Grab worktree path/branch while the spawn is still in active_spawns.
+        let wt_info = orch.get_spawn(&spawn_id).and_then(|s| {
+            s.worktree_path.as_ref().and_then(|p| {
+                s.worktree_branch.as_ref().map(|b| (p.clone(), b.clone()))
+            })
+        });
         if exec_result.success {
             let _ = orch.mark_completed(
                 &spawn_id,
@@ -327,6 +335,16 @@ async fn execute_single_subtask(
                 &spawn_id,
                 exec_result.error.as_deref().unwrap_or("Unknown error"),
             );
+        }
+        wt_info
+    };
+
+    // Remove the agent's worktree (if any) now that execution is complete.
+    if let Some((wt_path, wt_branch)) = worktree_cleanup {
+        if let Some(git_root) = crate::tools::worktree::find_git_root(&wt_path).await {
+            crate::tools::worktree::remove_agent_worktree(&git_root, &wt_path, &wt_branch).await;
+        } else {
+            warn!("[AGENT] Could not find git root for worktree cleanup: {}", wt_path.display());
         }
     }
 

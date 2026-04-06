@@ -13,6 +13,19 @@ use tracing::{debug, error, info, warn};
 
 use crate::platform::hidden_command;
 
+/// Process-wide bridge secret (set once when the bridge process is first started).
+/// All Rust code that makes HTTP requests to the bridge reads this value and
+/// adds it as an `X-Bridge-Secret` header.  `None` means the bridge has not
+/// been started yet (or is running in standalone mode without a secret).
+static BRIDGE_SECRET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Return the current bridge shared secret, if one has been generated.
+///
+/// Returns `None` until the bridge process has been started for the first time.
+pub fn get_bridge_secret() -> Option<&'static str> {
+    BRIDGE_SECRET.get().map(|s| s.as_str())
+}
+
 /// Bridge service status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BridgeStatus {
@@ -280,9 +293,19 @@ impl BridgeManager {
             default_dir.to_string_lossy().to_string()
         });
 
+        // Generate (or reuse) the shared secret that the bridge will verify on
+        // every non-health API request.  We use a OnceLock so the secret is
+        // stable across restarts within the same process lifetime, which means
+        // existing in-flight clients don't need to be updated after a restart.
+        let secret = BRIDGE_SECRET
+            .get_or_init(|| hex::encode(rand::random::<[u8; 32]>()))
+            .clone();
+        info!("[BRIDGE] Using bridge shared secret (fingerprint: {}...)", &secret[..8]);
+
         let child = hidden_command("node")
             .arg("server.js")
             .env("BRIDGE_PLUGINS_DIR", &plugins_dir)
+            .env("BRIDGE_SECRET", &secret)
             .current_dir(&self.bridge_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())

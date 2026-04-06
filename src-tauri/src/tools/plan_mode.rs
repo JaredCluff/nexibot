@@ -81,7 +81,9 @@ impl Tool for EnterPlanModeTool {
         let plan_dir = ctx.working_dir.join(".nexibot").join("plans");
         let plan_file = plan_dir.join(format!("plan-{}.md", chrono::Utc::now().timestamp_millis()));
 
-        let _ = tokio::fs::create_dir_all(&plan_dir).await;
+        if let Err(e) = tokio::fs::create_dir_all(&plan_dir).await {
+            return ToolResult::err(format!("Failed to create plan directory: {}", e));
+        }
 
         let mut state = self.state.write().await;
         *state = PlanModeState {
@@ -143,7 +145,9 @@ impl Tool for ExitPlanModeTool {
         // Write inline plan_content to file if provided
         if let Some(content) = input["plan_content"].as_str() {
             if !content.is_empty() {
-                let _ = tokio::fs::write(&plan_file, content).await;
+                if let Err(e) = tokio::fs::write(&plan_file, content).await {
+                    return ToolResult::err(format!("Failed to write plan file: {}", e));
+                }
             }
         }
 

@@ -486,28 +486,33 @@ impl SkillsManager {
     fn load_skill(&self, skill_dir: &PathBuf) -> Result<Skill> {
         let skill = self.load_skill_inner(skill_dir)?;
 
-        // Security scan: check skill content for dangerous patterns
+        // Security scan: check skill content for dangerous patterns.
+        // Block if the scan finds Danger or Critical severity issues (safe == false).
+        // Info/Warning findings are logged but do not prevent loading.
         let scan_result = crate::security::skill_scanner::scan_skill_code(&skill.content);
         if !scan_result.safe {
-            let dangers: Vec<_> = scan_result
+            // Collect all Danger and Critical findings for the error message.
+            let high_risk: Vec<_> = scan_result
                 .findings
                 .iter()
                 .filter(|f| {
                     matches!(
                         f.severity,
                         crate::security::skill_scanner::ScanSeverity::Danger
+                            | crate::security::skill_scanner::ScanSeverity::Critical
                     )
                 })
-                .map(|f| format!("{}: {}", f.pattern_name, f.description))
+                .map(|f| format!("[{}] {}: {}", f.severity, f.pattern_name, f.description))
                 .collect();
             warn!(
-                "[SKILLS] Skill '{}' contains dangerous patterns and was blocked: {:?}",
-                skill.id, dangers
+                "[SKILLS] Skill '{}' blocked by security scanner (max_severity={}): {:?}",
+                skill.id, scan_result.max_severity, high_risk
             );
             anyhow::bail!(
-                "Skill '{}' blocked by security scanner: {}",
+                "Skill '{}' refused: security scanner found {} high-risk pattern(s): {}",
                 skill.id,
-                dangers.join("; ")
+                high_risk.len(),
+                high_risk.join("; ")
             );
         }
         if !scan_result.findings.is_empty() {

@@ -48,6 +48,13 @@ pub struct SubagentSpawn {
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
     pub result: Option<SubagentResult>,
+    /// Worktree path if this spawn was created with `Isolation::Worktree`.
+    /// None for non-isolated spawns.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree_path: Option<std::path::PathBuf>,
+    /// Branch name for the worktree (used for cleanup).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree_branch: Option<String>,
 }
 
 /// Configuration knobs for the orchestration subsystem.
@@ -169,6 +176,24 @@ impl OrchestrationManager {
 
         let spawn_id = Uuid::new_v4().to_string();
 
+        // Pre-compute worktree path/branch from spawn_id so it can be stored in the
+        // record before the async creation task runs.  The path is deterministic and
+        // matches the logic inside `create_agent_worktree`.
+        let (worktree_path, worktree_branch) =
+            if config.as_ref().map(|c| matches!(c.isolation, Isolation::Worktree)).unwrap_or(false) {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                // Derive the path the same way create_agent_worktree does.
+                // We can't call find_git_root synchronously here, so we use cwd as a
+                // best-effort root anchor; find_git_root will resolve it properly in
+                // the async task.
+                let slug = format!("agent-{}", &spawn_id[..8.min(spawn_id.len())]);
+                let branch = format!("worktree-{}", slug);
+                let path = cwd.join(".nexibot").join("worktrees").join(&slug);
+                (Some(path), Some(branch))
+            } else {
+                (None, None)
+            };
+
         let spawn = SubagentSpawn {
             id: spawn_id.clone(),
             parent_id: parent_id.map(|s| s.to_string()),
@@ -180,6 +205,8 @@ impl OrchestrationManager {
             created_at: Utc::now(),
             completed_at: None,
             result: None,
+            worktree_path: worktree_path.clone(),
+            worktree_branch: worktree_branch.clone(),
         };
 
         // Track in tree_roots: find the root of this spawn's chain and register.

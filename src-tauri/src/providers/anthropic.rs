@@ -143,10 +143,14 @@ impl LlmClient for AnthropicClient {
             request_body["betas"] = json!(["computer-use-2025-01-24"]);
         }
 
-        let response = self
+        let mut req = self
             .http_client
             .post(format!("{}/api/messages", self.bridge_url))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            req = req.header("x-bridge-secret", secret);
+        }
+        let response = req
             .json(&request_body)
             .send()
             .await
@@ -215,10 +219,14 @@ impl LlmClient for AnthropicClient {
             request_body["betas"] = json!(["computer-use-2025-01-24"]);
         }
 
-        let response = self
+        let mut req = self
             .http_client
             .post(format!("{}/api/messages/stream", self.bridge_url))
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            req = req.header("x-bridge-secret", secret);
+        }
+        let response = req
             .json(&request_body)
             .send()
             .await

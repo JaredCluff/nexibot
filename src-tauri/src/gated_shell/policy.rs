@@ -24,6 +24,27 @@ static BUILTIN_DENY: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
             Regex::new(r"rm\s+-[^\s]*[rR][^\s]*\s+/$").expect("invariant: literal regex is valid"),
             "recursive delete of root directory",
         ),
+        // ── Recursive delete of home directory (tilde or $HOME / ${HOME}) ────
+        (
+            Regex::new(r"rm\s+(?:-[^\s]*[rR][^\s]*|--recursive)\s+~[/\s]?$")
+                .expect("invariant: literal regex is valid"),
+            "recursive delete of home directory (tilde)",
+        ),
+        (
+            Regex::new(r"rm\s+(?:-[^\s]*[rR][^\s]*|--recursive)\s+~/")
+                .expect("invariant: literal regex is valid"),
+            "recursive delete under home directory (tilde)",
+        ),
+        (
+            Regex::new(r#"rm\s+(?:-[^\s]*[rR][^\s]*|--recursive)\s+\$\{?HOME\}?[/\s]?$"#)
+                .expect("invariant: literal regex is valid"),
+            "recursive delete of home directory ($HOME)",
+        ),
+        (
+            Regex::new(r#"rm\s+(?:-[^\s]*[rR][^\s]*|--recursive)\s+\$\{?HOME\}?/"#)
+                .expect("invariant: literal regex is valid"),
+            "recursive delete under home directory ($HOME)",
+        ),
         // ── Recursive delete of system directories (short or long flags) ─────
         (
             Regex::new(&format!(
@@ -235,6 +256,26 @@ mod tests {
             p.check("chown -R root:root /usr"),
             PolicyAction::Deny { .. }
         ));
+    }
+
+    #[test]
+    fn test_builtin_deny_rm_rf_tilde() {
+        let p = policy();
+        // Direct home directory
+        assert!(matches!(p.check("rm -rf ~/"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -rf ~"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -r ~/"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm --recursive ~/"), PolicyAction::Deny { .. }));
+        // Under home directory
+        assert!(matches!(p.check("rm -rf ~/Documents"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -rf ~/Downloads/"), PolicyAction::Deny { .. }));
+        // $HOME variants
+        assert!(matches!(p.check("rm -rf $HOME"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -rf $HOME/"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -rf ${HOME}/"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -rf $HOME/Documents"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm --recursive $HOME"), PolicyAction::Deny { .. }));
+        assert!(matches!(p.check("rm -r $HOME/important"), PolicyAction::Deny { .. }));
     }
 
     #[test]

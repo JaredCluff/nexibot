@@ -134,7 +134,7 @@ export function SystemTab() {
                   if (!await showConfirm(`Remove OAuth profile "${profile.profile_name}"?`, { danger: true, confirmLabel: 'Remove' })) return;
                   setRemovingProfile(profile.profile_name);
                   try {
-                    await invoke('remove_oauth_profile', { profileName: profile.profile_name });
+                    await invoke('remove_oauth_profile', { provider: profile.provider, profileName: profile.profile_name });
                     await loadOAuthData();
                   } catch (error) {
                     notifyError('OAuth', `Failed to remove profile: ${error}`);
@@ -154,7 +154,7 @@ export function SystemTab() {
           <button className="primary" disabled={startingOAuth} onClick={async () => {
             setStartingOAuth(true);
             try {
-              await invoke('start_oauth_flow');
+              await invoke('start_oauth_flow', { provider: 'anthropic' });
               await loadOAuthData();
             } catch (error) {
               notifyError('OAuth', `OAuth flow failed: ${error}`);

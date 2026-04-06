@@ -695,10 +695,14 @@ async fn fetch_provider_models(
 
     let url = format!("{}{}", bridge_url, path);
 
-    match http
+    let mut models_req = http
         .get(&url)
         .header("x-api-key", key)
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(10));
+    if let Some(secret) = crate::bridge::get_bridge_secret() {
+        models_req = models_req.header("x-bridge-secret", secret);
+    }
+    match models_req
         .send()
         .await
     {
