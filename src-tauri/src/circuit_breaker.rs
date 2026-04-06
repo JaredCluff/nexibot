@@ -57,7 +57,7 @@ impl CircuitBreaker {
                 if let Some(last) = self.last_failure {
                     if last.elapsed() >= self.recovery_timeout {
                         self.state = CircuitState::HalfOpen;
-                        self.probe_in_flight = false;
+                        self.probe_in_flight = true; // Claim the single probe slot immediately
                         self.last_state_change = Instant::now();
                         true
                     } else {
