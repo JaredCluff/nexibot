@@ -514,14 +514,16 @@ impl PairingManager {
         // Load pending
         let pending_path = self.data_dir.join("pending.json");
         if pending_path.exists() {
-            let content = std::fs::read_to_string(&pending_path)?;
+            // std::fs::read_to_string is blocking I/O; use block_in_place when called
+            // from within an async context (e.g. under a tokio RwLock write guard).
+            let content = tokio::task::block_in_place(|| std::fs::read_to_string(&pending_path))?;
             self.pending = serde_json::from_str(&content).unwrap_or_default();
         }
 
         // Load allowlist
         let allowlist_path = self.data_dir.join("allowlist.json");
         if allowlist_path.exists() {
-            let content = std::fs::read_to_string(&allowlist_path)?;
+            let content = tokio::task::block_in_place(|| std::fs::read_to_string(&allowlist_path))?;
             let data: AllowlistData = serde_json::from_str(&content).unwrap_or_default();
             self.runtime_telegram_allowlist = data.telegram.into_iter().collect();
             self.runtime_whatsapp_allowlist = data.whatsapp.into_iter().collect();
@@ -539,7 +541,9 @@ impl PairingManager {
     fn save_pending(&self) -> Result<()> {
         let path = self.data_dir.join("pending.json");
         let content = serde_json::to_string_pretty(&self.pending)?;
-        std::fs::write(&path, content)?;
+        // std::fs::write is blocking I/O; use block_in_place when called from within
+        // an async context (e.g. under a tokio RwLock write guard).
+        tokio::task::block_in_place(|| std::fs::write(&path, content))?;
         Ok(())
     }
 
@@ -556,7 +560,7 @@ impl PairingManager {
                 .collect(),
         };
         let content = serde_json::to_string_pretty(&data)?;
-        std::fs::write(&path, content)?;
+        tokio::task::block_in_place(|| std::fs::write(&path, content))?;
         Ok(())
     }
 
@@ -594,7 +598,8 @@ impl PairingManager {
             "attempts": self.rate_limit_shadow,
             "saved_at": Utc::now().to_rfc3339(),
         });
-        if let Err(e) = std::fs::write(&path, state.to_string()) {
+        let payload = state.to_string();
+        if let Err(e) = tokio::task::block_in_place(|| std::fs::write(&path, payload)) {
             warn!("[PAIRING] Failed to persist rate limit state: {}", e);
         }
     }
@@ -605,7 +610,7 @@ impl PairingManager {
     /// still locked out.  Stale entries are silently discarded.
     fn load_rate_limit_state(&mut self) {
         let path = self.data_dir.join("rate_limit_state.json");
-        let data = match std::fs::read_to_string(&path) {
+        let data = match tokio::task::block_in_place(|| std::fs::read_to_string(&path)) {
             Ok(d) => d,
             Err(_) => return, // No persisted state; start fresh.
         };

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useSettings, ChannelToolPolicy } from '../SettingsContext';
+import { useSettings, ChannelToolPolicy, NexiBotConfig } from '../SettingsContext';
 import { InfoTip } from '../shared/InfoTip';
 import { ChannelCard } from '../shared/ChannelCard';
 import { PairingSection } from '../shared/PairingSection';
@@ -243,13 +243,17 @@ export function ChannelsTab() {
 
   const updateExtendedChannel = (channelKey: string, patch: Record<string, unknown>) => {
     const existing = (configAny[channelKey] ?? {}) as Record<string, unknown>;
-    setConfig({
-      ...(configAny as any),
+    // Extended channels (bluebubbles, google_chat, etc.) are not modelled in
+    // NexiBotConfig yet. We merge at the Record level and cast back to the
+    // known config type — this is the only place dynamic keys need escaping.
+    const merged: Record<string, unknown> = {
+      ...configAny,
       [channelKey]: {
         ...existing,
         ...patch,
       },
-    } as any);
+    };
+    setConfig(merged as unknown as NexiBotConfig);
   };
 
   return (

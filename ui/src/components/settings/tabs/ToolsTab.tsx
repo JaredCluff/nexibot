@@ -322,7 +322,7 @@ export function ToolsTab() {
             {platformInfo?.os === 'macos' && (
               <div className="info-text">
                 Accessibility: {accessibilityPermissions === true ? 'Granted' : accessibilityPermissions === false ? (
-                  <>Not granted — <button className="mcp-toggle-btn" onClick={() => invoke('request_accessibility_permissions')}>Grant Access</button></>
+                  <>Not granted — <button className="mcp-toggle-btn" onClick={() => invoke('request_accessibility_permissions').catch((e) => notifyError('Accessibility', `Failed to request permissions: ${e}`))}>Grant Access</button></>
                 ) : 'Unknown'}
               </div>
             )}

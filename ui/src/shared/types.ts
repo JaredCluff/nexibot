@@ -397,6 +397,23 @@ export interface WebhookEndpoint {
 }
 
 // ---------------------------------------------------------------------------
+// Subscription
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the Rust `SubscriptionStatus` enum (src-tauri/src/subscription.rs).
+ * Serde serialises enum variants as their PascalCase string names by default.
+ */
+export type SubscriptionStatus = 'Inactive' | 'Active' | 'Expired' | 'Pending';
+
+export interface Subscription {
+  provider: string;
+  status: SubscriptionStatus;
+  tier: string;
+  expires_at: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Platform info
 // ---------------------------------------------------------------------------
 
