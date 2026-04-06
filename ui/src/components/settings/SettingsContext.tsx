@@ -127,6 +127,20 @@ export interface NexiBotConfig {
     settings_modification: { level: string };
     memory_modification: { level: string };
     soul_modification: { level: string };
+    nats_publish: { level: string };
+  };
+  routing: {
+    enabled: boolean;
+    voice_latency_bias: boolean;
+    purposes: {
+      quick_chat?: string | null;
+      code_simple?: string | null;
+      code_complex?: string | null;
+      reasoning?: string | null;
+      long_context?: string | null;
+      agentic?: string | null;
+      voice_default?: string | null;
+    };
   };
   defense: {
     enabled: boolean;

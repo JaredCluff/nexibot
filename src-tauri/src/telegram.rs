@@ -1431,7 +1431,10 @@ async fn handle_oauth_code_input(
     }
 
     // Exchange code for tokens
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
     let client_id = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
     let redirect_uri = "https://console.anthropic.com/oauth/code/callback";
 
@@ -2227,7 +2230,10 @@ pub async fn send_yolo_approval_request(
         ]]
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
     for chat_id in &admin_chat_ids {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
         let body = serde_json::json!({
@@ -2260,7 +2266,10 @@ pub async fn send_telegram_notification(state: &crate::commands::AppState, messa
         return;
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
     for chat_id in &chat_ids {
         let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
         let body = serde_json::json!({
