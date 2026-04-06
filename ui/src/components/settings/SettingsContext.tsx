@@ -490,8 +490,8 @@ export interface RuntimeAllowlist {
 export interface AgentInfo {
   id: string;
   name: string;
+  avatar: string | null;
   model: string | null;
-  provider: string | null;
   is_default: boolean;
   channel_bindings: { channel: string; peer_id: string | null }[];
 }

@@ -211,7 +211,10 @@ impl ClawHubClient {
             http: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+                .unwrap_or_else(|e| {
+                    warn!("[CLAWHUB] Failed to build HTTP client with timeout, using default (requests may hang): {}", e);
+                    reqwest::Client::new()
+                }),
         }
     }
 
@@ -441,8 +444,8 @@ impl ClawHubClient {
             serde_json::to_string_pretty(&install_info)?,
         )?;
 
-        // 5. Compute and record integrity hash
-        match compute_directory_hash(&skill_dir) {
+        // 5. Compute and record integrity hash (blocking I/O — use block_in_place)
+        match tokio::task::block_in_place(|| compute_directory_hash(&skill_dir)) {
             Ok(hash) => {
                 let integrity_entry = SkillIntegrityEntry {
                     slug: slug.to_string(),
@@ -475,8 +478,8 @@ impl ClawHubClient {
             }
         }
 
-        // 6. Reload skills
-        if let Err(e) = skills_manager.load_all_skills() {
+        // 6. Reload skills (blocking I/O — use block_in_place)
+        if let Err(e) = tokio::task::block_in_place(|| skills_manager.load_all_skills()) {
             warn!("[CLAWHUB] Failed to reload skills after install: {}", e);
         }
 

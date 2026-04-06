@@ -44,7 +44,13 @@ export function SkillsTab() {
 
   // Security analysis state
   const [analyzingSkillId, setAnalyzingSkillId] = useState<string | null>(null);
-  const [skillSecurityReports, setSkillSecurityReports] = useState<Record<string, { severity: string; findings: { severity: string; description: string }[]; safe: boolean }>>({});
+  const [skillSecurityReports, setSkillSecurityReports] = useState<Record<string, {
+    skill_name: string;
+    risk_level: string;
+    overall_score: number;
+    summary: string;
+    findings: { category: string; severity: string; description: string; evidence?: string }[];
+  }>>({});
 
   // Per-skill config editor state
   const [configuringSkill, setConfiguringSkill] = useState<ConfiguringSkill>(null);
@@ -169,7 +175,13 @@ export function SkillsTab() {
               <button disabled={analyzingSkillId === skill.id} onClick={async () => {
                 setAnalyzingSkillId(skill.id);
                 try {
-                  const report = await invoke<{ severity: string; findings: { severity: string; description: string }[]; safe: boolean }>('analyze_skill_security', { skillId: skill.id });
+                  const report = await invoke<{
+                    skill_name: string;
+                    risk_level: string;
+                    overall_score: number;
+                    summary: string;
+                    findings: { category: string; severity: string; description: string; evidence?: string }[];
+                  }>('analyze_skill_security', { skillId: skill.id });
                   setSkillSecurityReports(prev => ({ ...prev, [skill.id]: report }));
                 } catch (error) {
                   notifyError('Skills', `Analysis failed: ${error}`);
@@ -192,9 +204,14 @@ export function SkillsTab() {
             </div>
             {skillSecurityReports[skill.id] && (
               <div style={{ margin: '8px 0', fontSize: '12px' }}>
-                <span className={`severity-badge severity-${skillSecurityReports[skill.id].severity.toLowerCase()}`}>
-                  {skillSecurityReports[skill.id].safe ? 'Safe' : skillSecurityReports[skill.id].severity}
+                <span className={`severity-badge severity-${skillSecurityReports[skill.id].risk_level.toLowerCase()}`}>
+                  {skillSecurityReports[skill.id].risk_level}
                 </span>
+                {skillSecurityReports[skill.id].summary && (
+                  <span style={{ marginLeft: '8px', color: 'var(--text-secondary)' }}>
+                    {skillSecurityReports[skill.id].summary}
+                  </span>
+                )}
                 {skillSecurityReports[skill.id].findings.length > 0 && (
                   <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
                     {skillSecurityReports[skill.id].findings.map((f, i) => (

@@ -286,8 +286,13 @@ impl Soul {
     fn extract_version(content: &str) -> String {
         for line in content.lines() {
             if line.contains("**Version:**") || line.contains("Version:") {
-                if let Some(version) = line.split(':').nth(1) {
-                    return version.trim().to_string();
+                // Use split_once to correctly handle values that contain colons
+                // (e.g., ISO timestamps like "2025-01-15T10:30:45+00:00")
+                if let Some((_, val)) = line.split_once(':') {
+                    let trimmed = val.trim();
+                    if !trimmed.is_empty() {
+                        return trimmed.to_string();
+                    }
                 }
             }
         }
@@ -298,8 +303,12 @@ impl Soul {
     fn extract_last_modified(content: &str) -> String {
         for line in content.lines() {
             if line.contains("**Last Modified:**") || line.contains("Last Modified:") {
-                if let Some(date) = line.split(':').nth(1) {
-                    return date.trim().to_string();
+                // Use split_once to correctly handle timestamps that contain colons
+                if let Some((_, val)) = line.split_once(':') {
+                    let trimmed = val.trim();
+                    if !trimmed.is_empty() {
+                        return trimmed.to_string();
+                    }
                 }
             }
         }

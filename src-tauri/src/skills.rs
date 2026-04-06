@@ -801,6 +801,14 @@ impl SkillsManager {
         content: &str,
         user_invocable: bool,
     ) -> Result<Skill> {
+        // Reject path traversal and shell-special characters in the ID.
+        if id.is_empty() || id.contains("..") || id.contains('/') || id.contains('\\') || id.contains('\0') {
+            anyhow::bail!("Invalid skill ID '{}': must not contain path traversal characters", id);
+        }
+        if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            anyhow::bail!("Invalid skill ID '{}': only alphanumeric, hyphen, and underscore allowed", id);
+        }
+
         let skill_dir = self.skills_dir.join(id);
         if skill_dir.exists() {
             anyhow::bail!("Skill '{}' already exists", id);
