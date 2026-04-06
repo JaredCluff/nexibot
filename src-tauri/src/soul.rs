@@ -184,8 +184,11 @@ impl Soul {
 
     /// Get soul content formatted for inclusion in system prompt
     pub fn get_system_prompt_context(&self) -> String {
+        // Boundary markers help the model distinguish developer instructions from
+        // user-controlled soul content (defense against second-order prompt injection).
         format!(
-            "# My Soul (Persistent Identity)\n\n{}\n\n---\n\
+            "# My Soul (Persistent Identity)\n\n\
+            <SOUL_CONTENT>\n{}\n</SOUL_CONTENT>\n\n---\n\
             I read this SOUL.md at the start of every interaction to maintain consistency.\n\
             If I need to evolve my values or identity, I can request to update this file.\n",
             self.content

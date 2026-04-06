@@ -312,7 +312,10 @@ impl Scheduler {
             {
                 task.last_run = Some(Utc::now());
             }
-            if let Err(e) = config.save() {
+            // config.save() does synchronous file I/O; use block_in_place to avoid
+            // blocking the async executor thread.
+            let save_result = tokio::task::block_in_place(|| config.save());
+            if let Err(e) = save_result {
                 *config = previous_config;
                 warn!(
                     "[SCHEDULER] Failed to persist last_run for task '{}': {}",

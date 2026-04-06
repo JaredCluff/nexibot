@@ -40,46 +40,81 @@ impl K2KIntegration {
 
     /// Initialize K2K client with authentication
     pub async fn initialize(&self) -> Result<()> {
-        let config = self.config.read().await;
+        // Extract all needed config values, then release the read lock so we can
+        // acquire the write lock if a key migration is needed.
+        let (enabled, local_agent_url, client_id, legacy_key_pem) = {
+            let config = self.config.read().await;
+            (
+                config.k2k.enabled,
+                config.k2k.local_agent_url.clone(),
+                config.k2k.client_id.clone(),
+                config.k2k.private_key_pem.clone(),
+            )
+        };
 
-        if !config.k2k.enabled {
+        if !enabled {
             info!("K2K integration is disabled");
             return Ok(());
         }
 
-        // Check if we have a private key
-        let private_key_pem = if let Some(ref key) = config.k2k.private_key_pem {
-            key.clone()
-        } else {
-            // Generate new keypair
-            info!("Generating new RSA keypair for K2K authentication");
-            let (private_pem, public_pem) = generate_rsa_keypair()?;
-
-            // SSRF validation before registering with local agent
-            validate_k2k_url(&config.k2k.local_agent_url)
-                .context("SSRF validation failed for K2K local_agent_url")?;
-
-            // Register with local agent
-            let temp_client = K2KCommonClient::new(&private_pem, &config.k2k.client_id)?;
-            temp_client
-                .register(&config.k2k.local_agent_url, &public_pem)
-                .await
-                .context("Failed to register with local K2K agent")?;
-
-            // Save private key to config
-            drop(config);
-            let mut config_write = self.config.write().await;
-            let previous_private_key = config_write.k2k.private_key_pem.clone();
-            config_write.k2k.private_key_pem = Some(private_pem.to_string());
-            if let Err(e) = config_write.save() {
-                config_write.k2k.private_key_pem = previous_private_key;
-                warn!(
-                    "Failed to persist generated K2K private key; continuing with in-memory key for this session: {}",
-                    e
-                );
+        // Load the RSA private key from the OS keyring (preferred) or fall back to
+        // config.yaml for migration from older installs.  The key is never written
+        // to config going forward — only the keyring.
+        const K2K_KEYRING_KEY: &str = "k2k_private_key_pem";
+        let private_key_pem = match crate::security::credentials::get_secret(K2K_KEYRING_KEY) {
+            Ok(Some(key)) => {
+                info!("[K2K] Loaded private key from OS keyring");
+                key
             }
+            Ok(None) => {
+                if let Some(key) = legacy_key_pem {
+                    // Migrate from config.yaml to keyring
+                    info!("[K2K] Migrating private key from config.yaml to OS keyring");
+                    if let Err(e) = crate::security::credentials::store_secret(K2K_KEYRING_KEY, &key) {
+                        warn!("[K2K] Could not store key in keyring ({}); key remains in config", e);
+                    } else {
+                        let mut config_write = self.config.write().await;
+                        config_write.k2k.private_key_pem = None;
+                        if let Err(e) = config_write.save() {
+                            warn!("[K2K] Could not scrub key from config after migration: {}", e);
+                        }
+                    }
+                    key
+                } else {
+                    // Generate new keypair
+                    info!("[K2K] Generating new RSA keypair for K2K authentication");
+                    let (private_pem, public_pem) = generate_rsa_keypair()?;
 
-            private_pem.to_string()
+                    // SSRF validation before registering with local agent
+                    validate_k2k_url(&local_agent_url)
+                        .context("SSRF validation failed for K2K local_agent_url")?;
+
+                    // Register with local agent
+                    let temp_client = K2KCommonClient::new(&private_pem, &client_id)?;
+                    temp_client
+                        .register(&local_agent_url, &public_pem)
+                        .await
+                        .context("Failed to register with local K2K agent")?;
+
+                    // Store in keyring only — never write to config.yaml
+                    if let Err(e) = crate::security::credentials::store_secret(K2K_KEYRING_KEY, &private_pem) {
+                        warn!("[K2K] Could not store new key in keyring: {}. Key is in-memory only for this session.", e);
+                    } else {
+                        info!("[K2K] RSA private key stored in OS keyring");
+                    }
+
+                    private_pem.to_string()
+                }
+            }
+            Err(e) => {
+                // Keyring unavailable (e.g., headless server) — fall back to config
+                warn!("[K2K] OS keyring unavailable ({}); using config.yaml fallback", e);
+                if let Some(key) = legacy_key_pem {
+                    key
+                } else {
+                    anyhow::bail!("K2K private key not found in keyring or config");
+                }
+            }
         };
 
         // Create K2K client
