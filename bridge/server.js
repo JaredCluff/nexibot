@@ -64,6 +64,8 @@ app.use((req, res, next) => {
 
 // Track loaded plugins
 const loadedPlugins = [];
+// Track plugin load failures for health reporting
+const pluginLoadErrors = [];
 // Track SDK v2 plugin instances for health reporting
 const pluginSDKs = [];
 
@@ -171,6 +173,7 @@ async function loadPluginsFromDir(pluginsDir, label) {
 
     } catch (err) {
       console.error(`[Bridge] Failed to load plugin '${entry.name}' (${label}):`, err.message);
+      pluginLoadErrors.push({ plugin: entry.name, source: label, error: err.message });
     }
   }
 }
@@ -179,8 +182,9 @@ async function loadPluginsFromDir(pluginsDir, label) {
  * Health check endpoint — returns loaded plugin list
  */
 app.get('/health', (req, res) => {
+  const hasDegraded = pluginLoadErrors.length > 0;
   res.json({
-    status: 'healthy',
+    status: hasDegraded ? 'degraded' : 'healthy',
     service: 'nexibot-bridge',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
@@ -194,6 +198,7 @@ app.get('/health', (req, res) => {
       ...(p.sdk_tools ? { sdk_tools: p.sdk_tools } : {}),
       ...(p.sdk_channels ? { sdk_channels: p.sdk_channels } : {}),
     })),
+    plugin_load_errors: pluginLoadErrors,
   });
 });
 

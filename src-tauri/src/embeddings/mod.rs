@@ -50,10 +50,28 @@ static EMBEDDING_MODEL: std::sync::OnceLock<Result<std::sync::Mutex<EmbeddingMod
     std::sync::OnceLock::new();
 
 /// Get the global embedding model instance, initializing if necessary.
+///
+/// Model initialization performs blocking I/O (HTTP download + ONNX session
+/// construction).  When called from inside a Tokio async runtime we use
+/// `block_in_place` so the scheduler can move other tasks off this thread
+/// while we block.  When called from a plain sync context (e.g. unit tests
+/// outside a runtime) we fall back to a direct call.
 pub fn get_embedding_model() -> Result<&'static std::sync::Mutex<EmbeddingModel>> {
-    let result = EMBEDDING_MODEL.get_or_init(|| match EmbeddingModel::new() {
-        Ok(model) => Ok(std::sync::Mutex::new(model)),
-        Err(e) => Err(e.to_string()),
+    let result = EMBEDDING_MODEL.get_or_init(|| {
+        let init = || match EmbeddingModel::new() {
+            Ok(model) => Ok(std::sync::Mutex::new(model)),
+            Err(e) => Err(e.to_string()),
+        };
+
+        // If we are inside a Tokio multi-thread runtime, yield the thread to
+        // the scheduler while we block on I/O so we don't starve other tasks.
+        // `block_in_place` is a no-op on the current-thread scheduler and in
+        // non-async contexts (it just calls the closure directly).
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(init)
+        } else {
+            init()
+        }
     });
 
     match result {
@@ -310,10 +328,12 @@ fn download_tokenizer(path: &PathBuf) -> Result<()> {
 }
 
 /// Download a file from URL and verify its SHA-256 against the expected digest.
-// TODO: This sync fn uses reqwest::blocking::Client which will block the async runtime
-// if called from an async context (e.g., via get_embedding_model() on a tokio thread).
-// Wrap in tokio::task::spawn_blocking() when EmbeddingModel::new() becomes async,
-// or convert to async reqwest::Client.
+///
+/// Uses `reqwest::blocking::Client`.  This function must only be called from
+/// within `get_embedding_model`, which already wraps the entire
+/// `EmbeddingModel::new()` call in `tokio::task::block_in_place` so that the
+/// async runtime is not starved while the HTTP download or ONNX session
+/// construction is in progress.
 fn download_file(url: &str, path: &PathBuf, expected_sha256: &str) -> Result<()> {
     info!("[EMBEDDINGS] Downloading: {}", url);
 

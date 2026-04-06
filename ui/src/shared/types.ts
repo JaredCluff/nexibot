@@ -417,6 +417,14 @@ export interface DefenseStatus {
 export interface SoulTemplate {
   name: string;
   description: string;
+  path: string;
+}
+
+export interface Soul {
+  path: string;
+  content: string;
+  last_modified: string;
+  version: string;
 }
 
 export interface SoulContent {
