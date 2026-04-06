@@ -399,6 +399,7 @@ impl AgentOrchestrator {
                             t.progress = Some(100);
                         }
                         Err(e) => {
+                            warn!("[AGENT_TEAM] Task '{}' failed: {}", tid, e);
                             t.status = TaskStatus::Failed;
                             t.error = Some(e);
                             t.progress = None;

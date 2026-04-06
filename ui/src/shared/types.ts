@@ -55,7 +55,7 @@ export interface AvailableModel {
   display_name: string;
   provider: string;
   available: boolean;
-  size_score?: number;
+  size_score: number;
 }
 
 // ---------------------------------------------------------------------------

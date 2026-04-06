@@ -642,6 +642,7 @@ export interface MCPDiscoveredTool {
   name: string;
   prefixed_name: string;
   description: string;
+  input_schema: unknown;
   server_name: string;
 }
 
@@ -702,7 +703,7 @@ export interface AvailableModel {
   display_name: string;
   provider: string;
   available: boolean;
-  size_score?: number;
+  size_score: number;
 }
 
 export interface MCPPreset {
