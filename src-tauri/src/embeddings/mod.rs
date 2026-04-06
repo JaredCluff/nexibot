@@ -273,7 +273,7 @@ impl EmbeddingModel {
             let mut pooled = vec![0f32; hidden_dim];
             let mut count = 0f32;
 
-            for s in 0..seq_len {
+            for s in 0..seq_len.min(max_len) {
                 let mask_val = attention_mask[b * max_len + s] as f32;
                 if mask_val > 0.0 {
                     for h in 0..hidden_dim {

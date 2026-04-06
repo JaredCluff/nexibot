@@ -42,7 +42,7 @@ export function KnowledgeTab() {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [searchingMemory, setSearchingMemory] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
-  const [newMemory, setNewMemory] = useState({ content: '', memory_type: 'Fact', tags: '' });
+  const [newMemory, setNewMemory] = useState({ content: '', memory_type: 'fact', tags: '' });
   const [addingMemory, setAddingMemory] = useState(false);
 
   // K2K Search state
@@ -95,7 +95,7 @@ export function KnowledgeTab() {
         memoryType: newMemory.memory_type,
         tags,
       });
-      setNewMemory({ content: '', memory_type: 'Fact', tags: '' });
+      setNewMemory({ content: '', memory_type: 'fact', tags: '' });
       setShowAddMemory(false);
       handleSearchMemories();
     } catch (error) {
@@ -220,10 +220,10 @@ export function KnowledgeTab() {
           />
           <select value={memoryTypeFilter} onChange={(e) => setMemoryTypeFilter(e.target.value)}>
             <option value="All">All Types</option>
-            <option value="Fact">Fact</option>
-            <option value="Preference">Preference</option>
-            <option value="Session">Session</option>
-            <option value="Custom">Custom</option>
+            <option value="fact">Fact</option>
+            <option value="preference">Preference</option>
+            <option value="conversation">Conversation</option>
+            <option value="context">Context</option>
           </select>
           <button className="primary" onClick={handleSearchMemories} disabled={searchingMemory}>
             {searchingMemory ? 'Searching...' : 'Search'}
@@ -271,11 +271,11 @@ export function KnowledgeTab() {
               />
             </label>
             <label className="field">
-              <span>Type<InfoTip text="Categorize this memory. Facts are objective information, Preferences are user preferences, Custom is anything else." /></span>
+              <span>Type<InfoTip text="Categorize this memory. Facts are objective information, Preferences are user preferences, Context is project/situational information." /></span>
               <select value={newMemory.memory_type} onChange={(e) => setNewMemory({ ...newMemory, memory_type: e.target.value })}>
-                <option value="Fact">Fact</option>
-                <option value="Preference">Preference</option>
-                <option value="Custom">Custom</option>
+                <option value="fact">Fact</option>
+                <option value="preference">Preference</option>
+                <option value="context">Context</option>
               </select>
             </label>
             <label className="field">
