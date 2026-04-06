@@ -157,7 +157,11 @@ pub fn format_for_device(text: &str, device_type: &DeviceType, max_length: usize
             let stripped = strip_markdown(text);
             let limit = 500.min(max_length);
             if stripped.len() > limit {
-                let mut result = stripped[..limit.saturating_sub(3)].to_string();
+                let mut end = limit.saturating_sub(3);
+                while end > 0 && !stripped.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let mut result = stripped[..end].to_string();
                 result.push_str("...");
                 result
             } else {
@@ -166,7 +170,11 @@ pub fn format_for_device(text: &str, device_type: &DeviceType, max_length: usize
         }
         DeviceType::IPhone | DeviceType::IPad => {
             if text.len() > max_length {
-                let mut result = text[..max_length.saturating_sub(3)].to_string();
+                let mut end = max_length.saturating_sub(3);
+                while end > 0 && !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let mut result = text[..end].to_string();
                 result.push_str("...");
                 result
             } else {
@@ -175,7 +183,11 @@ pub fn format_for_device(text: &str, device_type: &DeviceType, max_length: usize
         }
         DeviceType::Android | DeviceType::Other => {
             if text.len() > max_length {
-                let mut result = text[..max_length.saturating_sub(3)].to_string();
+                let mut end = max_length.saturating_sub(3);
+                while end > 0 && !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let mut result = text[..end].to_string();
                 result.push_str("...");
                 result
             } else {
