@@ -547,7 +547,9 @@ export interface CompactStatusPayload {
 }
 
 export interface SchedulerTaskCompletePayload {
+  task_id: string;
   task_name: string;
   response: string;
+  timestamp: string;
   success: boolean;
 }
