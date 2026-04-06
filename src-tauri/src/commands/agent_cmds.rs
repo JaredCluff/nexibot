@@ -217,9 +217,20 @@ pub(crate) async fn execute_orchestration(
     }
 
     // Build final results in original order.
+    // Subtasks that panicked or were cancelled get an explicit failure entry so
+    // callers can detect partial failures rather than receiving a silently-shorter list.
     for st in subtasks {
         if let Some(result) = completed_ids.remove(&st.id) {
             results.push(result);
+        } else {
+            results.push(SubtaskResult {
+                id: st.id.clone(),
+                agent: st.agent.clone(),
+                output: String::new(),
+                success: false,
+                elapsed_ms: 0,
+                error: Some("Subtask did not return a result (task panicked or was cancelled)".to_string()),
+            });
         }
     }
 
