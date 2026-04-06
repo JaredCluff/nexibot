@@ -9,7 +9,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use subtle::ConstantTimeEq;
+use subtle::{Choice, ConstantTimeEq};
 use tracing::{info, warn};
 
 /// DM policy for a messaging channel.
@@ -344,8 +344,13 @@ impl PairingManager {
                 let mut b = vec![0u8; len];
                 a[..code_bytes.len()].copy_from_slice(code_bytes);
                 b[..pending_bytes.len()].copy_from_slice(pending_bytes);
-                // Constant-time equality check — evaluates all entries regardless of match
-                let matched = a.ct_eq(&b).into() && now <= r.expires_at;
+                // Constant-time equality check combined with expiry using Choice::&
+                // Using && (short-circuit) would break constant-time: if ct_eq → false
+                // the expiry branch is skipped, creating a timing oracle for code guessing.
+                // Choice::& evaluates both operands unconditionally.
+                let codes_match: Choice = a.ct_eq(&b);
+                let not_expired: Choice = Choice::from(u8::from(now <= r.expires_at));
+                let matched = bool::from(codes_match & not_expired);
                 if matched && found.is_none() {
                     found = Some(i);
                 }
@@ -408,7 +413,9 @@ impl PairingManager {
                 let mut b = vec![0u8; len];
                 a[..code_bytes.len()].copy_from_slice(code_bytes);
                 b[..pending_bytes.len()].copy_from_slice(pending_bytes);
-                let matched: bool = a.ct_eq(&b).into() && now <= r.expires_at;
+                let codes_match: Choice = a.ct_eq(&b);
+                let not_expired: Choice = Choice::from(u8::from(now <= r.expires_at));
+                let matched = bool::from(codes_match & not_expired);
                 if matched && found.is_none() {
                     found = Some(i);
                 }

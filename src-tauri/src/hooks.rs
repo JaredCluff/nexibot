@@ -239,11 +239,12 @@ impl HookHandler for CommandHookHandler {
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
-        // Write context to stdin
+        // Write context to stdin then flush+drop to signal EOF before waiting.
+        // Explicit flush ensures buffered bytes reach the pipe before the fd is closed.
         if let Some(mut stdin) = child.stdin.take() {
             use tokio::io::AsyncWriteExt;
             stdin.write_all(context_json.as_bytes()).await?;
-            // Drop stdin to signal EOF
+            stdin.flush().await.ok();
         }
 
         // Wait with timeout
