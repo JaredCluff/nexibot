@@ -1760,7 +1760,7 @@ pub async fn execute_tool_loop(
         let continue_result = if config.streaming {
             let stream_window = observer.get_window().cloned();
             let (chunk_tx, mut chunk_rx) =
-                tokio::sync::mpsc::unbounded_channel::<String>();
+                tokio::sync::mpsc::channel::<String>(512);
             let chunk_tx = std::sync::Arc::new(chunk_tx);
             let chunk_tx_cb = chunk_tx.clone();
             let stream_window_c = stream_window.clone();
@@ -1769,7 +1769,7 @@ pub async fn execute_tool_loop(
                     use tauri::Emitter;
                     let _ = w.emit("chat:text-chunk", serde_json::json!({ "text": chunk }));
                 } else {
-                    let _ = chunk_tx_cb.send(chunk);
+                    let _ = chunk_tx_cb.try_send(chunk);
                 }
             }).await;
             match attempt {

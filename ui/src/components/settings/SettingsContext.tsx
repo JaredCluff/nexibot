@@ -514,9 +514,9 @@ export interface OAuthStatus {
 
 export interface SubscriptionInfo {
   provider: string;
-  status: string;
+  status: 'Active' | 'Inactive' | 'Expired' | 'Pending';
   tier: string;
-  expires_at: string | null;
+  expires_at: number | null; // Unix timestamp (seconds) from Rust Option<u64>
 }
 
 export type ToolPermissions = Record<string, { default_permission: string; tool_overrides: Record<string, string> }>;
