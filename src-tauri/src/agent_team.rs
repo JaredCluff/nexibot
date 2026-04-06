@@ -92,6 +92,9 @@ pub struct ScoredAgent {
 }
 
 /// Manages agent capabilities, task delegation, and cross-agent coordination.
+/// Maximum number of finished (Completed/Failed/Cancelled) tasks retained in memory.
+const MAX_FINISHED_AGENT_TASKS: usize = 500;
+
 pub struct AgentOrchestrator {
     /// Local agent capabilities registry: agent_id -> capabilities.
     capability_registry: RwLock<HashMap<String, Vec<AgentCapability>>>,
@@ -346,10 +349,25 @@ impl AgentOrchestrator {
             task_id, from_agent, to_agent, task.capability_id
         );
 
-        self.active_tasks
-            .write()
-            .await
-            .insert(task_id.clone(), status);
+        {
+            let mut tasks = self.active_tasks.write().await;
+            tasks.insert(task_id.clone(), status);
+            // Evict oldest finished tasks to bound memory growth
+            let finished_count = tasks.values()
+                .filter(|t| matches!(t.status, TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled))
+                .count();
+            if finished_count > MAX_FINISHED_AGENT_TASKS {
+                let mut finished: Vec<_> = tasks.iter()
+                    .filter(|(_, t)| matches!(t.status, TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled))
+                    .map(|(k, t)| (k.clone(), t.created_at))
+                    .collect();
+                finished.sort_by_key(|(_, ts)| *ts);
+                let evict_count = finished_count - MAX_FINISHED_AGENT_TASKS;
+                for (id, _) in finished.into_iter().take(evict_count) {
+                    tasks.remove(&id);
+                }
+            }
+        }
 
         // Spawn background execution if a handler was provided.
         if let Some(exec) = handler {
