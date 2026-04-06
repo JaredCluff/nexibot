@@ -225,7 +225,7 @@ export interface NexiBotConfig {
     admin_chat_ids: number[];
     voice_enabled: boolean;
     voice_response: boolean;
-    dm_policy: 'Allowlist' | 'Pairing';
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
     tool_policy: ChannelToolPolicy;
   };
   whatsapp: {
@@ -236,7 +236,7 @@ export interface NexiBotConfig {
     app_secret: string;
     allowed_phone_numbers: string[];
     admin_phone_numbers: string[];
-    dm_policy: 'Allowlist' | 'Pairing';
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
     tool_policy: ChannelToolPolicy;
   };
   discord: {
@@ -285,6 +285,7 @@ export interface NexiBotConfig {
     allowed_room_ids: string[];
     command_prefix?: string;
     admin_user_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
     tool_policy: ChannelToolPolicy;
   };
   email: {
@@ -301,6 +302,18 @@ export interface NexiBotConfig {
     allowed_senders: string[];
     poll_interval_seconds: number;
     folder: string;
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
+  };
+  rocketchat: {
+    enabled: boolean;
+    server_url: string;
+    username: string;
+    password: string;
+    allowed_room_ids: string[];
+    admin_user_ids: string[];
+    dm_policy: 'Allowlist' | 'Pairing' | 'Open';
+    tool_policy: ChannelToolPolicy;
   };
   webchat?: {
     enabled: boolean;
