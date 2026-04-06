@@ -275,7 +275,9 @@ impl MCPManager {
             for tool in &conn.tools {
                 tools.push(serde_json::json!({
                     "name": tool.prefixed_name,
-                    "description": format!("[{}] {}", tool.server_name, tool.description),
+                    "prefixed_name": tool.prefixed_name,
+                    "description": tool.description,
+                    "server_name": tool.server_name,
                     "input_schema": tool.input_schema,
                 }));
             }
