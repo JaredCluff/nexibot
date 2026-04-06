@@ -153,7 +153,7 @@ pub fn compute_directory_hash(dir: &Path) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut file_paths: Vec<PathBuf> = Vec::new();
 
-    collect_files_recursive(dir, &mut file_paths)?;
+    collect_files_recursive(dir, &mut file_paths, 0, 20, 10_000)?;
     file_paths.sort();
 
     for file_path in &file_paths {
@@ -162,11 +162,12 @@ pub fn compute_directory_hash(dir: &Path) -> Result<String> {
             hasher.update(relative.to_string_lossy().as_bytes());
         }
 
-        // Hash the file content
+        // Hash the file content (bounded to 10 MB per file)
         let mut file = fs::File::open(file_path)
             .with_context(|| format!("Failed to open {:?} for hashing", file_path))?;
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf)
+        file.take(10 * 1024 * 1024)
+            .read_to_end(&mut buf)
             .with_context(|| format!("Failed to read {:?} for hashing", file_path))?;
         hasher.update(&buf);
     }
@@ -176,19 +177,36 @@ pub fn compute_directory_hash(dir: &Path) -> Result<String> {
 }
 
 /// Recursively collect all file paths under a directory.
-fn collect_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    if !dir.is_dir() {
+///
+/// Bounded to `max_depth` levels and `max_files` total entries to prevent
+/// stack overflow on deeply nested directories or memory exhaustion on
+/// malicious skill packages.
+fn collect_files_recursive(
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+    depth: usize,
+    max_depth: usize,
+    max_files: usize,
+) -> Result<()> {
+    if !dir.is_dir() || depth > max_depth {
         return Ok(());
     }
     for entry in fs::read_dir(dir)? {
+        if out.len() >= max_files {
+            break;
+        }
         let entry = entry?;
         let path = entry.path();
+        // Skip symlinks to prevent traversal outside skill directory
+        if path.is_symlink() {
+            continue;
+        }
         // Skip the integrity manifest itself
         if path.file_name().and_then(|n| n.to_str()) == Some(".integrity.json") {
             continue;
         }
         if path.is_dir() {
-            collect_files_recursive(&path, out)?;
+            collect_files_recursive(&path, out, depth + 1, max_depth, max_files)?;
         } else if path.is_file() {
             out.push(path);
         }

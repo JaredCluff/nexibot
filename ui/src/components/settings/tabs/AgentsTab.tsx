@@ -9,6 +9,8 @@ interface NamedSession {
   id: string;
   name: string;
   created_at: string;
+  message_count: number;
+  channel_type: string;
 }
 
 interface InterSessionMessage {
