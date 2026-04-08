@@ -58,6 +58,7 @@ mod mcp;
 mod memory;
 mod nats;
 mod memory_advanced;
+mod memory_dreaming;
 mod memory_store;
 mod messenger;
 mod mobile;

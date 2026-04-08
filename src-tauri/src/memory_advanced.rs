@@ -405,6 +405,61 @@ impl AdvancedMemoryManager {
         Ok(id)
     }
 
+    /// Returns up to `limit` memories as (entry, Option<embedding>) pairs.
+    /// Embeddings are stored separately in SqliteMemoryStore; this returns None for all embeddings.
+    /// DreamingEngine can enrich via SqliteMemoryStore::get_embedding() if needed.
+    pub async fn get_all_with_embeddings(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(AdvancedMemoryEntry, Option<Vec<f32>>)>> {
+        let memories = self.memories.read().await;
+        Ok(memories
+            .values()
+            .take(limit)
+            .map(|e| (e.clone(), None))
+            .collect())
+    }
+
+    /// Delete a memory by ID from both in-memory cache and SQLite.
+    pub async fn delete_memory(&self, id: &str) -> Result<()> {
+        {
+            let mut memories = self.memories.write().await;
+            memories.remove(id);
+        }
+        let db = self.db.lock().await;
+        db.execute(
+            "DELETE FROM advanced_memories WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Store a fully-constructed AdvancedMemoryEntry directly (used by dreaming engine).
+    pub async fn store_memory(&self, entry: AdvancedMemoryEntry) -> Result<()> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT OR REPLACE INTO advanced_memories \
+             (id, content, importance, links_json, ttl_secs, created_at, expires_at, source, confidence, verified) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                entry.id,
+                entry.content,
+                entry.importance.0,
+                serde_json::to_string(&entry.links).unwrap_or_default(),
+                entry.ttl.map(|d| d.num_seconds()),
+                entry.created_at.to_rfc3339(),
+                entry.expires_at.map(|d| d.to_rfc3339()),
+                entry.source,
+                entry.confidence,
+                entry.verified as i32,
+            ],
+        )?;
+        drop(db);
+        let mut memories = self.memories.write().await;
+        memories.insert(entry.id.clone(), entry);
+        Ok(())
+    }
+
     /// Link two memories
     pub async fn link_memories(
         &self,
