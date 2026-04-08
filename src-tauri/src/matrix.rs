@@ -770,6 +770,40 @@ async fn handle_matrix_message(
         &text[..text.len().min(80)]
     );
 
+    // Read feature flags and bot user_id from config
+    let (typing_enabled, receipts_enabled, bot_user_id) = {
+        let cfg = state.app_state.config.read().await;
+        (
+            cfg.matrix.typing_indicators,
+            cfg.matrix.read_receipts,
+            cfg.matrix.user_id.clone(),
+        )
+    };
+
+    // Send read receipt immediately upon receiving the message
+    if receipts_enabled && !event_id.is_empty() {
+        let _ = send_read_receipt(
+            homeserver_url,
+            access_token,
+            room_id,
+            event_id,
+        )
+        .await;
+    }
+
+    // Start typing indicator (30s timeout, cleared after response is sent)
+    if typing_enabled {
+        let _ = send_typing_indicator(
+            homeserver_url,
+            access_token,
+            room_id,
+            &bot_user_id,
+            true,
+            30_000,
+        )
+        .await;
+    }
+
     // Route through the unified pipeline
     let claude_client = state.get_or_create_client(room_id).await;
 
@@ -848,6 +882,19 @@ async fn handle_matrix_message(
             )
             .await;
         }
+    }
+
+    // Clear typing indicator after the response has been sent
+    if typing_enabled {
+        let _ = send_typing_indicator(
+            homeserver_url,
+            access_token,
+            room_id,
+            &bot_user_id,
+            false,
+            0,
+        )
+        .await;
     }
 }
 
@@ -1189,6 +1236,14 @@ pub async fn send_reaction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn matrix_helpers_are_pub() {
+        // If this compiles, the functions are pub
+        let _ = send_typing_indicator as fn(_, _, _, _, _, _) -> _;
+        let _ = send_read_receipt as fn(_, _, _, _) -> _;
+        let _ = send_reaction as fn(_, _, _, _, _, _) -> _;
+    }
 
     #[test]
     fn typing_url_format() {
