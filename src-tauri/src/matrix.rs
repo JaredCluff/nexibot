@@ -1048,3 +1048,169 @@ async fn session_cleanup_loop(state: Arc<MatrixBotState>) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Typing indicator, read receipts, and reactions
+// ---------------------------------------------------------------------------
+
+/// Build the typing indicator URL for a user in a room.
+/// Room ID and user ID are URL-encoded to handle the `:` character.
+pub fn typing_url(homeserver_url: &str, room_id: &str, user_id: &str) -> String {
+    format!(
+        "{}/_matrix/client/v3/rooms/{}/typing/{}",
+        homeserver_url,
+        urlencoding::encode(room_id),
+        urlencoding::encode(user_id),
+    )
+}
+
+/// Send or clear a typing indicator in a Matrix room.
+///
+/// `typing = true` starts the indicator (auto-expires after `timeout_ms`).
+/// `typing = false` stops it immediately.
+pub async fn send_typing_indicator(
+    homeserver_url: &str,
+    access_token: &str,
+    room_id: &str,
+    user_id: &str,
+    typing: bool,
+    timeout_ms: u32,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = typing_url(homeserver_url, room_id, user_id);
+    let body = if typing {
+        serde_json::json!({ "typing": true, "timeout": timeout_ms })
+    } else {
+        serde_json::json!({ "typing": false })
+    };
+
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Typing indicator error {}: {}", status, text);
+    }
+
+    Ok(())
+}
+
+/// Build the read receipt URL for an event.
+pub fn read_receipt_url(homeserver_url: &str, room_id: &str, event_id: &str) -> String {
+    format!(
+        "{}/_matrix/client/v3/rooms/{}/receipt/m.read/{}",
+        homeserver_url,
+        urlencoding::encode(room_id),
+        urlencoding::encode(event_id),
+    )
+}
+
+/// Send an m.read receipt for an event in a room.
+/// This marks the event as read by the bot user.
+pub async fn send_read_receipt(
+    homeserver_url: &str,
+    access_token: &str,
+    room_id: &str,
+    event_id: &str,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = read_receipt_url(homeserver_url, room_id, event_id);
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&serde_json::json!({})) // empty body required by spec
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Read receipt error {}: {}", status, text);
+    }
+
+    Ok(())
+}
+
+/// Build the content body for an m.reaction event.
+pub fn reaction_event_body(relates_to_event_id: &str, emoji: &str) -> serde_json::Value {
+    serde_json::json!({
+        "m.relates_to": {
+            "rel_type": "m.annotation",
+            "event_id": relates_to_event_id,
+            "key": emoji
+        }
+    })
+}
+
+/// Send an m.reaction event in a Matrix room.
+///
+/// `relates_to_event_id` is the ID of the event being reacted to.
+/// `emoji` is any valid Matrix reaction key (typically a single emoji character).
+pub async fn send_reaction(
+    homeserver_url: &str,
+    access_token: &str,
+    room_id: &str,
+    relates_to_event_id: &str,
+    emoji: &str,
+    txn_id: &str,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}/_matrix/client/v3/rooms/{}/send/m.reaction/{}",
+        homeserver_url,
+        urlencoding::encode(room_id),
+        urlencoding::encode(txn_id),
+    );
+
+    let body = reaction_event_body(relates_to_event_id, emoji);
+
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Reaction send error {}: {}", status, text);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typing_url_format() {
+        let url = typing_url("https://matrix.org", "!roomid:matrix.org", "@user:matrix.org");
+        assert_eq!(
+            url,
+            "https://matrix.org/_matrix/client/v3/rooms/%21roomid%3Amatrix.org/typing/%40user%3Amatrix.org"
+        );
+    }
+
+    #[test]
+    fn read_receipt_url_format() {
+        let url = read_receipt_url("https://matrix.org", "!room:matrix.org", "$eventid:matrix.org");
+        assert!(url.contains("receipt"), "url: {}", url);
+        assert!(url.contains("m.read"), "url: {}", url);
+    }
+
+    #[test]
+    fn reaction_event_body_format() {
+        let body = reaction_event_body("$event123:matrix.org", "✅");
+        assert_eq!(body["m.relates_to"]["rel_type"], "m.annotation");
+        assert_eq!(body["m.relates_to"]["event_id"], "$event123:matrix.org");
+        assert_eq!(body["m.relates_to"]["key"], "✅");
+    }
+}
