@@ -195,6 +195,119 @@ pub fn build_deep_dream_prompt(memories: &[String]) -> String {
 }
 
 impl DreamingEngine {
+    /// REM phase: recalculate importance scores for all memories based on
+    /// age. Persists updated scores via the public set_importance() method.
+    pub async fn run_rem_phase(
+        &self,
+        advanced_memory: &crate::memory_advanced::AdvancedMemoryManager,
+        config: &DreamingConfig,
+    ) -> Result<usize> {
+        {
+            let mut status = self.status.write().await;
+            status.phase = DreamPhase::Rem;
+        }
+
+        let now = Utc::now();
+
+        // Collect (id, created_at) using the public API
+        let entries: Vec<(String, chrono::DateTime<Utc>)> = advanced_memory
+            .get_all_with_embeddings(config.max_memories_per_cycle)
+            .await?
+            .into_iter()
+            .map(|(e, _)| (e.id, e.created_at))
+            .collect();
+
+        let mut updated = 0usize;
+        for (id, created_at) in entries {
+            let age_days = (now - created_at).num_days().max(0);
+            let new_importance =
+                crate::memory_advanced::Importance::auto_calculate(0u32, age_days);
+            if let Err(e) = advanced_memory.set_importance(&id, new_importance).await {
+                warn!("[DREAMING] REM: failed to update importance for {}: {}", id, e);
+            } else {
+                updated += 1;
+            }
+        }
+
+        Ok(updated)
+    }
+
+    /// Run a full dream cycle: light → deep → REM.
+    pub async fn run_cycle(
+        &self,
+        advanced_memory: &crate::memory_advanced::AdvancedMemoryManager,
+        claude_client: Option<&crate::claude::ClaudeClient>,
+    ) -> Result<DreamLogEntry> {
+        let config = self.config.read().await.clone();
+        let started_at = Utc::now();
+
+        let duplicates_removed = self
+            .run_light_phase(advanced_memory, &config)
+            .await
+            .unwrap_or_else(|e| {
+                warn!("[DREAMING] Light phase error: {}", e);
+                0
+            });
+
+        let insights_created = if let Some(client) = claude_client {
+            self.run_deep_phase(advanced_memory, client, &config)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!("[DREAMING] Deep phase error: {}", e);
+                    0
+                })
+        } else {
+            0
+        };
+
+        let memories_processed = self
+            .run_rem_phase(advanced_memory, &config)
+            .await
+            .unwrap_or_else(|e| {
+                warn!("[DREAMING] REM phase error: {}", e);
+                0
+            });
+
+        let completed_at = Utc::now();
+        let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
+
+        let entry = DreamLogEntry {
+            started_at,
+            completed_at,
+            duration_ms,
+            memories_processed,
+            duplicates_removed,
+            insights_created,
+            phase_reached: DreamPhase::Rem,
+        };
+
+        {
+            let mut status = self.status.write().await;
+            status.phase = DreamPhase::Idle;
+            status.last_cycle_at = Some(completed_at);
+            status.last_cycle_duration_ms = duration_ms;
+            status.memories_processed += memories_processed as u64;
+            status.cycles_completed += 1;
+        }
+
+        {
+            let mut log = self.log.write().await;
+            log.push(entry.clone());
+            // Keep only last 100 entries
+            let len = log.len();
+            if len > 100 {
+                log.drain(0..len - 100);
+            }
+        }
+
+        info!(
+            "[DREAMING] Cycle complete: {}ms, {} dupes removed, {} insights, {} rem-updated",
+            duration_ms, duplicates_removed, insights_created, memories_processed
+        );
+
+        Ok(entry)
+    }
+
     /// Deep phase: groups memories by semantic similarity, calls LLM to extract
     /// insights, and stores each insight as a new Fact memory.
     pub async fn run_deep_phase(
@@ -310,6 +423,23 @@ mod tests {
         let a: Vec<f32> = vec![];
         let b: Vec<f32> = vec![];
         assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn rem_score_boosted_for_high_access() {
+        use crate::memory_advanced::Importance;
+        // auto_calculate: score = min(access_count, 100) + 50 - age_days * 0.5, clamped 0-100
+        let score = Importance::auto_calculate(50, 0);
+        // 50 + 50 - 0 = 100.0, clamped to 100
+        assert!((score.0 - 100.0).abs() < 1e-3, "score: {}", score.0);
+    }
+
+    #[test]
+    fn rem_score_decays_with_age() {
+        use crate::memory_advanced::Importance;
+        let score = Importance::auto_calculate(0, 40);
+        // 0 + 50 - 20 = 30.0
+        assert!((score.0 - 30.0).abs() < 1e-3, "score: {}", score.0);
     }
 
     #[test]
