@@ -165,11 +165,7 @@ async fn api_update_config(
                 &crate::security::ssrf::SsrfPolicy::default(),
                 &[],
             ) {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": format!("Invalid Ollama URL: {}", e) })),
-                )
-                    .into_response();
+                return Err((StatusCode::BAD_REQUEST, format!("Invalid Ollama URL: {}", e)));
             }
             config.ollama.url = url.to_string();
         }

@@ -312,12 +312,14 @@ async fn execution_loop(
             let executor_clone = executor.clone();
             let handle = tokio::spawn(async move {
                 let exec = executor_clone.read().await;
+                let session_key = format!("dag_{}", run_id_owned);
+                let session_id = format!("dag_{}", &run_id_owned[..8]);
                 let exec_future = exec.execute(
                     &agent_config,
                     &full_description,
-                    &format!("dag_{}", run_id_owned),
+                    &session_key,
                     &state_clone,
-                    Some(&format!("dag_{}", &run_id_owned[..8])),
+                    Some(&session_id),
                 );
                 let timeout_result = tokio::time::timeout(
                     Duration::from_secs(DAG_TASK_TIMEOUT_SECS),

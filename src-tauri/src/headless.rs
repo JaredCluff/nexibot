@@ -463,6 +463,13 @@ pub async fn run() {
         ptt_capture: ptt_capture.clone(),
     };
 
+    let plan_mode_state_arc = std::sync::Arc::new(tokio::sync::RwLock::new(
+        crate::tools::plan_mode::PlanModeState::default()
+    ));
+    let lsp_config_snapshot = config.try_read()
+        .map(|c| c.lsp.clone())
+        .unwrap_or_default();
+
     let app_state = AppState {
         core,
         llm,
@@ -645,6 +652,31 @@ pub async fn run() {
         },
         // Shared NATS client for nats_publish tool (populated when NATS starts)
         nats_publish_client: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+        // v0.9.0 tool registry
+        tool_registry: {
+            let reg = Arc::new(tokio::sync::RwLock::new(crate::tool_registry::ToolRegistry::new()));
+            {
+                let mut r = reg.try_write().expect("registry lock at startup");
+                crate::tools::register_all(&mut r, plan_mode_state_arc.clone(), lsp_config_snapshot);
+            }
+            reg
+        },
+        // v0.9.0 per-session file read state
+        file_read_state: Arc::new(tokio::sync::RwLock::new(
+            crate::tools::file_read_state::FileReadState::default()
+        )),
+        // v0.9.0 git context cache
+        git_context: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+        // v0.9.0 plan mode state
+        plan_mode_state: plan_mode_state_arc,
+        // v0.9.0 cost/token tracking
+        session_cost_tracker: std::sync::Arc::new(tokio::sync::RwLock::new(
+            crate::cost_tracker::CostTracker::new(uuid::Uuid::new_v4().to_string())
+        )),
+        budget_limits: crate::cost_tracker::BudgetLimits::default(),
+        session_context_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
+            crate::cost_tracker::ContextManager::new(200_000)
+        )),
         log_state: None,
     };
 

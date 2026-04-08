@@ -335,12 +335,13 @@ impl HookManager {
 
     /// Register a trait-object handler for a specific hook point.
     pub fn register_handler(&mut self, point: HookPoint, handler: Box<dyn HookHandler>) {
+        let point_repr = format!("{:?}", point);
         let vec = self.handlers.entry(point).or_default();
         if vec.len() >= MAX_HANDLERS_PER_POINT {
-            warn!("[HOOKS] Handler limit ({}) reached for {:?}, ignoring", MAX_HANDLERS_PER_POINT, point);
+            warn!("[HOOKS] Handler limit ({}) reached for {}, ignoring", MAX_HANDLERS_PER_POINT, point_repr);
             return;
         }
-        info!("[HOOKS] Registered handler for {:?}", point);
+        info!("[HOOKS] Registered handler for {}", point_repr);
         vec.push(handler);
     }
 
