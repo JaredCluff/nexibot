@@ -348,6 +348,10 @@ pub struct NexiBotConfig {
     /// LSP server configuration
     #[serde(default)]
     pub lsp: LspConfig,
+
+    /// Memory dreaming & consolidation configuration
+    #[serde(default)]
+    pub dreaming: crate::memory_dreaming::DreamingConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -510,6 +514,7 @@ impl Default for NexiBotConfig {
             auto_discover_formats: default_auto_discover_formats(),
             nats: NatsConfig::default(),
             lsp: LspConfig::default(),
+            dreaming: crate::memory_dreaming::DreamingConfig::default(),
         }
     }
 }
@@ -2196,6 +2201,13 @@ mod tests {
     /// Mutex to serialize tests that modify process-wide environment variables.
     /// Without this, parallel tests clobber each other's env vars.
     static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn nexibotconfig_has_dreaming_default() {
+        let c = NexiBotConfig::default();
+        assert!(!c.dreaming.enabled);
+        assert_eq!(c.dreaming.idle_minutes, 5);
+    }
 
     #[test]
     fn test_config_round_trip() {
