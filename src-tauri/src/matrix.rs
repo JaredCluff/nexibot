@@ -1105,7 +1105,7 @@ async fn session_cleanup_loop(state: Arc<MatrixBotState>) {
 pub fn typing_url(homeserver_url: &str, room_id: &str, user_id: &str) -> String {
     format!(
         "{}/_matrix/client/v3/rooms/{}/typing/{}",
-        homeserver_url,
+        homeserver_url.trim_end_matches('/'),
         urlencoding::encode(room_id),
         urlencoding::encode(user_id),
     )
@@ -1123,7 +1123,11 @@ pub async fn send_typing_indicator(
     typing: bool,
     timeout_ms: u32,
 ) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let url = typing_url(homeserver_url, room_id, user_id);
     let body = if typing {
         serde_json::json!({ "typing": true, "timeout": timeout_ms })
@@ -1151,7 +1155,7 @@ pub async fn send_typing_indicator(
 pub fn read_receipt_url(homeserver_url: &str, room_id: &str, event_id: &str) -> String {
     format!(
         "{}/_matrix/client/v3/rooms/{}/receipt/m.read/{}",
-        homeserver_url,
+        homeserver_url.trim_end_matches('/'),
         urlencoding::encode(room_id),
         urlencoding::encode(event_id),
     )
@@ -1165,7 +1169,11 @@ pub async fn send_read_receipt(
     room_id: &str,
     event_id: &str,
 ) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let url = read_receipt_url(homeserver_url, room_id, event_id);
 
     let resp = client
@@ -1207,10 +1215,14 @@ pub async fn send_reaction(
     emoji: &str,
     txn_id: &str,
 ) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let url = format!(
         "{}/_matrix/client/v3/rooms/{}/send/m.reaction/{}",
-        homeserver_url,
+        homeserver_url.trim_end_matches('/'),
         urlencoding::encode(room_id),
         urlencoding::encode(txn_id),
     );
@@ -1257,8 +1269,17 @@ mod tests {
     #[test]
     fn read_receipt_url_format() {
         let url = read_receipt_url("https://matrix.org", "!room:matrix.org", "$eventid:matrix.org");
-        assert!(url.contains("receipt"), "url: {}", url);
-        assert!(url.contains("m.read"), "url: {}", url);
+        assert_eq!(
+            url,
+            "https://matrix.org/_matrix/client/v3/rooms/%21room%3Amatrix.org/receipt/m.read/%24eventid%3Amatrix.org"
+        );
+    }
+
+    #[test]
+    fn typing_url_strips_trailing_slash() {
+        let url = typing_url("https://matrix.org/", "!r:matrix.org", "@u:matrix.org");
+        // Trailing slash on homeserver_url should not produce a double-slash after the host
+        assert!(url.starts_with("https://matrix.org/_matrix/"), "unexpected url: {}", url);
     }
 
     #[test]
