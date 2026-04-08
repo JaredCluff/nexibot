@@ -87,7 +87,7 @@ pub fn normalize_quotes(s: &str) -> String {
 }
 
 /// Find the actual string in file content, trying exact match then quote-normalized.
-pub fn find_actual_string<'a>(content: &'a str, search: &str) -> Option<&'a str> {
+pub fn find_actual_string<'a>(content: &'a str, search: &'a str) -> Option<&'a str> {
     // Fast path: exact match
     if content.contains(search) {
         return Some(search);

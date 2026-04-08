@@ -770,6 +770,40 @@ async fn handle_matrix_message(
         &text[..text.len().min(80)]
     );
 
+    // Read feature flags and bot user_id from config
+    let (typing_enabled, receipts_enabled, bot_user_id) = {
+        let cfg = state.app_state.config.read().await;
+        (
+            cfg.matrix.typing_indicators,
+            cfg.matrix.read_receipts,
+            cfg.matrix.user_id.clone(),
+        )
+    };
+
+    // Send read receipt immediately upon receiving the message
+    if receipts_enabled && !event_id.is_empty() {
+        let _ = send_read_receipt(
+            homeserver_url,
+            access_token,
+            room_id,
+            event_id,
+        )
+        .await;
+    }
+
+    // Start typing indicator (30s timeout, cleared after response is sent)
+    if typing_enabled {
+        let _ = send_typing_indicator(
+            homeserver_url,
+            access_token,
+            room_id,
+            &bot_user_id,
+            true,
+            30_000,
+        )
+        .await;
+    }
+
     // Route through the unified pipeline
     let claude_client = state.get_or_create_client(room_id).await;
 
@@ -848,6 +882,19 @@ async fn handle_matrix_message(
             )
             .await;
         }
+    }
+
+    // Clear typing indicator after the response has been sent
+    if typing_enabled {
+        let _ = send_typing_indicator(
+            homeserver_url,
+            access_token,
+            room_id,
+            &bot_user_id,
+            false,
+            0,
+        )
+        .await;
     }
 }
 
@@ -1046,5 +1093,200 @@ async fn session_cleanup_loop(state: Arc<MatrixBotState>) {
                 sessions.len()
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Typing indicator, read receipts, and reactions
+// ---------------------------------------------------------------------------
+
+/// Build the typing indicator URL for a user in a room.
+/// Room ID and user ID are URL-encoded to handle the `:` character.
+pub fn typing_url(homeserver_url: &str, room_id: &str, user_id: &str) -> String {
+    format!(
+        "{}/_matrix/client/v3/rooms/{}/typing/{}",
+        homeserver_url.trim_end_matches('/'),
+        urlencoding::encode(room_id),
+        urlencoding::encode(user_id),
+    )
+}
+
+/// Send or clear a typing indicator in a Matrix room.
+///
+/// `typing = true` starts the indicator (auto-expires after `timeout_ms`).
+/// `typing = false` stops it immediately.
+pub async fn send_typing_indicator(
+    homeserver_url: &str,
+    access_token: &str,
+    room_id: &str,
+    user_id: &str,
+    typing: bool,
+    timeout_ms: u32,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let url = typing_url(homeserver_url, room_id, user_id);
+    let body = if typing {
+        serde_json::json!({ "typing": true, "timeout": timeout_ms })
+    } else {
+        serde_json::json!({ "typing": false })
+    };
+
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Typing indicator error {}: {}", status, text);
+    }
+
+    Ok(())
+}
+
+/// Build the read receipt URL for an event.
+pub fn read_receipt_url(homeserver_url: &str, room_id: &str, event_id: &str) -> String {
+    format!(
+        "{}/_matrix/client/v3/rooms/{}/receipt/m.read/{}",
+        homeserver_url.trim_end_matches('/'),
+        urlencoding::encode(room_id),
+        urlencoding::encode(event_id),
+    )
+}
+
+/// Send an m.read receipt for an event in a room.
+/// This marks the event as read by the bot user.
+pub async fn send_read_receipt(
+    homeserver_url: &str,
+    access_token: &str,
+    room_id: &str,
+    event_id: &str,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let url = read_receipt_url(homeserver_url, room_id, event_id);
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&serde_json::json!({})) // empty body required by spec
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Read receipt error {}: {}", status, text);
+    }
+
+    Ok(())
+}
+
+/// Build the content body for an m.reaction event.
+pub fn reaction_event_body(relates_to_event_id: &str, emoji: &str) -> serde_json::Value {
+    serde_json::json!({
+        "m.relates_to": {
+            "rel_type": "m.annotation",
+            "event_id": relates_to_event_id,
+            "key": emoji
+        }
+    })
+}
+
+/// Send an m.reaction event in a Matrix room.
+///
+/// `relates_to_event_id` is the ID of the event being reacted to.
+/// `emoji` is any valid Matrix reaction key (typically a single emoji character).
+pub async fn send_reaction(
+    homeserver_url: &str,
+    access_token: &str,
+    room_id: &str,
+    relates_to_event_id: &str,
+    emoji: &str,
+    txn_id: &str,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let url = format!(
+        "{}/_matrix/client/v3/rooms/{}/send/m.reaction/{}",
+        homeserver_url.trim_end_matches('/'),
+        urlencoding::encode(room_id),
+        urlencoding::encode(txn_id),
+    );
+
+    let body = reaction_event_body(relates_to_event_id, emoji);
+
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Reaction send error {}: {}", status, text);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matrix_helpers_are_pub() {
+        // If this compiles, the functions are pub
+        let _ = send_typing_indicator as fn(_, _, _, _, _, _) -> _;
+        let _ = send_read_receipt as fn(_, _, _, _) -> _;
+        let _ = send_reaction as fn(_, _, _, _, _, _) -> _;
+    }
+
+    #[test]
+    fn typing_url_format() {
+        let url = typing_url("https://matrix.org", "!roomid:matrix.org", "@user:matrix.org");
+        assert_eq!(
+            url,
+            "https://matrix.org/_matrix/client/v3/rooms/%21roomid%3Amatrix.org/typing/%40user%3Amatrix.org"
+        );
+    }
+
+    #[test]
+    fn read_receipt_url_format() {
+        let url = read_receipt_url("https://matrix.org", "!room:matrix.org", "$eventid:matrix.org");
+        assert_eq!(
+            url,
+            "https://matrix.org/_matrix/client/v3/rooms/%21room%3Amatrix.org/receipt/m.read/%24eventid%3Amatrix.org"
+        );
+    }
+
+    #[test]
+    fn typing_url_strips_trailing_slash() {
+        let url = typing_url("https://matrix.org/", "!r:matrix.org", "@u:matrix.org");
+        // Trailing slash on homeserver_url should not produce a double-slash after the host
+        assert!(url.starts_with("https://matrix.org/_matrix/"), "unexpected url: {}", url);
+    }
+
+    #[test]
+    fn reaction_event_body_format() {
+        let body = reaction_event_body("$event123:matrix.org", "✅");
+        assert_eq!(body["m.relates_to"]["rel_type"], "m.annotation");
+        assert_eq!(body["m.relates_to"]["event_id"], "$event123:matrix.org");
+        assert_eq!(body["m.relates_to"]["key"], "✅");
     }
 }

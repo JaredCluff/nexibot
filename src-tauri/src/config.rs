@@ -509,6 +509,7 @@ impl Default for NexiBotConfig {
             external_skill_dirs: Vec::new(),
             auto_discover_formats: default_auto_discover_formats(),
             nats: NatsConfig::default(),
+            lsp: LspConfig::default(),
         }
     }
 }

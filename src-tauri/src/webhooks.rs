@@ -458,7 +458,7 @@ async fn health_handler() -> Json<serde_json::Value> {
                 &crate::security::ssrf::SsrfPolicy::default(),
                 &[],
             ) {
-                Ok(()) => reqwest::Client::new()
+                Ok(_url) => reqwest::Client::new()
                     .get(format!("{}/api/tags", ollama_url))
                     .timeout(std::time::Duration::from_secs(2))
                     .send()

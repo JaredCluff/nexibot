@@ -52,3 +52,6 @@ npm-debug.log*
 
 # Tauri build-generated schemas (rebuilt on every cargo tauri build)
 src-tauri/gen/
+
+# Git worktrees
+.worktrees/

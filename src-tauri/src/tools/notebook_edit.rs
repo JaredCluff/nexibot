@@ -60,6 +60,7 @@ async fn apply_notebook_edit(
         .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
     let mut nb: Value = serde_json::from_str(&raw)
         .map_err(|e| format!("Invalid notebook JSON: {}", e))?;
+    let nbformat = nb["nbformat"].as_u64().unwrap_or(4);
     let cells = nb["cells"].as_array_mut()
         .ok_or("Notebook has no cells array")?;
 
@@ -72,7 +73,7 @@ async fn apply_notebook_edit(
             let cell = cells.iter_mut()
                 .find(|c| c["id"].as_str() == Some(cell_id))
                 .ok_or_else(|| format!("Cell '{}' not found", cell_id))?;
-            let cell_type = cell["cell_type"].as_str().unwrap_or("code");
+            let cell_type = cell["cell_type"].as_str().unwrap_or("code").to_string();
             cell["source"] = Value::String(content.to_string());
             if cell_type == "code" {
                 cell["execution_count"] = Value::Null;
@@ -88,7 +89,6 @@ async fn apply_notebook_edit(
             let content = input["content"].as_str().ok_or("content is required for insert")?;
             let cell_type = input["cell_type"].as_str().unwrap_or("code");
             let after_id = input["after_cell_id"].as_str();
-            let nbformat = nb["nbformat"].as_u64().unwrap_or(4);
 
             let new_cell = make_cell(cell_type, content, nbformat >= 5);
             let new_id = new_cell["id"].as_str().unwrap_or("<auto>").to_string();

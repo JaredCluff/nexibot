@@ -767,7 +767,7 @@ impl DagStore {
             } else {
                 tracing::warn!(
                     "[DAG] Task '{}' depends on '{}' which does not exist in run '{}' — dependency edge skipped",
-                    task_def.task_key, dep_key, run_id
+                    task_def.key, dep_key, run_id
                 );
             }
         }

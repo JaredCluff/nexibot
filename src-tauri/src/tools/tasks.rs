@@ -221,6 +221,8 @@ impl Tool for TaskCreateTool {
             if let Some(task) = store.get_mut(&id_c) {
                 task.status = new_status;
                 task.completed_at = Some(Utc::now());
+            }
+            if let Some(task) = store.get(&id_c) {
                 let _ = store.persist(task).await;
             }
         });

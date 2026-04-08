@@ -230,6 +230,15 @@ pub struct MatrixConfig {
     /// Per-channel tool access policy
     #[serde(default)]
     pub tool_policy: ChannelToolPolicy,
+    /// Send typing indicators while processing messages (default: true).
+    #[serde(default = "default_true")]
+    pub typing_indicators: bool,
+    /// Send read receipts when messages are received (default: true).
+    #[serde(default = "default_true")]
+    pub read_receipts: bool,
+    /// Allow sending m.reaction events (default: true).
+    #[serde(default = "default_true")]
+    pub reactions_enabled: bool,
 }
 
 impl Default for MatrixConfig {
@@ -244,6 +253,9 @@ impl Default for MatrixConfig {
             admin_user_ids: Vec::new(),
             dm_policy: crate::pairing::DmPolicy::default(),
             tool_policy: ChannelToolPolicy::default(),
+            typing_indicators: true,
+            read_receipts: true,
+            reactions_enabled: true,
         }
     }
 }
@@ -277,5 +289,18 @@ impl Default for NatsConfig {
             url: default_nats_url(),
             inbound_subject: default_nats_inbound_subject(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matrix_config_has_feature_flags() {
+        let c = MatrixConfig::default();
+        assert!(c.typing_indicators, "typing_indicators should default to true");
+        assert!(c.read_receipts, "read_receipts should default to true");
+        assert!(c.reactions_enabled, "reactions_enabled should default to true");
     }
 }

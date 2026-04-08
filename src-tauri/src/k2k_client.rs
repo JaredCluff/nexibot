@@ -304,7 +304,7 @@ impl K2KIntegration {
             let resp = http
                 .post(format!(
                     "{}/api/v1/conversations/{}/messages",
-                    base_url, urlencoding::encode(conv_id)
+                    base_url, urlencoding::encode(&conv_id)
                 ))
                 .json(&serde_json::json!({
                     "role": role,
