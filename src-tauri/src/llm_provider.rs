@@ -18,6 +18,8 @@ pub enum LlmProvider {
     MiniMax,
     Cerebras,
     LMStudio,
+    Bedrock,
+    Mantle,
 }
 
 impl std::fmt::Display for LlmProvider {
@@ -33,6 +35,8 @@ impl std::fmt::Display for LlmProvider {
             LlmProvider::MiniMax => write!(f, "MiniMax"),
             LlmProvider::Cerebras => write!(f, "Cerebras"),
             LlmProvider::LMStudio => write!(f, "LM Studio"),
+            LlmProvider::Bedrock => write!(f, "Bedrock"),
+            LlmProvider::Mantle => write!(f, "Mantle"),
         }
     }
 }
@@ -53,6 +57,7 @@ impl LlmProvider {
 }
 
 /// Provider-specific capability flags for feature degradation.
+#[derive(Default)]
 pub struct ProviderCapabilities {
     /// Whether the provider supports extended thinking (Anthropic-only).
     pub supports_thinking: bool,
@@ -61,6 +66,8 @@ pub struct ProviderCapabilities {
     /// Whether the provider supports tool calling.
     #[allow(dead_code)]
     pub supports_tools: bool,
+    /// Whether the provider supports vision (image) inputs.
+    pub supports_vision: bool,
 }
 
 /// Common local model name prefixes for Ollama detection.
@@ -154,6 +161,7 @@ pub fn capabilities(provider: LlmProvider) -> ProviderCapabilities {
             supports_thinking: true,
             supports_computer_use: true,
             supports_tools: true,
+            supports_vision: true,
         },
         LlmProvider::OpenAI
         | LlmProvider::DeepSeek
@@ -165,16 +173,31 @@ pub fn capabilities(provider: LlmProvider) -> ProviderCapabilities {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
+            supports_vision: false,
         },
         LlmProvider::Google => ProviderCapabilities {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
+            supports_vision: true,
         },
         LlmProvider::Ollama => ProviderCapabilities {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
+            supports_vision: false,
+        },
+        LlmProvider::Bedrock => ProviderCapabilities {
+            supports_thinking: false,
+            supports_computer_use: false,
+            supports_tools: true,
+            supports_vision: true,
+        },
+        LlmProvider::Mantle => ProviderCapabilities {
+            supports_thinking: false,
+            supports_computer_use: false,
+            supports_tools: true,
+            supports_vision: false,
         },
     }
 }
@@ -414,6 +437,24 @@ mod tests {
     #[test]
     fn test_empty_string_defaults_anthropic() {
         assert_eq!(provider_for_model(""), LlmProvider::Anthropic);
+    }
+
+    #[test]
+    fn provider_capabilities_vision_default_false() {
+        let cap = ProviderCapabilities::default();
+        assert!(!cap.supports_vision);
+    }
+
+    #[test]
+    fn llm_provider_has_bedrock() {
+        let p = LlmProvider::Bedrock;
+        assert_eq!(format!("{:?}", p), "Bedrock");
+    }
+
+    #[test]
+    fn llm_provider_has_mantle() {
+        let p = LlmProvider::Mantle;
+        assert_eq!(format!("{:?}", p), "Mantle");
     }
 
     #[test]

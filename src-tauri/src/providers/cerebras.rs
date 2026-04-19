@@ -79,6 +79,7 @@ impl LlmClient for CerebrasClient {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
+            supports_vision: false,
         }
     }
 

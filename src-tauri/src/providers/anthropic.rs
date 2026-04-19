@@ -107,6 +107,7 @@ impl LlmClient for AnthropicClient {
             supports_thinking: true,
             supports_computer_use: true,
             supports_tools: true,
+            supports_vision: true,
         }
     }
 

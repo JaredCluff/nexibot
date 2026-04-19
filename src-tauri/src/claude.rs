@@ -1089,6 +1089,24 @@ impl ClaudeClient {
                 // Local providers require no API key
                 Ok("local".to_string())
             }
+            LlmProvider::Bedrock => {
+                let config = self.config.read().await;
+                config
+                    .bedrock
+                    .as_ref()
+                    .map(|b| b.access_key_id.clone())
+                    .filter(|k| !k.trim().is_empty())
+                    .context("No AWS Bedrock access key configured (set in Settings > Models)")
+            }
+            LlmProvider::Mantle => {
+                let config = self.config.read().await;
+                config
+                    .mantle
+                    .as_ref()
+                    .map(|m| m.api_key.clone())
+                    .filter(|k| !k.trim().is_empty())
+                    .context("No Mantle API key configured (set in Settings > Models)")
+            }
         }
     }
 

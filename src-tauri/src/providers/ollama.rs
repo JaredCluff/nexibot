@@ -16,6 +16,17 @@ use crate::tool_converter;
 
 use super::{LlmClient, LlmMessageResult, LlmToolUse};
 
+/// Known vision-capable model name keywords for Ollama auto-detection.
+const VISION_MODEL_KEYWORDS: &[&str] = &[
+    "llava", "bakllava", "moondream", "minicpm-v", "cogvlm", "internvl",
+];
+
+/// Returns true if the model name suggests vision capability based on known keywords.
+pub fn is_vision_model(model_id: &str) -> bool {
+    let lower = model_id.to_lowercase();
+    VISION_MODEL_KEYWORDS.iter().any(|k| lower.contains(k))
+}
+
 /// Ollama client for local model inference.
 pub struct OllamaClient {
     model_id: String,
@@ -58,6 +69,7 @@ impl LlmClient for OllamaClient {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
+            supports_vision: is_vision_model(&self.model_id),
         }
     }
 
