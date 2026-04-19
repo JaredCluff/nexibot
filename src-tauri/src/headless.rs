@@ -688,14 +688,6 @@ pub async fn run() {
             crate::cost_tracker::ContextManager::new(200_000)
         )),
         log_state: None,
-        // Dreaming engine (memory consolidation) — runs in headless mode too.
-        dreaming_engine: Arc::new(crate::memory_dreaming::DreamingEngine::new(
-            config
-                .try_read()
-                .map(|c| c.dreaming.clone())
-                .unwrap_or_default(),
-        )),
-        dreaming_last_activity: Arc::new(tokio::sync::RwLock::new(std::time::Instant::now())),
     };
 
     // Start yolo mode expiry watcher
