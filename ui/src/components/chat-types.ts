@@ -1,5 +1,12 @@
 /** Shared types for the Chat component family. */
 
+export interface ExecutionSummary {
+  iterations_used: number;
+  elapsed_ms: number;
+  tools_called: string[];
+  fallbacks: [string, string, string][];
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -8,6 +15,7 @@ export interface Message {
   isError?: boolean;
   toolIndicators?: ToolIndicator[];
   model?: string;
+  executionSummary?: ExecutionSummary;
 }
 
 export type ToolErrorKind = 'timeout' | 'rate_limit' | 'auth_failed' | 'network_error' | 'server_error' | 'other';
