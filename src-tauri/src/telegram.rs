@@ -25,6 +25,11 @@ use crate::security::rate_limit::{RateLimitConfig, RateLimiter};
 use crate::session_overrides::SessionOverrides;
 use crate::tool_loop::{self, ToolLoopConfig};
 
+/// Reaction emoji shown while a message is being processed.
+pub const REACTION_PROCESSING: &str = "👀";
+/// Reaction emoji shown when a message has been fully handled.
+pub const REACTION_DONE: &str = "✅";
+
 /// Per-chat UI state for Telegram conversations.
 /// The actual conversation history lives in the global AppState.claude_client.
 struct TelegramChatSession {
@@ -75,6 +80,15 @@ pub struct TelegramBotState {
     /// allowing the approval callback path (which never acquires this lock) to
     /// resolve pending approvals while a handler waits for user input.
     chat_llm_locks: tokio::sync::Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>,
+    /// Optional agent ID override for secondary bot instances.
+    ///
+    /// When `Some`, all messages are routed to the specified agent rather than
+    /// using the default agent selection logic.
+    agent_id_override: Option<String>,
+    /// Per-bot override for allowed chat IDs (empty = use global config).
+    allowed_chat_ids_override: Vec<i64>,
+    /// Per-bot override for admin chat IDs (empty = use global config).
+    admin_chat_ids_override: Vec<i64>,
 }
 
 impl TelegramBotState {
@@ -89,7 +103,24 @@ impl TelegramBotState {
             })),
             msg_dedup: Mutex::new(LruCache::new(NonZeroUsize::new(10_000).unwrap())),
             chat_llm_locks: tokio::sync::Mutex::new(HashMap::new()),
+            agent_id_override: None,
+            // Primary bot uses global config; secondary bots set these in new_with_agent.
+            allowed_chat_ids_override: vec![],
+            admin_chat_ids_override: vec![],
         }
+    }
+
+    fn new_with_agent(
+        app_state: AppState,
+        agent_id_override: Option<String>,
+        allowed_chat_ids_override: Vec<i64>,
+        admin_chat_ids_override: Vec<i64>,
+    ) -> Self {
+        let mut state = Self::new(app_state);
+        state.agent_id_override = agent_id_override;
+        state.allowed_chat_ids_override = allowed_chat_ids_override;
+        state.admin_chat_ids_override = admin_chat_ids_override;
+        state
     }
 
     /// Obtain the per-chat LLM serialization lock for `chat_id`.
@@ -276,9 +307,95 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
     Ok(Some(stop_flag))
 }
 
+/// Start a secondary Telegram bot instance with the given token.
+///
+/// Used for multi-bot configurations where `config.telegram.bots` lists
+/// additional bot instances, each potentially bound to a different agent.
+/// The function mirrors `start_telegram_bot` but accepts explicit parameters
+/// rather than reading from the primary bot config.
+pub async fn start_bot(
+    app_state: AppState,
+    bot_token: String,
+    agent_id_override: Option<String>,
+    allowed_chat_ids_override: Vec<i64>,
+    admin_chat_ids_override: Vec<i64>,
+) {
+    // Decrypt the token through the key interceptor (same pattern as start_telegram_bot).
+    let bot_token = app_state.key_interceptor.restore_config_string(&bot_token);
+    let bot = Bot::new(&bot_token);
+
+    match bot.get_me().await {
+        Ok(me) => {
+            info!(
+                "[TELEGRAM] Secondary bot validated — @{} (id: {}), agent_override: {:?}",
+                me.username(),
+                me.id,
+                agent_id_override
+            );
+        }
+        Err(e) => {
+            error!(
+                "[TELEGRAM] Secondary bot token invalid or revoked: {}. Skipping.",
+                e
+            );
+            return;
+        }
+    }
+
+    let bot_state = Arc::new(TelegramBotState::new_with_agent(
+        app_state,
+        agent_id_override,
+        allowed_chat_ids_override,
+        admin_chat_ids_override,
+    ));
+    let cleanup_state = bot_state.clone();
+    let cleanup_handle = tokio::spawn(session_cleanup_loop(cleanup_state));
+
+    let mut backoff = std::time::Duration::from_secs(1);
+    loop {
+        let state_for_msg = bot_state.clone();
+        let state_for_cb = bot_state.clone();
+        let handler = dptree::entry()
+            .branch(
+                Update::filter_message().endpoint(move |b: Bot, msg: Message| {
+                    let state = state_for_msg.clone();
+                    async move {
+                        tokio::spawn(handle_telegram_message(b, msg, state));
+                        respond(())
+                    }
+                }),
+            )
+            .branch(
+                Update::filter_callback_query().endpoint(move |b: Bot, cb: CallbackQuery| {
+                    let state = state_for_cb.clone();
+                    async move {
+                        tokio::spawn(handle_callback_query(b, cb, state));
+                        respond(())
+                    }
+                }),
+            );
+
+        let mut dispatcher = Dispatcher::builder(bot.clone(), handler).build();
+        info!("[TELEGRAM] Secondary bot dispatch started (long-polling)");
+        dispatcher.dispatch().await;
+
+        error!(
+            "[TELEGRAM] Secondary bot dispatch loop exited. Retrying in {:?}",
+            backoff
+        );
+        tokio::time::sleep(backoff).await;
+        backoff = (backoff * 2).min(std::time::Duration::from_secs(64));
+    }
+
+    // Abort cleanup task when loop exits (unreachable in normal operation, but
+    // allows future graceful shutdown without resource leaks).
+    #[allow(unreachable_code)]
+    cleanup_handle.abort();
+}
+
 /// Handle an incoming Telegram message.
 async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotState>) {
-    let (enabled, allowed_chat_ids, admin_chat_ids, dm_policy, voice_enabled, voice_response) = {
+    let (enabled, global_allowed_chat_ids, global_admin_chat_ids, dm_policy, voice_enabled, voice_response) = {
         let config = state.app_state.config.read().await;
         (
             config.telegram.enabled,
@@ -288,6 +405,18 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
             config.telegram.voice_enabled,
             config.telegram.voice_response,
         )
+    };
+
+    // Use per-bot allowlists when configured; fall back to global config.
+    let allowed_chat_ids = if !state.allowed_chat_ids_override.is_empty() {
+        state.allowed_chat_ids_override.clone()
+    } else {
+        global_allowed_chat_ids
+    };
+    let admin_chat_ids = if !state.admin_chat_ids_override.is_empty() {
+        state.admin_chat_ids_override.clone()
+    } else {
+        global_admin_chat_ids
     };
 
     if !enabled {
@@ -634,13 +763,27 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         );
     }
 
+    // Build the session key, incorporating the forum thread ID when thread
+    // routing is enabled so each topic gets an isolated conversation history.
+    let thread_id = msg.thread_id;
+    let thread_routing = {
+        let cfg = state.app_state.config.read().await;
+        cfg.telegram.thread_routing_enabled
+    };
+    let session_key = if thread_routing {
+        // ThreadId(MessageId(i32)) — extract the inner i32 with .0 .0
+        make_session_key_with_thread(chat_id.0, thread_id.map(|t| t.0 .0))
+    } else {
+        format!("telegram:{}", chat_id.0)
+    };
+
     // Ensure per-chat UI session exists
     state.ensure_session_exists(chat_id.0).await;
 
     let message = IncomingMessage {
         text: text.to_string(),
         channel: ChannelSource::Telegram { chat_id: chat_id.0 },
-        agent_id: None,
+        agent_id: state.agent_id_override.clone(),
         metadata: HashMap::new(),
     };
 
@@ -658,12 +801,34 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     let chat_lock = state.chat_lock(chat_id.0).await;
     let _chat_guard = chat_lock.lock().await;
 
+    let reactions_enabled = {
+        let cfg = state.app_state.config.read().await;
+        cfg.telegram.reactions_enabled
+    };
+
+    if reactions_enabled {
+        set_message_reaction(&bot, chat_id.0, msg.id.0, REACTION_PROCESSING).await;
+    }
+
     let result = {
         let client_guard = state.app_state.claude_client.read().await;
+        let mut loop_config = ToolLoopConfig::telegram_with_sender(chat_id.0, sender_user_id);
+        // Override sender_id with the thread-aware session key when thread routing
+        // is active, so per-thread memory and session history remain isolated.
+        //
+        // Note on ChannelSource: IncomingMessage.channel carries ChannelSource::Telegram
+        // which only encodes chat_id. The router uses channel for agent resolution and
+        // safety wrapping, NOT for session keying. Session isolation is driven entirely
+        // by loop_config.sender_id (used by the tool loop for policy and approval
+        // lookup). Setting it to the thread-scoped session_key here IS the correct
+        // mechanism — no change to ChannelSource is needed.
+        if thread_routing {
+            loop_config.sender_id = Some(session_key.clone());
+        }
         let options = RouteOptions {
             claude_client: &*client_guard,
             overrides: SessionOverrides::default(),
-            loop_config: ToolLoopConfig::telegram_with_sender(chat_id.0, sender_user_id),
+            loop_config,
             observer: &observer,
             streaming: false,
             window: None,
@@ -675,6 +840,10 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         };
         router::route_message(&message, options, app_state).await
     };
+
+    if reactions_enabled {
+        set_message_reaction(&bot, chat_id.0, msg.id.0, REACTION_DONE).await;
+    }
 
     match result {
         Ok(routed) => {
@@ -2295,5 +2464,89 @@ pub async fn send_telegram_notification(state: &crate::commands::AppState, messa
         if let Err(e) = client.post(&url).json(&body).send().await {
             warn!("[TELEGRAM] Notification failed for {}: {}", chat_id, e);
         }
+    }
+}
+
+/// Set a reaction emoji on a Telegram message via the Bot API.
+///
+/// Uses the raw HTTP API because teloxide 0.13 does not yet expose
+/// `setMessageReaction` as a typed method.
+pub async fn set_message_reaction(
+    bot: &teloxide::Bot,
+    chat_id: i64,
+    message_id: i32,
+    emoji: &str,
+) {
+    let token = bot.token();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
+    let url = format!("https://api.telegram.org/bot{}/setMessageReaction", token);
+    let body = serde_json::json!({
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "reaction": [{ "type": "emoji", "emoji": emoji }],
+        "is_big": false
+    });
+    let _ = client.post(&url).json(&body).send().await;
+}
+
+/// Build a session key that optionally includes the forum thread ID.
+///
+/// When `thread_routing_enabled` is `true` each forum topic gets its own
+/// isolated conversation history.  When disabled (or for non-forum messages)
+/// the key falls back to the plain `telegram:<chat_id>` form.
+pub fn make_session_key_with_thread(chat_id: i64, thread_id: Option<i32>) -> String {
+    match thread_id {
+        Some(tid) => format!("telegram:{}:thread:{}", chat_id, tid),
+        None => format!("telegram:{}", chat_id),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reaction_emoji_values() {
+        assert_eq!(REACTION_PROCESSING, "👀");
+        assert_eq!(REACTION_DONE, "✅");
+    }
+
+    #[tokio::test]
+    async fn reaction_constants_not_empty() {
+        assert!(!REACTION_PROCESSING.is_empty());
+        assert!(!REACTION_DONE.is_empty());
+        let _ = set_message_reaction as fn(_, _, _, _) -> _;
+    }
+
+    #[test]
+    fn thread_id_session_key_format() {
+        let chat_id: i64 = 123456;
+        let thread_id: Option<i32> = Some(42);
+        let key = make_session_key_with_thread(chat_id, thread_id);
+        assert_eq!(key, "telegram:123456:thread:42");
+
+        let key_no_thread = make_session_key_with_thread(chat_id, None);
+        assert_eq!(key_no_thread, "telegram:123456");
+    }
+
+    #[test]
+    fn telegram_bot_config_count() {
+        let mut cfg = crate::config::channels::TelegramConfig::default();
+        cfg.bots.push(crate::config::channels::TelegramBotConfig {
+            bot_token: "111:aaa".into(),
+            agent_id: Some("agent_a".into()),
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+        });
+        cfg.bots.push(crate::config::channels::TelegramBotConfig {
+            bot_token: "222:bbb".into(),
+            agent_id: Some("agent_b".into()),
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+        });
+        assert_eq!(cfg.bots.len(), 2);
     }
 }
