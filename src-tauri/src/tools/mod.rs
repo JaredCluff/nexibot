@@ -5,6 +5,7 @@ pub mod file_edit;
 pub mod file_read;
 pub mod file_read_state;
 pub mod lsp;
+pub mod media_gen;
 pub mod notebook_edit;
 pub mod send_message;
 pub mod tasks;
