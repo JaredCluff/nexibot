@@ -25,6 +25,11 @@ use crate::security::rate_limit::{RateLimitConfig, RateLimiter};
 use crate::session_overrides::SessionOverrides;
 use crate::tool_loop::{self, ToolLoopConfig};
 
+/// Reaction emoji shown while a message is being processed.
+pub const REACTION_PROCESSING: &str = "👀";
+/// Reaction emoji shown when a message has been fully handled.
+pub const REACTION_DONE: &str = "✅";
+
 /// Per-chat UI state for Telegram conversations.
 /// The actual conversation history lives in the global AppState.claude_client.
 struct TelegramChatSession {
@@ -2295,5 +2300,50 @@ pub async fn send_telegram_notification(state: &crate::commands::AppState, messa
         if let Err(e) = client.post(&url).json(&body).send().await {
             warn!("[TELEGRAM] Notification failed for {}: {}", chat_id, e);
         }
+    }
+}
+
+/// Set a reaction emoji on a Telegram message via the Bot API.
+///
+/// Uses the raw HTTP API because teloxide 0.13 does not yet expose
+/// `setMessageReaction` as a typed method.
+pub async fn set_message_reaction(
+    bot: &teloxide::Bot,
+    chat_id: i64,
+    message_id: i32,
+    emoji: &str,
+) {
+    let token = bot.token();
+    let client = reqwest::Client::new();
+    let url = format!("https://api.telegram.org/bot{}/setMessageReaction", token);
+    let body = serde_json::json!({
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "reaction": [{ "type": "emoji", "emoji": emoji }],
+        "is_big": false
+    });
+    let _ = client.post(&url).json(&body).send().await;
+}
+
+/// Build a session key that optionally includes the forum thread ID.
+///
+/// When `thread_routing_enabled` is `true` each forum topic gets its own
+/// isolated conversation history.  When disabled (or for non-forum messages)
+/// the key falls back to the plain `telegram:<chat_id>` form.
+pub fn make_session_key_with_thread(chat_id: i64, thread_id: Option<i32>) -> String {
+    match thread_id {
+        Some(tid) => format!("telegram:{}:thread:{}", chat_id, tid),
+        None => format!("telegram:{}", chat_id),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reaction_emoji_values() {
+        assert_eq!(REACTION_PROCESSING, "👀");
+        assert_eq!(REACTION_DONE, "✅");
     }
 }
