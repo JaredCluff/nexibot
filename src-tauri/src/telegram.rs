@@ -639,6 +639,20 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         );
     }
 
+    // Build the session key, incorporating the forum thread ID when thread
+    // routing is enabled so each topic gets an isolated conversation history.
+    let thread_id = msg.thread_id;
+    let thread_routing = {
+        let cfg = state.app_state.config.read().await;
+        cfg.telegram.thread_routing_enabled
+    };
+    let session_key = if thread_routing {
+        // ThreadId(MessageId(i32)) — extract the inner i32 with .0 .0
+        make_session_key_with_thread(chat_id.0, thread_id.map(|t| t.0 .0))
+    } else {
+        format!("telegram:{}", chat_id.0)
+    };
+
     // Ensure per-chat UI session exists
     state.ensure_session_exists(chat_id.0).await;
 
@@ -674,10 +688,16 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
 
     let result = {
         let client_guard = state.app_state.claude_client.read().await;
+        let mut loop_config = ToolLoopConfig::telegram_with_sender(chat_id.0, sender_user_id);
+        // Override sender_id with the thread-aware session key when thread routing
+        // is active, so per-thread memory and session history remain isolated.
+        if thread_routing {
+            loop_config.sender_id = Some(session_key.clone());
+        }
         let options = RouteOptions {
             claude_client: &*client_guard,
             overrides: SessionOverrides::default(),
-            loop_config: ToolLoopConfig::telegram_with_sender(chat_id.0, sender_user_id),
+            loop_config,
             observer: &observer,
             streaming: false,
             window: None,
@@ -2365,5 +2385,16 @@ mod tests {
         assert!(!REACTION_PROCESSING.is_empty());
         assert!(!REACTION_DONE.is_empty());
         let _ = set_message_reaction as fn(_, _, _, _) -> _;
+    }
+
+    #[test]
+    fn thread_id_session_key_format() {
+        let chat_id: i64 = 123456;
+        let thread_id: Option<i32> = Some(42);
+        let key = make_session_key_with_thread(chat_id, thread_id);
+        assert_eq!(key, "telegram:123456:thread:42");
+
+        let key_no_thread = make_session_key_with_thread(chat_id, None);
+        assert_eq!(key_no_thread, "telegram:123456");
     }
 }
