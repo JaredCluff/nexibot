@@ -22,8 +22,9 @@ pub use tools::{ExecuteConfig, FetchConfig, FilesystemConfig, SearchConfig};
 
 pub mod providers;
 pub use providers::{
-    default_max_tokens_for_model, CerebrasConfig, DeepSeekConfig, GitHubCopilotConfig,
-    GoogleConfig, LMStudioConfig, MiniMaxConfig, OllamaConfig, OpenAIConfig, QwenConfig,
+    default_max_tokens_for_model, BedrockConfig, CerebrasConfig, DeepSeekConfig,
+    GitHubCopilotConfig, GoogleConfig, LMStudioConfig, MantleConfig, MiniMaxConfig, OllamaConfig,
+    OpenAIConfig, QwenConfig, TransportConfig,
 };
 
 pub mod agents;
@@ -246,6 +247,18 @@ pub struct NexiBotConfig {
     /// Qwen (DashScope) API configuration
     #[serde(default)]
     pub qwen: Option<QwenConfig>,
+
+    /// Transport configuration (proxy, timeouts) applied to all LLM providers.
+    #[serde(default)]
+    pub transport: TransportConfig,
+
+    /// AWS Bedrock configuration
+    #[serde(default)]
+    pub bedrock: Option<BedrockConfig>,
+
+    /// Mantle API configuration
+    #[serde(default)]
+    pub mantle: Option<MantleConfig>,
 
     /// Email channel configuration (generic IMAP/SMTP)
     #[serde(default)]
@@ -488,6 +501,9 @@ impl Default for NexiBotConfig {
             github_copilot: None,
             minimax: None,
             qwen: None,
+            transport: TransportConfig::default(),
+            bedrock: None,
+            mantle: None,
             email: crate::email::EmailConfig::default(),
             gmail: crate::gmail::GmailConfig::default(),
             bluebubbles: crate::bluebubbles::BlueBubblesConfig::default(),
