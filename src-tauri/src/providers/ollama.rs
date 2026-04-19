@@ -52,6 +52,47 @@ impl OllamaClient {
     fn build_openai_messages(system_prompt: &str, messages: &[Message]) -> Vec<serde_json::Value> {
         crate::tool_converter::convert_messages_to_openai(system_prompt, messages)
     }
+
+    /// Apply transport settings (proxy, timeouts) to this client.
+    pub fn with_transport(mut self, transport: crate::config::providers::TransportConfig) -> Self {
+        let mut builder = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(transport.read_timeout_secs))
+            .connect_timeout(std::time::Duration::from_secs(transport.connect_timeout_secs));
+        if let Some(proxy_url) = &transport.proxy_url {
+            match reqwest::Proxy::all(proxy_url) {
+                Ok(proxy) => {
+                    builder = builder.proxy(proxy);
+                }
+                Err(e) => tracing::warn!("[TRANSPORT] Ollama proxy error: {}", e),
+            }
+        }
+        self.http_client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+        self
+    }
+
+    /// Detect vision capability by querying Ollama's model metadata.
+    ///
+    /// First checks name-based heuristics (fast); falls back to `/api/show`
+    /// to inspect the model's reported capabilities (requires Ollama >= 0.3.9).
+    pub async fn detect_vision_capability(&self) -> bool {
+        if is_vision_model(&self.model_id) {
+            return true;
+        }
+        let url = format!("{}/api/show", self.ollama_url);
+        let body = serde_json::json!({ "name": self.model_id });
+        match self.http_client.post(&url).json(&body).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                resp.json::<serde_json::Value>().await.ok()
+                    .and_then(|v| {
+                        v["capabilities"].as_array().map(|caps| {
+                            caps.iter().any(|c| c.as_str() == Some("vision"))
+                        })
+                    })
+                    .unwrap_or(false)
+            }
+            _ => false,
+        }
+    }
 }
 
 #[async_trait]
@@ -280,5 +321,20 @@ impl LlmClient for OllamaClient {
             usage: None,
             model_used: self.model_id.clone(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ollama_model_is_vision_capable_known_models() {
+        assert!(is_vision_model("llava"));
+        assert!(is_vision_model("llava:13b"));
+        assert!(is_vision_model("bakllava"));
+        assert!(is_vision_model("moondream"));
+        assert!(!is_vision_model("llama3.2"));
+        assert!(!is_vision_model("mistral"));
     }
 }
