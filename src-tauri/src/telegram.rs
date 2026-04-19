@@ -2486,4 +2486,22 @@ mod tests {
         let key_no_thread = make_session_key_with_thread(chat_id, None);
         assert_eq!(key_no_thread, "telegram:123456");
     }
+
+    #[test]
+    fn telegram_bot_config_count() {
+        let mut cfg = crate::config::channels::TelegramConfig::default();
+        cfg.bots.push(crate::config::channels::TelegramBotConfig {
+            bot_token: "111:aaa".into(),
+            agent_id: Some("agent_a".into()),
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+        });
+        cfg.bots.push(crate::config::channels::TelegramBotConfig {
+            bot_token: "222:bbb".into(),
+            agent_id: Some("agent_b".into()),
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+        });
+        assert_eq!(cfg.bots.len(), 2);
+    }
 }
