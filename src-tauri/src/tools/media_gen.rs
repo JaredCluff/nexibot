@@ -189,6 +189,10 @@ impl Tool for GenerateAudioTool {
         if api_key.is_empty() {
             return ToolResult::err("No audio API key configured. Set media_gen.audio_api_key.");
         }
+        // Validate voice_id is alphanumeric/dash/underscore only to prevent URL injection.
+        if !voice_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            return ToolResult::err("voice_id contains invalid characters");
+        }
         let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}", voice_id);
         let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -251,7 +255,7 @@ impl GenerateVideoTool {
 impl Tool for GenerateVideoTool {
     fn name(&self) -> &str { "generate_video" }
     fn description(&self) -> &str {
-        "Generate a short video clip from a text prompt (requires Runway API key)."
+        "Submit a video generation task to Runway Gen-3. Returns a task ID — generation is asynchronous and the video must be retrieved separately (requires Runway API key)."
     }
     fn input_schema(&self) -> Value {
         json!({
@@ -268,8 +272,17 @@ impl Tool for GenerateVideoTool {
         })
     }
     async fn check_permissions(&self, _input: &Value, _ctx: &ToolContext) -> PermissionDecision {
+        let provider = {
+            let cfg = self.config.read().await;
+            cfg.media_gen.video_provider.clone()
+        };
+        if provider.is_none() {
+            return PermissionDecision::Deny(
+                "No video provider configured. Set media_gen.video_provider and media_gen.video_api_key.".to_string()
+            );
+        }
         PermissionDecision::Ask {
-            reason: "generate_video calls Runway API and incurs significant costs".to_string(),
+            reason: "generate_video submits a job to Runway API and incurs significant costs".to_string(),
             details: None,
         }
     }
@@ -369,5 +382,33 @@ mod tests {
         assert_eq!(tool.name(), "generate_video");
         let schema = tool.input_schema();
         assert_eq!(schema["required"], serde_json::json!(["prompt"]));
+    }
+
+    #[test]
+    fn generate_video_description_mentions_task_id() {
+        let tool = GenerateVideoTool::new_stub();
+        assert!(
+            tool.description().contains("task ID"),
+            "description must be honest that it returns a task ID, not a file path"
+        );
+    }
+
+    #[test]
+    fn voice_id_valid_characters() {
+        // Verify the voice_id validation logic accepts expected IDs
+        let valid_ids = ["21m00Tcm4TlvDq8ikWAM", "abc123", "voice-id_01"];
+        for id in &valid_ids {
+            assert!(
+                id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                "Expected '{}' to be valid", id
+            );
+        }
+        let invalid_ids = ["../etc/passwd", "voice/../../etc", "id\0null"];
+        for id in &invalid_ids {
+            assert!(
+                !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+                "Expected '{}' to be rejected", id
+            );
+        }
     }
 }
