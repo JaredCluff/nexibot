@@ -243,7 +243,7 @@ impl crate::tool_loop::ToolLoopObserver for MatrixObserver {
 }
 
 impl MatrixBotState {
-    fn new(app_state: AppState) -> Self {
+    pub(crate) fn new(app_state: AppState) -> Self {
         Self {
             app_state,
             chat_sessions: RwLock::new(HashMap::new()),
@@ -355,6 +355,7 @@ struct TimelineEvent {
 /// and wire it into the router using the same MatrixBotState/MatrixObserver
 /// machinery as the plain-HTTP path.
 pub async fn handle_e2ee_message(
+    bot_state: Arc<MatrixBotState>,
     app_state: &crate::commands::AppState,
     room_id: &str,
     sender: &str,
@@ -370,8 +371,6 @@ pub async fn handle_e2ee_message(
         )
     };
 
-    // Reuse the same state/observer machinery as the plain-HTTP path.
-    let bot_state = Arc::new(MatrixBotState::new(app_state.clone()));
     let claude_client = bot_state.get_or_create_client(room_id).await;
     let observer = MatrixObserver::new(
         homeserver_url.clone(),

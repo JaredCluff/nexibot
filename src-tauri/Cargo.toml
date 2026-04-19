@@ -198,6 +198,8 @@ matrix-sdk = { version = "0.13", default-features = false, features = [
     "sqlite",
     "rustls-tls",
 ] }
+# Pin constant_time_eq: 0.4.3+ requires rustc 1.95 but project targets rustc 1.92
+constant_time_eq = "=0.4.2"
 
 # Secret values — zeroes memory on drop, prevents accidental Debug printing
 secrecy = { version = "0.8", features = ["serde"] }

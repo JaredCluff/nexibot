@@ -1108,13 +1108,18 @@ fn main() {
                     ).await {
                         Ok(client) => {
                             let state = matrix_state.clone();
+                            // Create bot state once so session/dedup context persists across messages.
+                            let bot_state = std::sync::Arc::new(
+                                matrix::MatrixBotState::new(matrix_state.clone())
+                            );
                             if let Err(e) = client.run_sync_loop(
                                 allowed_rooms,
                                 move |room_id, sender, text| {
+                                    let bot_state = bot_state.clone();
                                     let state = state.clone();
                                     async move {
                                         let _ = crate::matrix::handle_e2ee_message(
-                                            &state, &room_id, &sender, &text,
+                                            bot_state, &state, &room_id, &sender, &text,
                                         ).await;
                                     }
                                 },
