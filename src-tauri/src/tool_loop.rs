@@ -704,6 +704,27 @@ impl ToolLoopObserver for GuiStreamingObserver {
         );
     }
 
+    async fn on_loop_start(&self, tool_names: &[String]) {
+        use tauri::Emitter;
+        let _ = self.window.emit(
+            "chat:execution-start",
+            serde_json::json!({ "tool_names": tool_names }),
+        );
+    }
+
+    async fn on_loop_complete(&self, summary: &ExecutionSummary) {
+        use tauri::Emitter;
+        let _ = self.window.emit(
+            "chat:execution-complete",
+            serde_json::json!({
+                "iterations_used": summary.iterations_used,
+                "elapsed_ms": summary.elapsed_ms,
+                "tools_called": summary.tools_called,
+                "fallbacks": summary.fallbacks,
+            }),
+        );
+    }
+
     async fn request_approval(&self, tool_name: &str, reason: &str) -> bool {
         self.request_approval_with_details(tool_name, reason, None).await
     }
@@ -2618,5 +2639,21 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         assert!(json.contains("iterations_used"), "json: {}", json);
         assert!(json.contains("nexibot_bash"), "json: {}", json);
+    }
+
+    #[test]
+    fn execution_summary_tools_called_records_all_calls() {
+        let summary = ExecutionSummary {
+            iterations_used: 2,
+            elapsed_ms: 800,
+            tools_called: vec![
+                "nexibot_bash".to_string(),
+                "nexibot_bash".to_string(),
+                "nexibot_file_read".to_string(),
+            ],
+            fallbacks: vec![],
+        };
+        assert_eq!(summary.tools_called.len(), 3);
+        assert_eq!(summary.tools_called.iter().filter(|t| t.as_str() == "nexibot_bash").count(), 2);
     }
 }
