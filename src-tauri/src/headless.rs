@@ -80,6 +80,7 @@ use crate::key_rotation;
 use crate::mcp::MCPManager;
 use crate::memory::MemoryManager;
 use crate::memory_advanced;
+use crate::memory_dreaming;
 use crate::oauth_manager;
 use crate::observability;
 use crate::orchestration;
@@ -422,6 +423,12 @@ pub async fn run() {
     let dashboard_manager = Arc::new(dashboard::DashboardManager::new());
     let advanced_memory_manager = Arc::new(memory_advanced::AdvancedMemoryManager::new());
 
+    // Initialize dreaming engine
+    let dreaming_engine = Arc::new(memory_dreaming::DreamingEngine::new(
+        config.try_read().map(|c| c.dreaming.clone()).unwrap_or_default()
+    ));
+    let dreaming_last_activity = Arc::new(tokio::sync::RwLock::new(std::time::Instant::now()));
+
     // Initialize network policy engine
     let network_policy = Arc::new(
         crate::security::network_policy::NetworkPolicyEngine::new(
@@ -523,6 +530,9 @@ pub async fn run() {
         db_maintenance_manager,
         dashboard_manager,
         advanced_memory_manager,
+        // Memory dreaming engine
+        dreaming_engine,
+        dreaming_last_activity,
         key_interceptor: {
             use security::key_interceptor::KeyInterceptor;
             use security::key_vault::KeyVault;
