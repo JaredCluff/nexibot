@@ -80,6 +80,11 @@ pub struct TelegramBotState {
     /// allowing the approval callback path (which never acquires this lock) to
     /// resolve pending approvals while a handler waits for user input.
     chat_llm_locks: tokio::sync::Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>,
+    /// Optional agent ID override for secondary bot instances.
+    ///
+    /// When `Some`, all messages are routed to the specified agent rather than
+    /// using the default agent selection logic.
+    agent_id_override: Option<String>,
 }
 
 impl TelegramBotState {
@@ -94,7 +99,14 @@ impl TelegramBotState {
             })),
             msg_dedup: Mutex::new(LruCache::new(NonZeroUsize::new(10_000).unwrap())),
             chat_llm_locks: tokio::sync::Mutex::new(HashMap::new()),
+            agent_id_override: None,
         }
+    }
+
+    fn new_with_agent(app_state: AppState, agent_id_override: Option<String>) -> Self {
+        let mut state = Self::new(app_state);
+        state.agent_id_override = agent_id_override;
+        state
     }
 
     /// Obtain the per-chat LLM serialization lock for `chat_id`.
@@ -279,6 +291,83 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
     });
 
     Ok(Some(stop_flag))
+}
+
+/// Start a secondary Telegram bot instance with the given token.
+///
+/// Used for multi-bot configurations where `config.telegram.bots` lists
+/// additional bot instances, each potentially bound to a different agent.
+/// The function mirrors `start_telegram_bot` but accepts explicit parameters
+/// rather than reading from the primary bot config.
+pub async fn start_bot(
+    app_state: AppState,
+    bot_token: String,
+    agent_id_override: Option<String>,
+) {
+    let bot = Bot::new(&bot_token);
+
+    match bot.get_me().await {
+        Ok(me) => {
+            info!(
+                "[TELEGRAM] Secondary bot validated — @{} (id: {}), agent_override: {:?}",
+                me.username(),
+                me.id,
+                agent_id_override
+            );
+        }
+        Err(e) => {
+            error!(
+                "[TELEGRAM] Secondary bot token invalid or revoked: {}. Skipping.",
+                e
+            );
+            return;
+        }
+    }
+
+    let bot_state = Arc::new(TelegramBotState::new_with_agent(app_state, agent_id_override));
+    let cleanup_state = bot_state.clone();
+    let cleanup_handle = tokio::spawn(session_cleanup_loop(cleanup_state));
+
+    let mut backoff = std::time::Duration::from_secs(1);
+    loop {
+        let state_for_msg = bot_state.clone();
+        let state_for_cb = bot_state.clone();
+        let handler = dptree::entry()
+            .branch(
+                Update::filter_message().endpoint(move |b: Bot, msg: Message| {
+                    let state = state_for_msg.clone();
+                    async move {
+                        tokio::spawn(handle_telegram_message(b, msg, state));
+                        respond(())
+                    }
+                }),
+            )
+            .branch(
+                Update::filter_callback_query().endpoint(move |b: Bot, cb: CallbackQuery| {
+                    let state = state_for_cb.clone();
+                    async move {
+                        tokio::spawn(handle_callback_query(b, cb, state));
+                        respond(())
+                    }
+                }),
+            );
+
+        let mut dispatcher = Dispatcher::builder(bot.clone(), handler).build();
+        info!("[TELEGRAM] Secondary bot dispatch started (long-polling)");
+        dispatcher.dispatch().await;
+
+        error!(
+            "[TELEGRAM] Secondary bot dispatch loop exited. Retrying in {:?}",
+            backoff
+        );
+        tokio::time::sleep(backoff).await;
+        backoff = (backoff * 2).min(std::time::Duration::from_secs(64));
+    }
+
+    // Abort cleanup task when loop exits (unreachable in normal operation, but
+    // allows future graceful shutdown without resource leaks).
+    #[allow(unreachable_code)]
+    cleanup_handle.abort();
 }
 
 /// Handle an incoming Telegram message.
@@ -659,7 +748,7 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     let message = IncomingMessage {
         text: text.to_string(),
         channel: ChannelSource::Telegram { chat_id: chat_id.0 },
-        agent_id: None,
+        agent_id: state.agent_id_override.clone(),
         metadata: HashMap::new(),
     };
 

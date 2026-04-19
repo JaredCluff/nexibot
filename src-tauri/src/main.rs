@@ -1030,6 +1030,24 @@ fn main() {
                 });
             }
 
+            // Start additional bots from config.telegram.bots
+            {
+                let extra_bots: Vec<_> = app_state.config.try_read()
+                    .map(|cfg| {
+                        cfg.telegram.bots.iter()
+                            .filter(|b| !b.bot_token.is_empty())
+                            .map(|b| (b.bot_token.clone(), b.agent_id.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                for (token, agent_id) in extra_bots {
+                    let app_state_clone = app_state.clone();
+                    tauri::async_runtime::spawn(async move {
+                        telegram::start_bot(app_state_clone, token, agent_id).await;
+                    });
+                }
+            }
+
             // Start Discord bot if enabled
             let discord_state = app_state.clone();
             tauri::async_runtime::spawn(async move {
