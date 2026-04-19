@@ -614,6 +614,13 @@ fn main() {
             let advanced_memory_manager = Arc::new(memory_advanced::AdvancedMemoryManager::new());
             info!("[MEMORY_ADVANCED] Advanced memory manager initialized");
 
+            // Initialize dreaming engine from config
+            let dreaming_engine = Arc::new(memory_dreaming::DreamingEngine::new(
+                config.try_read().map(|c| c.dreaming.clone()).unwrap_or_default()
+            ));
+            let dreaming_last_activity = Arc::new(tokio::sync::RwLock::new(std::time::Instant::now()));
+            info!("[DREAMING] Dreaming engine initialized");
+
             // Initialize orchestration subsystems
             let orchestration_manager = Arc::new(RwLock::new(
                 orchestration::OrchestrationManager::new(orchestration::OrchestrationConfig::default())
@@ -960,6 +967,9 @@ fn main() {
                     }
                     reg
                 },
+                // Memory dreaming engine
+                dreaming_engine,
+                dreaming_last_activity,
                 // v0.9.0 per-session file read state
                 file_read_state: Arc::new(tokio::sync::RwLock::new(
                     crate::tools::file_read_state::FileReadState::default()
@@ -977,6 +987,14 @@ fn main() {
                     crate::cost_tracker::ContextManager::new(200_000)
                 )),
             };
+
+            // Spawn the memory dreaming idle watcher.
+            {
+                let engine = app_state.dreaming_engine.clone();
+                let adv_mem = app_state.advanced_memory_manager.clone();
+                let last_activity = app_state.dreaming_last_activity.clone();
+                memory_dreaming::spawn_idle_watcher(engine, adv_mem, last_activity);
+            }
 
             // Inject services into heartbeat manager for catch-up notification scan.
             {
@@ -2087,6 +2105,10 @@ fn main() {
             commands::get_managed_policy_status,
             commands::force_policy_refresh,
             commands::get_tier_capabilities,
+            // Memory dreaming
+            commands::dreaming::get_dream_status,
+            commands::dreaming::get_dream_log,
+            commands::dreaming::trigger_dream_cycle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

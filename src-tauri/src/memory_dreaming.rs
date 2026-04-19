@@ -381,6 +381,33 @@ impl DreamingEngine {
     }
 }
 
+/// Spawn a background task that triggers a dream cycle after the system has
+/// been idle for at least `config.idle_minutes` minutes.
+/// The watcher polls every 60 seconds and skips if dreaming is disabled.
+pub fn spawn_idle_watcher(
+    engine: Arc<DreamingEngine>,
+    advanced_memory: Arc<crate::memory_advanced::AdvancedMemoryManager>,
+    last_activity: Arc<tokio::sync::RwLock<std::time::Instant>>,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            let config = engine.config.read().await.clone();
+            if !config.enabled {
+                continue;
+            }
+            let idle = { last_activity.read().await.elapsed() };
+            let required =
+                std::time::Duration::from_secs(config.idle_minutes as u64 * 60);
+            if idle >= required {
+                if let Err(e) = engine.run_cycle(&advanced_memory, None).await {
+                    warn!("[DREAMING] Background cycle error: {}", e);
+                }
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
