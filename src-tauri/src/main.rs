@@ -1084,11 +1084,59 @@ fn main() {
                 }
             });
 
-            // Start Matrix sync loop if enabled
+            // Start Matrix integration: E2EE branch or plain-HTTP fallback
             let matrix_state = app_state.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = matrix::start_matrix_sync(matrix_state).await {
-                    tracing::warn!("[MATRIX] Failed to start Matrix sync: {}", e);
+                let (e2ee_enabled, matrix_enabled, homeserver, user_id, access_token, allowed_rooms) = {
+                    let cfg = matrix_state.config.read().await;
+                    let tok = matrix_state.key_interceptor.restore_config_string(&cfg.matrix.access_token);
+                    (
+                        cfg.matrix.e2ee_enabled,
+                        cfg.matrix.enabled,
+                        cfg.matrix.homeserver_url.clone(),
+                        cfg.matrix.user_id.clone(),
+                        tok,
+                        cfg.matrix.allowed_room_ids.clone(),
+                    )
+                };
+
+                if matrix_enabled && e2ee_enabled && !access_token.is_empty() {
+                    match crate::matrix_e2ee::MatrixE2EEClient::new_and_login(
+                        &homeserver,
+                        &user_id,
+                        &access_token,
+                    ).await {
+                        Ok(client) => {
+                            let state = matrix_state.clone();
+                            if let Err(e) = client.run_sync_loop(
+                                allowed_rooms,
+                                move |room_id, sender, text| {
+                                    let state = state.clone();
+                                    async move {
+                                        let _ = crate::matrix::handle_e2ee_message(
+                                            &state, &room_id, &sender, &text,
+                                        ).await;
+                                    }
+                                },
+                            ).await {
+                                tracing::error!("[MATRIX_E2EE] Sync loop error: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "[MATRIX_E2EE] E2EE init failed, falling back to plain HTTP: {}",
+                                e
+                            );
+                            if let Err(e2) = matrix::start_matrix_sync(matrix_state).await {
+                                tracing::warn!("[MATRIX] Fallback plain-HTTP sync failed: {}", e2);
+                            }
+                        }
+                    }
+                } else {
+                    // Plain-HTTP Matrix sync (E2EE disabled or not configured)
+                    if let Err(e) = matrix::start_matrix_sync(matrix_state).await {
+                        tracing::warn!("[MATRIX] Failed to start Matrix sync: {}", e);
+                    }
                 }
             });
 

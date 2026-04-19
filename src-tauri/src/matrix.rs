@@ -345,6 +345,89 @@ struct TimelineEvent {
 }
 
 // ---------------------------------------------------------------------------
+// E2EE message handler (called from matrix_e2ee sync loop)
+// ---------------------------------------------------------------------------
+
+/// Route an E2EE-decrypted message through the normal Matrix pipeline.
+///
+/// matrix-sdk decrypts the message before delivering it to the event handler,
+/// so by the time this function is called the text is plaintext. We log it
+/// and wire it into the router using the same MatrixBotState/MatrixObserver
+/// machinery as the plain-HTTP path.
+pub async fn handle_e2ee_message(
+    app_state: &crate::commands::AppState,
+    room_id: &str,
+    sender: &str,
+    text: &str,
+) -> anyhow::Result<()> {
+    tracing::info!("[MATRIX_E2EE] Message in {} from {}: {}", room_id, sender, &text[..text.len().min(80)]);
+
+    let (homeserver_url, access_token) = {
+        let config = app_state.config.read().await;
+        (
+            config.matrix.homeserver_url.clone(),
+            app_state.key_interceptor.restore_config_string(&config.matrix.access_token),
+        )
+    };
+
+    // Reuse the same state/observer machinery as the plain-HTTP path.
+    let bot_state = Arc::new(MatrixBotState::new(app_state.clone()));
+    let claude_client = bot_state.get_or_create_client(room_id).await;
+    let observer = MatrixObserver::new(
+        homeserver_url.clone(),
+        access_token.clone(),
+        room_id.to_string(),
+        sender.to_string(),
+        app_state.matrix_pending_approvals.clone(),
+    );
+
+    let message = IncomingMessage {
+        text: text.to_string(),
+        channel: ChannelSource::Matrix { room_id: room_id.to_string() },
+        agent_id: None,
+        metadata: HashMap::new(),
+    };
+
+    let options = RouteOptions {
+        claude_client: &claude_client,
+        overrides: SessionOverrides::default(),
+        loop_config: ToolLoopConfig::matrix(room_id.to_string(), sender.to_string()),
+        observer: &observer,
+        streaming: false,
+        window: None,
+        on_stream_chunk: None,
+        auto_compact: true,
+        save_to_memory: true,
+        sync_supermemory: true,
+        check_sensitive_data: true,
+    };
+
+    match router::route_message(&message, options, app_state).await {
+        Ok(routed) => {
+            let response = router::extract_text_from_response(&routed.text);
+            let reply_text = if response.is_empty() { "(No response)".to_string() } else { response };
+            let txn_id = format!("e2ee_{}_{}", std::process::id(), uuid::Uuid::new_v4());
+            for chunk in router::split_message(&reply_text, 4096) {
+                if let Err(e) = send_matrix_message(
+                    &homeserver_url,
+                    &access_token,
+                    room_id,
+                    &chunk,
+                    &txn_id,
+                ).await {
+                    tracing::warn!("[MATRIX_E2EE] Failed to send reply: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("[MATRIX_E2EE] Routing error: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Matrix sync loop
 // ---------------------------------------------------------------------------
 
