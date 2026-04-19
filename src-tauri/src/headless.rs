@@ -667,7 +667,7 @@ pub async fn run() {
             let reg = Arc::new(tokio::sync::RwLock::new(crate::tool_registry::ToolRegistry::new()));
             {
                 let mut r = reg.try_write().expect("registry lock at startup");
-                crate::tools::register_all(&mut r, plan_mode_state_arc.clone(), lsp_config_snapshot);
+                crate::tools::register_all(&mut r, plan_mode_state_arc.clone(), lsp_config_snapshot, config.clone());
             }
             reg
         },
