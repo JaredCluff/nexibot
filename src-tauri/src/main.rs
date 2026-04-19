@@ -53,6 +53,7 @@ mod llm_provider;
 mod logging;
 mod mastodon;
 mod matrix;
+mod matrix_e2ee;
 mod mattermost;
 mod mcp;
 mod memory;

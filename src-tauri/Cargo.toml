@@ -192,6 +192,13 @@ rustls = "0.23"
 rustls-pki-types = "1"
 webpki-roots = "0.26"
 
+# Matrix E2EE (0.13 uses matrix-sdk-sqlite 0.13 which requires rusqlite ^0.35, compatible with our rusqlite 0.35)
+matrix-sdk = { version = "0.13", default-features = false, features = [
+    "e2e-encryption",
+    "sqlite",
+    "rustls-tls",
+] }
+
 # Secret values — zeroes memory on drop, prevents accidental Debug printing
 secrecy = { version = "0.8", features = ["serde"] }
 
