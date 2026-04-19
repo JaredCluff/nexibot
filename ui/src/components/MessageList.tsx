@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import ToolStatusStrip from './ToolStatusStrip';
+import ExecutionSummaryBadge from './ExecutionSummaryBadge';
 import type { Message, ToolIndicator } from './chat-types';
 
 interface MessageListProps {
@@ -70,6 +71,9 @@ function MessageItem({
         <div className="message-content">
           {msg.toolIndicators && <ToolStatusStrip tools={msg.toolIndicators} />}
           <ReactMarkdown components={markdownComponents as any}>{extractDisplayText(msg.content)}</ReactMarkdown>
+          {msg.executionSummary && (
+            <ExecutionSummaryBadge summary={msg.executionSummary} />
+          )}
           <div className="message-actions">
             <button
               className="message-action-btn"

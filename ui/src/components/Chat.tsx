@@ -7,7 +7,7 @@ import VoiceBar from './VoiceBar';
 import SlashCommandPalette from './SlashCommandPalette';
 import { notifyError } from '../shared/notify';
 import type {
-  Message, ToolIndicator, SessionOverrides, AvailableModel, BackgroundTaskUI,
+  Message, ToolIndicator, SessionOverrides, AvailableModel, BackgroundTaskUI, ExecutionSummary,
 } from './chat-types';
 import './Chat.css';
 
@@ -712,6 +712,23 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
       unsubs.push(await listen<{ from_model: string; to_model: string; reason: string }>('chat:model-fallback', (event) => {
         const notice = `ℹ️ Model switched: ${event.payload.from_model} → ${event.payload.to_model} (${event.payload.reason})`;
         setMessages((prev) => [...prev, { id: makeId(), role: 'assistant' as const, content: notice, timestamp: new Date() }]);
+      }));
+
+      unsubs.push(await listen<{
+        iterations_used: number;
+        elapsed_ms: number;
+        tools_called: string[];
+        fallbacks: [string, string, string][];
+      }>('chat:execution-complete', (event) => {
+        const summary: ExecutionSummary = event.payload;
+        setMessages(prev => {
+          const idx = [...prev].reverse().findIndex(m => m.role === 'assistant');
+          if (idx === -1) return prev;
+          const realIdx = prev.length - 1 - idx;
+          return prev.map((m, i) =>
+            i === realIdx ? { ...m, executionSummary: summary } : m
+          );
+        });
       }));
 
       const completePromise = new Promise<{ response: string; error?: string; model_used?: string }>((resolve) => {
