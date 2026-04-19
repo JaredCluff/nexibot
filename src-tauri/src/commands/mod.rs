@@ -37,6 +37,7 @@ use crate::voice::{PttCaptureHandle, VoiceService};
 
 mod agent_cmds;
 pub mod agent_control_cmds;
+pub mod dreaming;
 pub mod audit_cmds;
 pub mod autonomous_cmds;
 pub mod autonomous_agent_cmds;
@@ -497,6 +498,10 @@ pub struct AppState {
 
     // v0.9.0 tool registry (trait-based tools)
     pub tool_registry: std::sync::Arc<tokio::sync::RwLock<crate::tool_registry::ToolRegistry>>,
+
+    // Memory dreaming engine
+    pub dreaming_engine: Arc<crate::memory_dreaming::DreamingEngine>,
+    pub dreaming_last_activity: Arc<tokio::sync::RwLock<std::time::Instant>>,
 
     // Per-session file read state for staleness detection
     pub file_read_state: std::sync::Arc<tokio::sync::RwLock<crate::tools::file_read_state::FileReadState>>,
