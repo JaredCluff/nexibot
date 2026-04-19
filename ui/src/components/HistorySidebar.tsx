@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { notifyError } from '../shared/notify';
 import './HistorySidebar.css';
@@ -50,6 +50,8 @@ function getDateGroup(dateStr: string): string {
 function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSessionId }: HistorySidebarProps) {
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -75,9 +77,16 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
     return null;
   }
 
+  // Filter sessions by search query
+  const filteredSessions = searchQuery.trim()
+    ? sessions.filter(s =>
+        (s.title || 'Untitled').toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : sessions;
+
   // Group sessions by date category
   const grouped: Record<string, ConversationSession[]> = {};
-  for (const session of sessions) {
+  for (const session of filteredSessions) {
     const group = getDateGroup(session.last_activity);
     if (!grouped[group]) grouped[group] = [];
     grouped[group].push(session);
@@ -91,9 +100,28 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
         <span className="sidebar-title">History</span>
       </div>
 
-      <button className="new-conversation-btn" onClick={onNewConversation}>
+      <button className="new-conversation-btn" data-action="new-chat" onClick={onNewConversation}>
         + New Conversation
       </button>
+
+      <div className="history-search">
+        <input
+          ref={searchInputRef}
+          type="text"
+          className="history-search-input"
+          placeholder="Search conversations..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          aria-label="Search conversations"
+        />
+        {searchQuery && (
+          <button
+            className="history-search-clear"
+            onClick={() => setSearchQuery('')}
+            aria-label="Clear search"
+          >×</button>
+        )}
+      </div>
 
       <div className="sessions-list">
         {loading && sessions.length === 0 && (
@@ -102,6 +130,10 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
 
         {!loading && sessions.length === 0 && (
           <div className="sidebar-empty" role="status">No conversations yet</div>
+        )}
+
+        {!loading && sessions.length > 0 && filteredSessions.length === 0 && searchQuery && (
+          <div className="history-no-results">No conversations match "{searchQuery}"</div>
         )}
 
         {groupOrder.map(group => {

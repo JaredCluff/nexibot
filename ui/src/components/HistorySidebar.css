@@ -132,3 +132,62 @@
 .session-count {
   white-space: nowrap;
 }
+
+.history-search {
+  position: relative;
+  padding: 8px;
+}
+
+.history-search-input {
+  width: 100%;
+  padding: 6px 28px 6px 8px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  background: var(--background, #fff);
+  color: var(--text, #333);
+  font-size: 0.85rem;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.history-search-input:focus {
+  border-color: var(--primary, #2962ff);
+}
+
+.history-search-clear {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary, #aaa);
+  font-size: 1rem;
+  padding: 2px 4px;
+}
+
+.history-no-results {
+  padding: 12px;
+  color: var(--text-secondary, #999);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.sidebar-memories-btn {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 4px 8px;
+  padding: 6px 10px;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text, #555);
+}
+
+.sidebar-memories-btn:hover {
+  background: var(--background, rgba(0, 0, 0, 0.04));
+}
