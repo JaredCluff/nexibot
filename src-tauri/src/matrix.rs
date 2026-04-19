@@ -405,8 +405,8 @@ pub async fn handle_e2ee_message(
         Ok(routed) => {
             let response = router::extract_text_from_response(&routed.text);
             let reply_text = if response.is_empty() { "(No response)".to_string() } else { response };
-            let txn_id = format!("e2ee_{}_{}", std::process::id(), uuid::Uuid::new_v4());
             for chunk in router::split_message(&reply_text, 4096) {
+                let txn_id = format!("e2ee_{}_{}", std::process::id(), uuid::Uuid::new_v4());
                 if let Err(e) = send_matrix_message(
                     &homeserver_url,
                     &access_token,

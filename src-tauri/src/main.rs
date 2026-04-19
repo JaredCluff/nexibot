@@ -1087,55 +1087,63 @@ fn main() {
             // Start Matrix integration: E2EE branch or plain-HTTP fallback
             let matrix_state = app_state.clone();
             tauri::async_runtime::spawn(async move {
-                let (e2ee_enabled, matrix_enabled, homeserver, user_id, access_token, allowed_rooms) = {
+                let (e2ee_enabled, matrix_enabled, homeserver, user_id, e2ee_password, allowed_rooms) = {
                     let cfg = matrix_state.config.read().await;
-                    let tok = matrix_state.key_interceptor.restore_config_string(&cfg.matrix.access_token);
+                    let pwd = matrix_state.key_interceptor.restore_config_string(&cfg.matrix.e2ee_password);
                     (
                         cfg.matrix.e2ee_enabled,
                         cfg.matrix.enabled,
                         cfg.matrix.homeserver_url.clone(),
                         cfg.matrix.user_id.clone(),
-                        tok,
+                        pwd,
                         cfg.matrix.allowed_room_ids.clone(),
                     )
                 };
 
-                if matrix_enabled && e2ee_enabled && !access_token.is_empty() {
-                    match crate::matrix_e2ee::MatrixE2EEClient::new_and_login(
-                        &homeserver,
-                        &user_id,
-                        &access_token,
-                    ).await {
-                        Ok(client) => {
-                            let state = matrix_state.clone();
-                            // Create bot state once so session/dedup context persists across messages.
-                            let bot_state = std::sync::Arc::new(
-                                matrix::MatrixBotState::new(matrix_state.clone())
-                            );
-                            if let Err(e) = client.run_sync_loop(
-                                allowed_rooms,
-                                move |room_id, sender, text| {
-                                    let bot_state = bot_state.clone();
-                                    let state = state.clone();
-                                    async move {
-                                        let _ = crate::matrix::handle_e2ee_message(
-                                            bot_state, &state, &room_id, &sender, &text,
-                                        ).await;
-                                    }
-                                },
-                            ).await {
-                                tracing::error!("[MATRIX_E2EE] Sync loop error: {}", e);
+                // E2EE path: requires e2ee_enabled + e2ee_password (plain-HTTP access_token is separate).
+                if matrix_enabled && e2ee_enabled && !e2ee_password.is_empty() {
+                    // Create bot state once — shared across all messages for session/dedup continuity.
+                    let bot_state = std::sync::Arc::new(
+                        matrix::MatrixBotState::new(matrix_state.clone())
+                    );
+                    // Reconnect loop with exponential backoff (same pattern as plain-HTTP path).
+                    let mut backoff = std::time::Duration::from_secs(1);
+                    loop {
+                        match crate::matrix_e2ee::MatrixE2EEClient::new_and_login(
+                            &homeserver,
+                            &user_id,
+                            &e2ee_password,
+                        ).await {
+                            Ok(client) => {
+                                let state = matrix_state.clone();
+                                let bot_state_c = bot_state.clone();
+                                let allowed = allowed_rooms.clone();
+                                if let Err(e) = client.run_sync_loop(
+                                    allowed,
+                                    move |room_id, sender, text| {
+                                        let bot_state = bot_state_c.clone();
+                                        let state = state.clone();
+                                        async move {
+                                            let _ = crate::matrix::handle_e2ee_message(
+                                                bot_state, &state, &room_id, &sender, &text,
+                                            ).await;
+                                        }
+                                    },
+                                ).await {
+                                    tracing::warn!("[MATRIX_E2EE] Sync loop ended: {}. Reconnecting in {:?}", e, backoff);
+                                }
+                                // Successful connection — reset backoff on disconnect.
+                                backoff = std::time::Duration::from_secs(1);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "[MATRIX_E2EE] E2EE init failed (backoff {:?}): {}",
+                                    backoff, e
+                                );
                             }
                         }
-                        Err(e) => {
-                            tracing::warn!(
-                                "[MATRIX_E2EE] E2EE init failed, falling back to plain HTTP: {}",
-                                e
-                            );
-                            if let Err(e2) = matrix::start_matrix_sync(matrix_state).await {
-                                tracing::warn!("[MATRIX] Fallback plain-HTTP sync failed: {}", e2);
-                            }
-                        }
+                        tokio::time::sleep(backoff).await;
+                        backoff = (backoff * 2).min(std::time::Duration::from_secs(64));
                     }
                 } else {
                     // Plain-HTTP Matrix sync (E2EE disabled or not configured)

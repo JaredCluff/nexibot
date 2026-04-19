@@ -108,6 +108,7 @@ fn redact_secrets(config: &mut NexiBotConfig) {
     mask_string(&mut config.slack.signing_secret);
     mask_string(&mut config.teams.app_password);
     mask_string(&mut config.matrix.access_token);
+    mask_string(&mut config.matrix.e2ee_password);
     mask_string(&mut config.email.imap_password);
     mask_string(&mut config.email.smtp_password);
     mask_string(&mut config.gmail.client_secret);
@@ -201,6 +202,7 @@ pub async fn update_config(
         restore_str_if_masked(&current.slack.signing_secret, &mut new_config.slack.signing_secret);
         restore_str_if_masked(&current.teams.app_password, &mut new_config.teams.app_password);
         restore_str_if_masked(&current.matrix.access_token, &mut new_config.matrix.access_token);
+        restore_str_if_masked(&current.matrix.e2ee_password, &mut new_config.matrix.e2ee_password);
         restore_str_if_masked(&current.email.imap_password, &mut new_config.email.imap_password);
         restore_str_if_masked(&current.email.smtp_password, &mut new_config.email.smtp_password);
         restore_str_if_masked(&current.gmail.client_secret, &mut new_config.gmail.client_secret);

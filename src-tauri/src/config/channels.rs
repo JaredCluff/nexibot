@@ -281,6 +281,10 @@ pub struct MatrixConfig {
     /// Enable end-to-end encryption. Requires matrix-sdk. Default: false.
     #[serde(default)]
     pub e2ee_enabled: bool,
+    /// Password for matrix-sdk E2EE login. Required on first run; SDK persists the session
+    /// to ~/.config/nexibot/matrix/ after that. Separate from `access_token` (plain-HTTP).
+    #[serde(default)]
+    pub e2ee_password: String,
 }
 
 impl Default for MatrixConfig {
@@ -299,6 +303,7 @@ impl Default for MatrixConfig {
             read_receipts: true,
             reactions_enabled: true,
             e2ee_enabled: false,
+            e2ee_password: String::new(),
         }
     }
 }
