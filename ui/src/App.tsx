@@ -146,6 +146,16 @@ function App() {
     };
   }, []);
 
+  const handleNewConversation = useCallback(async () => {
+    try {
+      const newId = await invoke<string>('new_conversation');
+      setCurrentSessionId(newId);
+      setShowSettings(false);
+    } catch (error) {
+      notifyError('Session', `Failed to create new conversation: ${error}`);
+    }
+  }, []);
+
   // Keyboard shortcuts: Cmd/Ctrl+K for new chat, Cmd/Ctrl+/ for search focus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -174,7 +184,7 @@ function App() {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showSidebar]);
+  }, [showSidebar, handleNewConversation]);
 
   const handleOpenInCanvas = useCallback((code: string, language: string) => {
     const artifact: Artifact = {
@@ -282,16 +292,6 @@ function App() {
       setShowSettings(false);
     } catch (error) {
       notifyError('History', `Failed to load session: ${error}`);
-    }
-  };
-
-  const handleNewConversation = async () => {
-    try {
-      const newId = await invoke<string>('new_conversation');
-      setCurrentSessionId(newId);
-      setShowSettings(false);
-    } catch (error) {
-      notifyError('Session', `Failed to create new conversation: ${error}`);
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './MemoryPanel.css';
 
@@ -14,13 +14,14 @@ interface Props {
   onClose: () => void;
 }
 
-const MEMORY_TYPES = ['Conversation', 'Preference', 'Fact', 'Context'];
+// Must match backend MemoryType serde snake_case representation
+const MEMORY_TYPES = ['conversation', 'preference', 'fact', 'context'];
 
 const TYPE_LABELS: Record<string, string> = {
-  Preference: 'Preference',
-  Fact: 'Fact',
-  Context: 'Context',
-  Conversation: 'Conversation',
+  preference: 'Preference',
+  fact: 'Fact',
+  context: 'Context',
+  conversation: 'Conversation',
 };
 
 export default function MemoryPanel({ onClose }: Props) {
@@ -29,8 +30,11 @@ export default function MemoryPanel({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Staleness guard: increment before each async fetch; only apply result if counter matches
+  const fetchCounterRef = useRef(0);
 
   const loadAllMemories = useCallback(async () => {
+    const thisRequest = ++fetchCounterRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -39,6 +43,7 @@ export default function MemoryPanel({ onClose }: Props) {
           invoke<MemoryEntry[]>('get_memories_by_type', { memoryType: t }).catch(() => [] as MemoryEntry[])
         )
       );
+      if (thisRequest !== fetchCounterRef.current) return;
       // Deduplicate by id in case any entries appear in multiple type buckets
       const seen = new Set<string>();
       const all = results.flat().filter(m => {
@@ -48,22 +53,24 @@ export default function MemoryPanel({ onClose }: Props) {
       });
       setMemories(all);
     } catch (e) {
-      setError(String(e));
+      if (thisRequest === fetchCounterRef.current) setError(String(e));
     } finally {
-      setLoading(false);
+      if (thisRequest === fetchCounterRef.current) setLoading(false);
     }
   }, []);
 
   const searchMemories = useCallback(async (query: string) => {
+    const thisRequest = ++fetchCounterRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await invoke<MemoryEntry[]>('search_memories', { query });
+      if (thisRequest !== fetchCounterRef.current) return;
       setMemories(result);
     } catch (e) {
-      setError(String(e));
+      if (thisRequest === fetchCounterRef.current) setError(String(e));
     } finally {
-      setLoading(false);
+      if (thisRequest === fetchCounterRef.current) setLoading(false);
     }
   }, []);
 

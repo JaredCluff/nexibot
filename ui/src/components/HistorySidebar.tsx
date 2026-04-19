@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { notifyError } from '../shared/notify';
 import MemoryPanel from './MemoryPanel';
@@ -53,7 +53,6 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showMemories, setShowMemories] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -120,7 +119,6 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
         <>
       <div className="history-search">
         <input
-          ref={searchInputRef}
           type="text"
           className="history-search-input"
           placeholder="Search conversations..."
