@@ -278,6 +278,13 @@ pub struct MatrixConfig {
     /// Allow sending m.reaction events (default: true).
     #[serde(default = "default_true")]
     pub reactions_enabled: bool,
+    /// Enable end-to-end encryption. Requires matrix-sdk. Default: false.
+    #[serde(default)]
+    pub e2ee_enabled: bool,
+    /// Password for matrix-sdk E2EE login. Required on first run; SDK persists the session
+    /// to ~/.config/nexibot/matrix/ after that. Separate from `access_token` (plain-HTTP).
+    #[serde(default)]
+    pub e2ee_password: String,
 }
 
 impl Default for MatrixConfig {
@@ -295,6 +302,8 @@ impl Default for MatrixConfig {
             typing_indicators: true,
             read_receipts: true,
             reactions_enabled: true,
+            e2ee_enabled: false,
+            e2ee_password: String::new(),
         }
     }
 }
@@ -334,6 +343,12 @@ impl Default for NatsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn matrix_config_e2ee_default_false() {
+        let c = MatrixConfig::default();
+        assert!(!c.e2ee_enabled, "E2EE should default to false (opt-in)");
+    }
 
     #[test]
     fn matrix_config_has_feature_flags() {
