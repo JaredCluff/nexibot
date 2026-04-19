@@ -1,6 +1,6 @@
 //! OpenAI-compatible provider implementation.
 //!
-//! Shared base for OpenAI, DeepSeek, Qwen, GitHub Copilot, MiniMax.
+//! Shared base for OpenAI, DeepSeek, Qwen, GitHub Copilot, MiniMax, xAI, Moonshot.
 //! All these providers use the OpenAI API format with different base URLs.
 #![allow(dead_code)]
 

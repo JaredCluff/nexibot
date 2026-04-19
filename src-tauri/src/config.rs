@@ -23,8 +23,8 @@ pub use tools::{ExecuteConfig, FetchConfig, FilesystemConfig, SearchConfig};
 pub mod providers;
 pub use providers::{
     default_max_tokens_for_model, BedrockConfig, CerebrasConfig, DeepSeekConfig,
-    GitHubCopilotConfig, GoogleConfig, LMStudioConfig, MantleConfig, MiniMaxConfig, OllamaConfig,
-    OpenAIConfig, QwenConfig, TransportConfig,
+    GitHubCopilotConfig, GoogleConfig, LMStudioConfig, MantleConfig, MiniMaxConfig, MoonshotConfig,
+    OllamaConfig, OpenAIConfig, QwenConfig, TransportConfig, XaiConfig,
 };
 
 pub mod agents;
@@ -250,6 +250,14 @@ pub struct NexiBotConfig {
     /// Qwen (DashScope) API configuration
     #[serde(default)]
     pub qwen: Option<QwenConfig>,
+
+    /// xAI (Grok) API configuration
+    #[serde(default)]
+    pub xai: Option<XaiConfig>,
+
+    /// Moonshot (Kimi) API configuration
+    #[serde(default)]
+    pub moonshot: Option<MoonshotConfig>,
 
     /// Transport configuration (proxy, timeouts) applied to all LLM providers.
     #[serde(default)]
@@ -508,6 +516,8 @@ impl Default for NexiBotConfig {
             github_copilot: None,
             minimax: None,
             qwen: None,
+            xai: None,
+            moonshot: None,
             transport: TransportConfig::default(),
             bedrock: None,
             mantle: None,
@@ -2003,6 +2013,16 @@ impl NexiBotConfig {
         if let Some(ref mm) = self.minimax {
             if !mm.api_url.is_empty() {
                 urls.push(("minimax.api_url", mm.api_url.clone()));
+            }
+        }
+        if let Some(ref x) = self.xai {
+            if !x.api_url.is_empty() {
+                urls.push(("xai.api_url", x.api_url.clone()));
+            }
+        }
+        if let Some(ref ms) = self.moonshot {
+            if !ms.api_url.is_empty() {
+                urls.push(("moonshot.api_url", ms.api_url.clone()));
             }
         }
         urls

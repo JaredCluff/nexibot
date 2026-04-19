@@ -1,4 +1,4 @@
-//! LLM provider configurations: OpenAI, Cerebras, Google, DeepSeek, GitHub Copilot, MiniMax, Qwen, Ollama.
+//! LLM provider configurations: OpenAI, Cerebras, Google, DeepSeek, GitHub Copilot, MiniMax, Qwen, Ollama, xAI, Moonshot.
 
 use serde::{Deserialize, Serialize};
 
@@ -279,6 +279,47 @@ pub struct MantleConfig {
     pub model_id: String,
     #[serde(default = "default_openai_max_tokens")]
     pub max_tokens: usize,
+}
+
+fn default_xai_url() -> String {
+    "https://api.x.ai/v1".to_string()
+}
+fn default_xai_model() -> String {
+    "grok-3".to_string()
+}
+fn default_moonshot_url() -> String {
+    "https://api.moonshot.cn/v1".to_string()
+}
+fn default_moonshot_model() -> String {
+    "moonshot-v1-8k".to_string()
+}
+
+/// xAI (Grok) API configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct XaiConfig {
+    /// xAI API key (from console.x.ai).
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// xAI API URL (default: "https://api.x.ai/v1").
+    #[serde(default = "default_xai_url")]
+    pub api_url: String,
+    /// Default xAI model (default: "grok-3").
+    #[serde(default = "default_xai_model")]
+    pub default_model: String,
+}
+
+/// Moonshot (Kimi) API configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MoonshotConfig {
+    /// Moonshot API key (from platform.moonshot.cn).
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Moonshot API URL (default: "https://api.moonshot.cn/v1").
+    #[serde(default = "default_moonshot_url")]
+    pub api_url: String,
+    /// Default Moonshot model (default: "moonshot-v1-8k").
+    #[serde(default = "default_moonshot_model")]
+    pub default_model: String,
 }
 
 /// Get the default max_tokens for a given model.

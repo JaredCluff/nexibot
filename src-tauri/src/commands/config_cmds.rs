@@ -89,6 +89,12 @@ fn redact_secrets(config: &mut NexiBotConfig) {
     if let Some(ref mut qwen) = config.qwen {
         mask_option(&mut qwen.api_key);
     }
+    if let Some(ref mut xai) = config.xai {
+        mask_option(&mut xai.api_key);
+    }
+    if let Some(ref mut moonshot) = config.moonshot {
+        mask_option(&mut moonshot.api_key);
+    }
     mask_option(&mut config.k2k.private_key_pem);
     mask_option(&mut config.search.brave_api_key);
     mask_option(&mut config.search.tavily_api_key);
@@ -182,6 +188,12 @@ pub async fn update_config(
         }
         if let (Some(cur_q), Some(new_q)) = (current.qwen.as_ref(), new_config.qwen.as_mut()) {
             restore_if_masked(&cur_q.api_key, &mut new_q.api_key);
+        }
+        if let (Some(cur_x), Some(new_x)) = (current.xai.as_ref(), new_config.xai.as_mut()) {
+            restore_if_masked(&cur_x.api_key, &mut new_x.api_key);
+        }
+        if let (Some(cur_ms), Some(new_ms)) = (current.moonshot.as_ref(), new_config.moonshot.as_mut()) {
+            restore_if_masked(&cur_ms.api_key, &mut new_ms.api_key);
         }
         restore_if_masked(&current.k2k.private_key_pem, &mut new_config.k2k.private_key_pem);
         restore_if_masked(&current.search.brave_api_key, &mut new_config.search.brave_api_key);
@@ -279,6 +291,18 @@ pub async fn update_config(
                 if let Some(ref key) = qwen.api_key {
                     let sanitized = interceptor.intercept_config_string(key);
                     qwen.api_key = Some(sanitized);
+                }
+            }
+            if let Some(xai) = new_config.xai.as_mut() {
+                if let Some(ref key) = xai.api_key {
+                    let sanitized = interceptor.intercept_config_string(key);
+                    xai.api_key = Some(sanitized);
+                }
+            }
+            if let Some(moonshot) = new_config.moonshot.as_mut() {
+                if let Some(ref key) = moonshot.api_key {
+                    let sanitized = interceptor.intercept_config_string(key);
+                    moonshot.api_key = Some(sanitized);
                 }
             }
             if let Some(ref key) = new_config.k2k.private_key_pem {

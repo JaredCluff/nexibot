@@ -79,10 +79,12 @@ pub fn openai_tool_call_to_internal(tool_call: &Value) -> Option<Value> {
 
 /// Convert Anthropic-format conversation messages to OpenAI-format messages.
 ///
-/// Handles three key differences:
-/// 1. Anthropic `user` messages with `tool_result` content → OpenAI `tool` role messages
-/// 2. Anthropic `assistant` messages with `tool_use` blocks → OpenAI `assistant` with `tool_calls`
-/// 3. Plain text messages are passed through unchanged
+/// Handles four key differences:
+/// 1. Strips `thinking`/`redacted_thinking`/`reasoning` blocks that are invalid outside Anthropic.
+///    Turns that consist entirely of such blocks are skipped.
+/// 2. Anthropic `user` messages with `tool_result` content → OpenAI `tool` role messages
+/// 3. Anthropic `assistant` messages with `tool_use` blocks → OpenAI `assistant` with `tool_calls`
+/// 4. Plain text messages are passed through unchanged
 pub fn convert_messages_to_openai(
     system_prompt: &str,
     messages: &[crate::claude::Message],
@@ -94,7 +96,24 @@ pub fn convert_messages_to_openai(
 
     for msg in messages {
         // Try parsing content as JSON array (Anthropic content blocks)
-        if let Ok(blocks) = serde_json::from_str::<Vec<Value>>(&msg.content) {
+        if let Ok(raw_blocks) = serde_json::from_str::<Vec<Value>>(&msg.content) {
+            // Strip orphaned reasoning/thinking blocks that are invalid in the OpenAI API.
+            // These arise when a prior Anthropic turn with extended thinking is included in
+            // history and the session is then routed to an OpenAI-compatible provider.
+            let blocks: Vec<Value> = raw_blocks
+                .into_iter()
+                .filter(|b| {
+                    !matches!(
+                        b.get("type").and_then(|t| t.as_str()),
+                        Some("thinking") | Some("redacted_thinking") | Some("reasoning")
+                    )
+                })
+                .collect();
+            // If all blocks were reasoning/thinking, skip this turn entirely —
+            // there is no meaningful content to relay to the OpenAI API.
+            if blocks.is_empty() {
+                continue;
+            }
             if let Some(first) = blocks.first() {
                 let block_type = first.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
@@ -118,59 +137,59 @@ pub fn convert_messages_to_openai(
                     continue;
                 }
 
-                // Assistant message with tool_use blocks → OpenAI assistant with tool_calls
-                if block_type == "tool_use"
-                    || (block_type == "text"
-                        && blocks.iter().any(|b| {
-                            b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-                        }))
+                // Assistant message with tool_use blocks → OpenAI assistant with tool_calls.
+                // Also handles the case where thinking/reasoning was stripped, leaving only
+                // text+tool_use or text-only blocks.
+                let has_tool_use = blocks.iter().any(|b| {
+                    b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                });
+                if (block_type == "tool_use" || block_type == "text" || has_tool_use)
+                    && msg.role == "assistant"
                 {
-                    if msg.role == "assistant" {
-                        let mut text_parts = String::new();
-                        let mut tool_calls = Vec::new();
+                    let mut text_parts = String::new();
+                    let mut tool_calls = Vec::new();
 
-                        for block in &blocks {
-                            match block.get("type").and_then(|t| t.as_str()) {
-                                Some("text") => {
-                                    if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                                        text_parts.push_str(t);
-                                    }
+                    for block in &blocks {
+                        match block.get("type").and_then(|t| t.as_str()) {
+                            Some("text") => {
+                                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                                    text_parts.push_str(t);
                                 }
-                                Some("tool_use") => {
-                                    let id =
-                                        block.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                    let name =
-                                        block.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                                    let empty_obj = json!({});
-                                    let input = block.get("input").unwrap_or(&empty_obj);
-                                    tool_calls.push(json!({
-                                        "id": id,
-                                        "type": "function",
-                                        "function": {
-                                            "name": name,
-                                            "arguments": serde_json::to_string(input).unwrap_or_default(),
-                                        }
-                                    }));
-                                }
-                                _ => {}
                             }
+                            Some("tool_use") => {
+                                let id =
+                                    block.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let name =
+                                    block.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                let empty_obj = json!({});
+                                let input = block.get("input").unwrap_or(&empty_obj);
+                                tool_calls.push(json!({
+                                    "id": id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": name,
+                                        "arguments": serde_json::to_string(input).unwrap_or_default(),
+                                    }
+                                }));
+                            }
+                            _ => {}
                         }
-
-                        let mut assistant_msg = json!({ "role": "assistant" });
-                        if !text_parts.is_empty() {
-                            assistant_msg["content"] = json!(text_parts);
-                        }
-                        if !tool_calls.is_empty() {
-                            assistant_msg["tool_calls"] = json!(tool_calls);
-                        }
-                        openai_messages.push(assistant_msg);
-                        continue;
                     }
+
+                    let mut assistant_msg = json!({ "role": "assistant" });
+                    if !text_parts.is_empty() {
+                        assistant_msg["content"] = json!(text_parts);
+                    }
+                    if !tool_calls.is_empty() {
+                        assistant_msg["tool_calls"] = json!(tool_calls);
+                    }
+                    openai_messages.push(assistant_msg);
+                    continue;
                 }
             }
         }
 
-        // Default: pass through as-is
+        // Default: pass through as-is (plain-string content messages, non-assistant JSON blocks)
         openai_messages.push(json!({
             "role": msg.role,
             "content": msg.content,
@@ -183,6 +202,68 @@ pub fn convert_messages_to_openai(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::claude::Message;
+
+    fn msg(role: &str, content: &str) -> Message {
+        Message { role: role.to_string(), content: content.to_string() }
+    }
+
+    #[test]
+    fn test_strips_thinking_blocks_from_assistant_messages() {
+        let messages = vec![
+            msg("user", "hello"),
+            msg("assistant", r#"[{"type":"thinking","thinking":"let me think"},{"type":"text","text":"hi there"}]"#),
+        ];
+        let result = convert_messages_to_openai("sys", &messages);
+        // system + user + assistant
+        assert_eq!(result.len(), 3);
+        let asst = &result[2];
+        assert_eq!(asst["role"], "assistant");
+        // content should be just the text, no thinking
+        assert_eq!(asst["content"], "hi there");
+    }
+
+    #[test]
+    fn test_strips_redacted_thinking_blocks() {
+        let messages = vec![
+            msg("assistant", r#"[{"type":"redacted_thinking","data":"base64"},{"type":"text","text":"answer"}]"#),
+        ];
+        let result = convert_messages_to_openai("sys", &messages);
+        let asst = &result[1];
+        assert_eq!(asst["content"], "answer");
+    }
+
+    #[test]
+    fn test_skips_thinking_only_turns() {
+        // A turn that is entirely thinking blocks should produce no OpenAI message
+        let messages = vec![
+            msg("user", "hi"),
+            msg("assistant", r#"[{"type":"thinking","thinking":"internal"}]"#),
+            msg("user", "how are you"),
+        ];
+        let result = convert_messages_to_openai("sys", &messages);
+        // system + user + (thinking-only skipped) + user
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_strips_thinking_with_text_and_tool_use() {
+        // Extended-thinking turn: [thinking, text, tool_use] — the common real-world case.
+        // After stripping, becomes [text, tool_use] → OpenAI assistant message with tool_calls.
+        let messages = vec![
+            msg("user", "search for cats"),
+            msg("assistant", r#"[{"type":"thinking","thinking":"let me use search"},{"type":"text","text":"Searching..."},{"type":"tool_use","id":"tu_1","name":"search","input":{"query":"cats"}}]"#),
+        ];
+        let result = convert_messages_to_openai("sys", &messages);
+        // system + user + assistant
+        assert_eq!(result.len(), 3);
+        let asst = &result[2];
+        assert_eq!(asst["role"], "assistant");
+        assert_eq!(asst["content"], "Searching...");
+        let tool_calls = asst["tool_calls"].as_array().unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["function"]["name"], "search");
+    }
 
     #[test]
     fn test_convert_tools_anthropic_passthrough() {
