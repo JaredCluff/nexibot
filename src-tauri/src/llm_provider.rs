@@ -20,6 +20,10 @@ pub enum LlmProvider {
     LMStudio,
     Bedrock,
     Mantle,
+    /// xAI (Grok) cloud API — OpenAI-compatible endpoint at api.x.ai.
+    Xai,
+    /// Moonshot (Kimi) cloud API — OpenAI-compatible endpoint at api.moonshot.cn.
+    Moonshot,
 }
 
 impl std::fmt::Display for LlmProvider {
@@ -37,6 +41,8 @@ impl std::fmt::Display for LlmProvider {
             LlmProvider::LMStudio => write!(f, "LM Studio"),
             LlmProvider::Bedrock => write!(f, "Bedrock"),
             LlmProvider::Mantle => write!(f, "Mantle"),
+            LlmProvider::Xai => write!(f, "xAI"),
+            LlmProvider::Moonshot => write!(f, "Moonshot"),
         }
     }
 }
@@ -53,6 +59,8 @@ impl LlmProvider {
                 | LlmProvider::MiniMax
                 | LlmProvider::Qwen
                 | LlmProvider::Mantle
+                | LlmProvider::Xai
+                | LlmProvider::Moonshot
         )
     }
 }
@@ -145,6 +153,16 @@ pub fn provider_for_model(model: &str) -> LlmProvider {
         return LlmProvider::LMStudio;
     }
 
+    // xAI Grok models
+    if lower.starts_with("grok-") || lower.starts_with("xai/") {
+        return LlmProvider::Xai;
+    }
+
+    // Moonshot / Kimi models
+    if lower.starts_with("moonshot-") || lower.starts_with("kimi/") {
+        return LlmProvider::Moonshot;
+    }
+
     // Check for known local model names (Ollama)
     for prefix in OLLAMA_PREFIXES {
         if lower.starts_with(prefix) {
@@ -170,7 +188,9 @@ pub fn capabilities(provider: LlmProvider) -> ProviderCapabilities {
         | LlmProvider::GitHubCopilot
         | LlmProvider::MiniMax
         | LlmProvider::Cerebras
-        | LlmProvider::LMStudio => ProviderCapabilities {
+        | LlmProvider::LMStudio
+        | LlmProvider::Xai
+        | LlmProvider::Moonshot => ProviderCapabilities {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
@@ -456,6 +476,32 @@ mod tests {
     fn llm_provider_has_mantle() {
         let p = LlmProvider::Mantle;
         assert_eq!(format!("{:?}", p), "Mantle");
+    }
+
+    #[test]
+    fn test_provider_for_model_xai() {
+        assert_eq!(provider_for_model("grok-3"), LlmProvider::Xai);
+        assert_eq!(provider_for_model("grok-2-vision"), LlmProvider::Xai);
+        assert_eq!(provider_for_model("xai/grok-3"), LlmProvider::Xai);
+    }
+
+    #[test]
+    fn test_provider_for_model_moonshot() {
+        assert_eq!(provider_for_model("moonshot-v1-8k"), LlmProvider::Moonshot);
+        assert_eq!(provider_for_model("moonshot-v1-32k"), LlmProvider::Moonshot);
+        assert_eq!(provider_for_model("kimi/moonshot-v1-8k"), LlmProvider::Moonshot);
+    }
+
+    #[test]
+    fn test_xai_is_cloud_openai_compat() {
+        assert!(LlmProvider::Xai.is_cloud_openai_compat());
+        assert!(LlmProvider::Moonshot.is_cloud_openai_compat());
+    }
+
+    #[test]
+    fn test_xai_moonshot_display() {
+        assert_eq!(format!("{}", LlmProvider::Xai), "xAI");
+        assert_eq!(format!("{}", LlmProvider::Moonshot), "Moonshot");
     }
 
     #[test]

@@ -314,6 +314,22 @@ impl ModelRegistry {
                 }
             }
         }
+        if let Some(ref x) = cfg.xai {
+            if let Some(ref key) = x.api_key {
+                if !key.is_empty() {
+                    self.provider_configs
+                        .insert(LlmProvider::Xai, ProviderAuth::ApiKey(key.clone()));
+                }
+            }
+        }
+        if let Some(ref ms) = cfg.moonshot {
+            if let Some(ref key) = ms.api_key {
+                if !key.is_empty() {
+                    self.provider_configs
+                        .insert(LlmProvider::Moonshot, ProviderAuth::ApiKey(key.clone()));
+                }
+            }
+        }
 
         info!(
             "[MODEL_REGISTRY] Initialized with {} providers, default model: {}",

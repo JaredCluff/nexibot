@@ -1107,6 +1107,24 @@ impl ClaudeClient {
                     .filter(|k| !k.trim().is_empty())
                     .context("No Mantle API key configured (set in Settings > Models)")
             }
+            LlmProvider::Xai => {
+                let config = self.config.read().await;
+                config
+                    .xai
+                    .as_ref()
+                    .and_then(|x| x.api_key.clone())
+                    .filter(|k| !k.trim().is_empty())
+                    .context("No xAI API key configured (set in Settings > Models)")
+            }
+            LlmProvider::Moonshot => {
+                let config = self.config.read().await;
+                config
+                    .moonshot
+                    .as_ref()
+                    .and_then(|ms| ms.api_key.clone())
+                    .filter(|k| !k.trim().is_empty())
+                    .context("No Moonshot API key configured (set in Settings > Models)")
+            }
         }
     }
 
@@ -1470,6 +1488,26 @@ impl ClaudeClient {
                 crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
                     .map_err(|e| anyhow::anyhow!("Mantle base_url SSRF check failed: {}", e))?;
                 Ok((format!("{}/chat/completions", url), "mantle/"))
+            }
+            LlmProvider::Xai => {
+                let url = config
+                    .xai
+                    .as_ref()
+                    .map(|x| x.api_url.clone())
+                    .unwrap_or_else(|| "https://api.x.ai/v1".to_string());
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("xAI api_url SSRF check failed: {}", e))?;
+                Ok((format!("{}/chat/completions", url), "xai/"))
+            }
+            LlmProvider::Moonshot => {
+                let url = config
+                    .moonshot
+                    .as_ref()
+                    .map(|ms| ms.api_url.clone())
+                    .unwrap_or_else(|| "https://api.moonshot.cn/v1".to_string());
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("Moonshot api_url SSRF check failed: {}", e))?;
+                Ok((format!("{}/chat/completions", url), "moonshot/"))
             }
             _ => anyhow::bail!("Provider {:?} is not a cloud OpenAI-compatible provider", provider),
         }
