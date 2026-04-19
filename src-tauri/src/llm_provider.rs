@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_xai_is_cloud_openai_compat() {
+    fn test_xai_moonshot_are_cloud_openai_compat() {
         assert!(LlmProvider::Xai.is_cloud_openai_compat());
         assert!(LlmProvider::Moonshot.is_cloud_openai_compat());
     }

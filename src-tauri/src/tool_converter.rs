@@ -79,10 +79,12 @@ pub fn openai_tool_call_to_internal(tool_call: &Value) -> Option<Value> {
 
 /// Convert Anthropic-format conversation messages to OpenAI-format messages.
 ///
-/// Handles three key differences:
-/// 1. Anthropic `user` messages with `tool_result` content → OpenAI `tool` role messages
-/// 2. Anthropic `assistant` messages with `tool_use` blocks → OpenAI `assistant` with `tool_calls`
-/// 3. Plain text messages are passed through unchanged
+/// Handles four key differences:
+/// 1. Strips `thinking`/`redacted_thinking`/`reasoning` blocks that are invalid outside Anthropic.
+///    Turns that consist entirely of such blocks are skipped.
+/// 2. Anthropic `user` messages with `tool_result` content → OpenAI `tool` role messages
+/// 3. Anthropic `assistant` messages with `tool_use` blocks → OpenAI `assistant` with `tool_calls`
+/// 4. Plain text messages are passed through unchanged
 pub fn convert_messages_to_openai(
     system_prompt: &str,
     messages: &[crate::claude::Message],
@@ -242,6 +244,25 @@ mod tests {
         let result = convert_messages_to_openai("sys", &messages);
         // system + user + (thinking-only skipped) + user
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_strips_thinking_with_text_and_tool_use() {
+        // Extended-thinking turn: [thinking, text, tool_use] — the common real-world case.
+        // After stripping, becomes [text, tool_use] → OpenAI assistant message with tool_calls.
+        let messages = vec![
+            msg("user", "search for cats"),
+            msg("assistant", r#"[{"type":"thinking","thinking":"let me use search"},{"type":"text","text":"Searching..."},{"type":"tool_use","id":"tu_1","name":"search","input":{"query":"cats"}}]"#),
+        ];
+        let result = convert_messages_to_openai("sys", &messages);
+        // system + user + assistant
+        assert_eq!(result.len(), 3);
+        let asst = &result[2];
+        assert_eq!(asst["role"], "assistant");
+        assert_eq!(asst["content"], "Searching...");
+        let tool_calls = asst["tool_calls"].as_array().unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["function"]["name"], "search");
     }
 
     #[test]

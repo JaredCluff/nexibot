@@ -1507,7 +1507,8 @@ impl ClaudeClient {
                     .unwrap_or_else(|| "https://api.moonshot.cn/v1".to_string());
                 crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
                     .map_err(|e| anyhow::anyhow!("Moonshot api_url SSRF check failed: {}", e))?;
-                Ok((format!("{}/chat/completions", url), "moonshot/"))
+                // Strip "kimi/" namespace prefix (routing alias); "moonshot-*" models need no stripping.
+                Ok((format!("{}/chat/completions", url), "kimi/"))
             }
             _ => anyhow::bail!("Provider {:?} is not a cloud OpenAI-compatible provider", provider),
         }
