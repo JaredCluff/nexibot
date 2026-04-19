@@ -146,6 +146,46 @@ function App() {
     };
   }, []);
 
+  const handleNewConversation = useCallback(async () => {
+    try {
+      const newId = await invoke<string>('new_conversation');
+      setCurrentSessionId(newId);
+      setShowSettings(false);
+    } catch (error) {
+      notifyError('Session', `Failed to create new conversation: ${error}`);
+    }
+  }, []);
+
+  // Keyboard shortcuts: Cmd/Ctrl+K for new chat, Cmd/Ctrl+/ for search focus
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const ctrl = isMac ? e.metaKey : e.ctrlKey;
+      if (!ctrl) return;
+      if (e.key === 'k') {
+        e.preventDefault();
+        const newChatBtn = document.querySelector<HTMLButtonElement>('[data-action="new-chat"]');
+        if (newChatBtn) {
+          newChatBtn.click();
+        } else {
+          // Sidebar not open — trigger directly
+          handleNewConversation();
+        }
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        if (!showSidebar) setShowSidebar(true);
+        // Focus search after a tick to allow sidebar to render
+        setTimeout(() => {
+          const searchInput = document.querySelector<HTMLInputElement>('.history-search-input');
+          if (searchInput) searchInput.focus();
+        }, 50);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showSidebar, handleNewConversation]);
+
   const handleOpenInCanvas = useCallback((code: string, language: string) => {
     const artifact: Artifact = {
       id: `artifact-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -252,16 +292,6 @@ function App() {
       setShowSettings(false);
     } catch (error) {
       notifyError('History', `Failed to load session: ${error}`);
-    }
-  };
-
-  const handleNewConversation = async () => {
-    try {
-      const newId = await invoke<string>('new_conversation');
-      setCurrentSessionId(newId);
-      setShowSettings(false);
-    } catch (error) {
-      notifyError('Session', `Failed to create new conversation: ${error}`);
     }
   };
 
