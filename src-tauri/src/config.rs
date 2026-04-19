@@ -53,6 +53,9 @@ pub use mcp::{
     ComputerUseConfig, MCPConfig, ScheduledTask, ScheduledTasksConfig, ToolSearchConfig,
 };
 
+pub mod media_gen;
+pub use media_gen::MediaGenConfig;
+
 use anyhow::{Context, Result};
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use serde::{Deserialize, Serialize};
@@ -365,6 +368,10 @@ pub struct NexiBotConfig {
     /// Memory dreaming & consolidation configuration
     #[serde(default)]
     pub dreaming: crate::memory_dreaming::DreamingConfig,
+
+    /// Media generation configuration (images, audio, video)
+    #[serde(default)]
+    pub media_gen: MediaGenConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -531,6 +538,7 @@ impl Default for NexiBotConfig {
             nats: NatsConfig::default(),
             lsp: LspConfig::default(),
             dreaming: crate::memory_dreaming::DreamingConfig::default(),
+            media_gen: MediaGenConfig::default(),
         }
     }
 }
