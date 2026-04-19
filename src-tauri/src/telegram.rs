@@ -663,6 +663,15 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     let chat_lock = state.chat_lock(chat_id.0).await;
     let _chat_guard = chat_lock.lock().await;
 
+    let reactions_enabled = {
+        let cfg = state.app_state.config.read().await;
+        cfg.telegram.reactions_enabled
+    };
+
+    if reactions_enabled {
+        set_message_reaction(&bot, chat_id.0, msg.id.0, REACTION_PROCESSING).await;
+    }
+
     let result = {
         let client_guard = state.app_state.claude_client.read().await;
         let options = RouteOptions {
@@ -680,6 +689,10 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         };
         router::route_message(&message, options, app_state).await
     };
+
+    if reactions_enabled {
+        set_message_reaction(&bot, chat_id.0, msg.id.0, REACTION_DONE).await;
+    }
 
     match result {
         Ok(routed) => {
@@ -2345,5 +2358,12 @@ mod tests {
     fn reaction_emoji_values() {
         assert_eq!(REACTION_PROCESSING, "👀");
         assert_eq!(REACTION_DONE, "✅");
+    }
+
+    #[tokio::test]
+    async fn reaction_constants_not_empty() {
+        assert!(!REACTION_PROCESSING.is_empty());
+        assert!(!REACTION_DONE.is_empty());
+        let _ = set_message_reaction as fn(_, _, _, _) -> _;
     }
 }
