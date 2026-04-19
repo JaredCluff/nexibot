@@ -1933,6 +1933,13 @@ pub async fn execute_tool_loop(
                                 label, final_err
                             );
                             TOOL_PAIRING_ERRORS.fetch_add(1, Ordering::Relaxed);
+                            let partial_summary = ExecutionSummary {
+                                iterations_used: iterations_completed,
+                                elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                                tools_called: summary_tools_called.clone(),
+                                fallbacks: summary_fallbacks.clone(),
+                            };
+                            observer.on_loop_complete(&partial_summary).await;
                             return Err(final_err.to_string());
                         }
                     }
@@ -1944,6 +1951,13 @@ pub async fn execute_tool_loop(
             Err(e) => {
                 observer.on_after_continue().await;
                 error!("[{}] Failed to continue after tools: {}", label, e);
+                let partial_summary = ExecutionSummary {
+                    iterations_used: iterations_completed,
+                    elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                    tools_called: summary_tools_called.clone(),
+                    fallbacks: summary_fallbacks.clone(),
+                };
+                observer.on_loop_complete(&partial_summary).await;
                 return Err(e);
             }
         };

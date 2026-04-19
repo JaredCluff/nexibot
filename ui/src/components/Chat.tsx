@@ -168,6 +168,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   const [loopProgress, setLoopProgress] = useState<{ iteration: number; total: number } | null>(null);
   const streamingTextRef = useRef('');
   const activeToolsRef = useRef<ToolIndicator[]>([]);
+  const pendingExecSummaryRef = useRef<ExecutionSummary | null>(null);
 
   // Cancel streaming — resolved by Stop button to abort the Promise.race in sendMessage
   const abortRef = useRef<((partial: string) => void) | null>(null);
@@ -720,15 +721,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
         tools_called: string[];
         fallbacks: [string, string, string][];
       }>('chat:execution-complete', (event) => {
-        const summary: ExecutionSummary = event.payload;
-        setMessages(prev => {
-          const idx = [...prev].reverse().findIndex(m => m.role === 'assistant');
-          if (idx === -1) return prev;
-          const realIdx = prev.length - 1 - idx;
-          return prev.map((m, i) =>
-            i === realIdx ? { ...m, executionSummary: summary } : m
-          );
-        });
+        pendingExecSummaryRef.current = event.payload;
       }));
 
       const completePromise = new Promise<{ response: string; error?: string; model_used?: string }>((resolve) => {
@@ -788,6 +781,8 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
       }
 
       const finalText = result.error ? `Error: ${result.error}` : result.response || streamingTextRef.current;
+      const execSummary = pendingExecSummaryRef.current ?? undefined;
+      pendingExecSummaryRef.current = null;
       setMessages((prev) => [...prev, {
         id: makeId(),
         role: 'assistant',
@@ -796,6 +791,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
         isError: !!result.error,
         toolIndicators: activeToolsRef.current.length > 0 ? [...activeToolsRef.current] : undefined,
         model: (result as any).model_used || undefined,
+        executionSummary: execSummary,
       }]);
       setStreamingText(''); setActiveTools([]); setThinkingIndicator(false); setLoopProgress(null);
       streamingTextRef.current = ''; activeToolsRef.current = [];
