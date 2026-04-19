@@ -85,6 +85,10 @@ pub struct TelegramBotState {
     /// When `Some`, all messages are routed to the specified agent rather than
     /// using the default agent selection logic.
     agent_id_override: Option<String>,
+    /// Per-bot override for allowed chat IDs (empty = use global config).
+    allowed_chat_ids_override: Vec<i64>,
+    /// Per-bot override for admin chat IDs (empty = use global config).
+    admin_chat_ids_override: Vec<i64>,
 }
 
 impl TelegramBotState {
@@ -100,12 +104,22 @@ impl TelegramBotState {
             msg_dedup: Mutex::new(LruCache::new(NonZeroUsize::new(10_000).unwrap())),
             chat_llm_locks: tokio::sync::Mutex::new(HashMap::new()),
             agent_id_override: None,
+            // Primary bot uses global config; secondary bots set these in new_with_agent.
+            allowed_chat_ids_override: vec![],
+            admin_chat_ids_override: vec![],
         }
     }
 
-    fn new_with_agent(app_state: AppState, agent_id_override: Option<String>) -> Self {
+    fn new_with_agent(
+        app_state: AppState,
+        agent_id_override: Option<String>,
+        allowed_chat_ids_override: Vec<i64>,
+        admin_chat_ids_override: Vec<i64>,
+    ) -> Self {
         let mut state = Self::new(app_state);
         state.agent_id_override = agent_id_override;
+        state.allowed_chat_ids_override = allowed_chat_ids_override;
+        state.admin_chat_ids_override = admin_chat_ids_override;
         state
     }
 
@@ -303,7 +317,11 @@ pub async fn start_bot(
     app_state: AppState,
     bot_token: String,
     agent_id_override: Option<String>,
+    allowed_chat_ids_override: Vec<i64>,
+    admin_chat_ids_override: Vec<i64>,
 ) {
+    // Decrypt the token through the key interceptor (same pattern as start_telegram_bot).
+    let bot_token = app_state.key_interceptor.restore_config_string(&bot_token);
     let bot = Bot::new(&bot_token);
 
     match bot.get_me().await {
@@ -324,7 +342,12 @@ pub async fn start_bot(
         }
     }
 
-    let bot_state = Arc::new(TelegramBotState::new_with_agent(app_state, agent_id_override));
+    let bot_state = Arc::new(TelegramBotState::new_with_agent(
+        app_state,
+        agent_id_override,
+        allowed_chat_ids_override,
+        admin_chat_ids_override,
+    ));
     let cleanup_state = bot_state.clone();
     let cleanup_handle = tokio::spawn(session_cleanup_loop(cleanup_state));
 
@@ -372,7 +395,7 @@ pub async fn start_bot(
 
 /// Handle an incoming Telegram message.
 async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotState>) {
-    let (enabled, allowed_chat_ids, admin_chat_ids, dm_policy, voice_enabled, voice_response) = {
+    let (enabled, global_allowed_chat_ids, global_admin_chat_ids, dm_policy, voice_enabled, voice_response) = {
         let config = state.app_state.config.read().await;
         (
             config.telegram.enabled,
@@ -382,6 +405,18 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
             config.telegram.voice_enabled,
             config.telegram.voice_response,
         )
+    };
+
+    // Use per-bot allowlists when configured; fall back to global config.
+    let allowed_chat_ids = if !state.allowed_chat_ids_override.is_empty() {
+        state.allowed_chat_ids_override.clone()
+    } else {
+        global_allowed_chat_ids
+    };
+    let admin_chat_ids = if !state.admin_chat_ids_override.is_empty() {
+        state.admin_chat_ids_override.clone()
+    } else {
+        global_admin_chat_ids
     };
 
     if !enabled {
@@ -780,6 +815,13 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         let mut loop_config = ToolLoopConfig::telegram_with_sender(chat_id.0, sender_user_id);
         // Override sender_id with the thread-aware session key when thread routing
         // is active, so per-thread memory and session history remain isolated.
+        //
+        // Note on ChannelSource: IncomingMessage.channel carries ChannelSource::Telegram
+        // which only encodes chat_id. The router uses channel for agent resolution and
+        // safety wrapping, NOT for session keying. Session isolation is driven entirely
+        // by loop_config.sender_id (used by the tool loop for policy and approval
+        // lookup). Setting it to the thread-scoped session_key here IS the correct
+        // mechanism — no change to ChannelSource is needed.
         if thread_routing {
             loop_config.sender_id = Some(session_key.clone());
         }
@@ -2436,7 +2478,10 @@ pub async fn set_message_reaction(
     emoji: &str,
 ) {
     let token = bot.token();
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
     let url = format!("https://api.telegram.org/bot{}/setMessageReaction", token);
     let body = serde_json::json!({
         "chat_id": chat_id,

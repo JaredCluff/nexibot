@@ -1036,14 +1036,25 @@ fn main() {
                     .map(|cfg| {
                         cfg.telegram.bots.iter()
                             .filter(|b| !b.bot_token.is_empty())
-                            .map(|b| (b.bot_token.clone(), b.agent_id.clone()))
+                            .map(|b| (
+                                b.bot_token.clone(),
+                                b.agent_id.clone(),
+                                b.allowed_chat_ids.clone(),
+                                b.admin_chat_ids.clone(),
+                            ))
                             .collect()
                     })
                     .unwrap_or_default();
-                for (token, agent_id) in extra_bots {
+                for (token, agent_id, allowed_chat_ids, admin_chat_ids) in extra_bots {
                     let app_state_clone = app_state.clone();
                     tauri::async_runtime::spawn(async move {
-                        telegram::start_bot(app_state_clone, token, agent_id).await;
+                        telegram::start_bot(
+                            app_state_clone,
+                            token,
+                            agent_id,
+                            allowed_chat_ids,
+                            admin_chat_ids,
+                        ).await;
                     });
                 }
             }
