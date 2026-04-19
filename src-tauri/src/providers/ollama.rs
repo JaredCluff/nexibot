@@ -80,7 +80,12 @@ impl OllamaClient {
         }
         let url = format!("{}/api/show", self.ollama_url);
         let body = serde_json::json!({ "name": self.model_id });
-        match self.http_client.post(&url).json(&body).send().await {
+        let req_future = self.http_client
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(5))
+            .send();
+        match req_future.await {
             Ok(resp) if resp.status().is_success() => {
                 resp.json::<serde_json::Value>().await.ok()
                     .and_then(|v| {

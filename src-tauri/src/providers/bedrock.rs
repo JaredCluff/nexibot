@@ -85,6 +85,8 @@ impl BedrockClient {
         let parsed = url::Url::parse(url)?;
         let host = parsed.host_str().unwrap_or("");
         let path = parsed.path();
+        // SigV4 service name for the Bedrock Runtime API is "bedrock" (not "bedrock-runtime"),
+        // regardless of the hostname containing "bedrock-runtime".
         let service = "bedrock";
 
         let canonical_headers = format!(

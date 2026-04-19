@@ -44,6 +44,26 @@ impl AnthropicClient {
         }
     }
 
+    /// Apply transport settings (proxy, timeouts) to this client.
+    pub fn with_transport(mut self, transport: crate::config::providers::TransportConfig) -> Self {
+        let mut builder = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(transport.read_timeout_secs))
+            .connect_timeout(std::time::Duration::from_secs(transport.connect_timeout_secs))
+            .tcp_keepalive(std::time::Duration::from_secs(30));
+        if let Some(proxy_url) = &transport.proxy_url {
+            match reqwest::Proxy::all(proxy_url) {
+                Ok(proxy) => {
+                    builder = builder.proxy(proxy);
+                }
+                Err(e) => {
+                    tracing::warn!("[TRANSPORT] Anthropic proxy error: {}", e);
+                }
+            }
+        }
+        self.http_client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+        self
+    }
+
     /// Get auth token (delegates to the same flow as ClaudeClient).
     async fn get_auth_token(&self) -> Result<String> {
         use crate::oauth::AuthProfileManager;

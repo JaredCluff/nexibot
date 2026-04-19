@@ -127,6 +127,12 @@ fn redact_secrets(config: &mut NexiBotConfig) {
     mask_string(&mut config.twilio.auth_token);
     mask_string(&mut config.mastodon.access_token);
     mask_string(&mut config.rocketchat.password);
+    if let Some(ref mut bedrock) = config.bedrock {
+        mask_string(&mut bedrock.secret_access_key);
+    }
+    if let Some(ref mut mantle) = config.mantle {
+        mask_string(&mut mantle.api_key);
+    }
 }
 
 /// Update configuration
@@ -211,6 +217,12 @@ pub async fn update_config(
         restore_str_if_masked(&current.twilio.auth_token, &mut new_config.twilio.auth_token);
         restore_str_if_masked(&current.mastodon.access_token, &mut new_config.mastodon.access_token);
         restore_str_if_masked(&current.rocketchat.password, &mut new_config.rocketchat.password);
+        if let (Some(cur_b), Some(new_b)) = (current.bedrock.as_ref(), new_config.bedrock.as_mut()) {
+            restore_str_if_masked(&cur_b.secret_access_key, &mut new_b.secret_access_key);
+        }
+        if let (Some(cur_m), Some(new_m)) = (current.mantle.as_ref(), new_config.mantle.as_mut()) {
+            restore_str_if_masked(&cur_m.api_key, &mut new_m.api_key);
+        }
     }
 
     // Intercept real API keys in config values before persisting.
