@@ -1387,6 +1387,18 @@ pub async fn execute_tool_loop(
     let mut active_tools: Vec<serde_json::Value> = tools.to_vec();
     let mut total_tool_calls: usize = 0;
 
+    // Execution tracking for structured execution events.
+    let mut summary_tools_called: Vec<String> = Vec::new();
+    let mut summary_fallbacks: Vec<(String, String, String)> = Vec::new();
+    let mut iterations_completed: usize = 0;
+
+    // Emit loop start with available tool names.
+    let tool_names: Vec<String> = tools
+        .iter()
+        .filter_map(|t| t["name"].as_str().map(|s| s.to_string()))
+        .collect();
+    observer.on_loop_start(&tool_names).await;
+
     for iteration in 0..config.max_iterations {
         // Check stop conditions
         if result.tool_uses.is_empty() {
@@ -1477,6 +1489,9 @@ pub async fn execute_tool_loop(
                     }
                 }
             }
+
+            // Record this tool call for the execution summary.
+            summary_tools_called.push(tool_use.name.clone());
 
             // Notify observer that a tool is starting.
             observer.on_tool_start(&tool_use.name, &tool_use.id).await;
@@ -1789,6 +1804,13 @@ pub async fn execute_tool_loop(
                 "[{}] Detaching tool loop — background task spawned, returning acknowledgment",
                 label
             );
+            let detach_summary = ExecutionSummary {
+                iterations_used: iteration + 1,
+                elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                tools_called: summary_tools_called.clone(),
+                fallbacks: summary_fallbacks.clone(),
+            };
+            observer.on_loop_complete(&detach_summary).await;
             return Ok(ClaudeMessageResult {
                 text: ack,
                 tool_uses: vec![],
@@ -1925,6 +1947,8 @@ pub async fn execute_tool_loop(
                 return Err(e);
             }
         };
+
+        iterations_completed += 1;
     }
 
     // Force summary if configured and loop exhausted without text
@@ -1956,6 +1980,15 @@ pub async fn execute_tool_loop(
     }
 
     result.tool_calls_made = total_tool_calls;
+
+    let summary = ExecutionSummary {
+        iterations_used: iterations_completed,
+        elapsed_ms: loop_start.elapsed().as_millis() as u64,
+        tools_called: summary_tools_called,
+        fallbacks: summary_fallbacks,
+    };
+    observer.on_loop_complete(&summary).await;
+
     Ok(result)
 }
 
