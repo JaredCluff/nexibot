@@ -278,6 +278,9 @@ pub struct MatrixConfig {
     /// Allow sending m.reaction events (default: true).
     #[serde(default = "default_true")]
     pub reactions_enabled: bool,
+    /// Enable end-to-end encryption. Requires matrix-sdk. Default: false.
+    #[serde(default)]
+    pub e2ee_enabled: bool,
 }
 
 impl Default for MatrixConfig {
@@ -295,6 +298,7 @@ impl Default for MatrixConfig {
             typing_indicators: true,
             read_receipts: true,
             reactions_enabled: true,
+            e2ee_enabled: false,
         }
     }
 }
@@ -334,6 +338,12 @@ impl Default for NatsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn matrix_config_e2ee_default_false() {
+        let c = MatrixConfig::default();
+        assert!(!c.e2ee_enabled, "E2EE should default to false (opt-in)");
+    }
 
     #[test]
     fn matrix_config_has_feature_flags() {
