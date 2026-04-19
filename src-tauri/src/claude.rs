@@ -1089,6 +1089,24 @@ impl ClaudeClient {
                 // Local providers require no API key
                 Ok("local".to_string())
             }
+            LlmProvider::Bedrock => {
+                let config = self.config.read().await;
+                config
+                    .bedrock
+                    .as_ref()
+                    .map(|b| b.access_key_id.clone())
+                    .filter(|k| !k.trim().is_empty())
+                    .context("No AWS Bedrock access key configured (set in Settings > Models)")
+            }
+            LlmProvider::Mantle => {
+                let config = self.config.read().await;
+                config
+                    .mantle
+                    .as_ref()
+                    .map(|m| m.api_key.clone())
+                    .filter(|k| !k.trim().is_empty())
+                    .context("No Mantle API key configured (set in Settings > Models)")
+            }
         }
     }
 
@@ -1441,6 +1459,17 @@ impl ClaudeClient {
                 crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
                     .map_err(|e| anyhow::anyhow!("Qwen api_url SSRF check failed: {}", e))?;
                 Ok((format!("{}/chat/completions", url), "qwen/"))
+            }
+            LlmProvider::Mantle => {
+                let url = config
+                    .mantle
+                    .as_ref()
+                    .map(|m| m.base_url.clone())
+                    .filter(|u| !u.is_empty())
+                    .context("No Mantle base_url configured (set in Settings > Models)")?;
+                crate::security::ssrf::validate_outbound_request(&url, &ssrf_policy, &[])
+                    .map_err(|e| anyhow::anyhow!("Mantle base_url SSRF check failed: {}", e))?;
+                Ok((format!("{}/chat/completions", url), "mantle/"))
             }
             _ => anyhow::bail!("Provider {:?} is not a cloud OpenAI-compatible provider", provider),
         }
@@ -1828,6 +1857,54 @@ impl ClaudeClient {
             .await?;
 
         // Convert LlmMessageResult → ClaudeMessageResult
+        Ok(ClaudeMessageResult {
+            text: result.text,
+            tool_uses: result
+                .tool_uses
+                .into_iter()
+                .map(|tu| ToolUseBlock {
+                    id: tu.id,
+                    name: tu.name,
+                    input: tu.input,
+                })
+                .collect(),
+            stop_reason: result.stop_reason,
+            raw_content: result.raw_content,
+            tool_calls_made: 0,
+        })
+    }
+
+    /// Send a message to AWS Bedrock using BedrockClient (SigV4 signing).
+    async fn send_message_bedrock(
+        &self,
+        model: &str,
+        system_prompt: &str,
+        messages: &[Message],
+        tools: &[serde_json::Value],
+    ) -> Result<ClaudeMessageResult> {
+        use crate::providers::LlmClient;
+
+        let config = self.config.read().await;
+        let bedrock_cfg = config
+            .bedrock
+            .as_ref()
+            .context("No Bedrock configuration found (set in Settings > Models)")?;
+        let region = bedrock_cfg.region.clone();
+        let access_key_id = bedrock_cfg.access_key_id.clone();
+        let secret_access_key = bedrock_cfg.secret_access_key.clone();
+        let max_tokens = bedrock_cfg.max_tokens;
+        let transport = config.transport.clone();
+        drop(config);
+
+        let client =
+            crate::providers::bedrock::BedrockClient::new(model, &region, &access_key_id, &secret_access_key, max_tokens)
+                .with_transport(transport);
+
+        let overrides = crate::session_overrides::SessionOverrides::default();
+        let result = client
+            .send_message_with_tools(messages, tools, system_prompt, &overrides)
+            .await?;
+
         Ok(ClaudeMessageResult {
             text: result.text,
             tool_uses: result
@@ -2233,6 +2310,8 @@ impl ClaudeClient {
         if provider.is_cloud_openai_compat() {
             let cloud_max_tokens = if provider == LlmProvider::Cerebras {
                 config.cerebras.max_tokens
+            } else if provider == LlmProvider::Mantle {
+                config.mantle.as_ref().map_or(4096, |m| m.max_tokens)
             } else {
                 Self::effective_max_tokens(effective_model, config.claude.max_tokens)
             };
@@ -2257,6 +2336,35 @@ impl ClaudeClient {
                 Ok(r) => r,
                 Err(e) => {
                     // Roll back the user message so history stays consistent.
+                    history.pop();
+                    return Err(e);
+                }
+            };
+
+            history.push(Message {
+                role: "assistant".to_string(),
+                content: serde_json::to_string(&result.raw_content).unwrap_or_default(),
+            });
+            Self::trim_history(&mut history);
+
+            return Ok(result);
+        }
+
+        // Route Bedrock directly (uses SigV4-signed Anthropic Messages API)
+        if provider == LlmProvider::Bedrock {
+            let mut history = self.conversation_history.write().await;
+            history.push(Message {
+                role: "user".to_string(),
+                content: message.to_string(),
+            });
+            Self::trim_history(&mut history);
+
+            let result = match self
+                .send_message_bedrock(effective_model, &system_prompt, &history, tools)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
                     history.pop();
                     return Err(e);
                 }
@@ -2306,7 +2414,11 @@ impl ClaudeClient {
             p if p.is_cloud_openai_compat() => {
                 anyhow::bail!("Provider {:?} marked as cloud OpenAI-compatible but not handled in dispatch", p)
             }
-            p @ (LlmProvider::Ollama | LlmProvider::LMStudio | LlmProvider::Google) => {
+            p @ (LlmProvider::Ollama
+                | LlmProvider::LMStudio
+                | LlmProvider::Google
+                | LlmProvider::Bedrock
+                | LlmProvider::Mantle) => {
                 anyhow::bail!("Provider {:?} should have been handled by direct dispatch above", p)
             }
             _ => anyhow::bail!(
@@ -2531,6 +2643,8 @@ impl ClaudeClient {
         if provider.is_cloud_openai_compat() {
             let cloud_max_tokens = if provider == LlmProvider::Cerebras {
                 config.cerebras.max_tokens
+            } else if provider == LlmProvider::Mantle {
+                config.mantle.as_ref().map_or(4096, |m| m.max_tokens)
             } else {
                 Self::effective_max_tokens(effective_model, config.claude.max_tokens)
             };
@@ -2544,6 +2658,24 @@ impl ClaudeClient {
                     cloud_max_tokens,
                     provider,
                 )
+                .await?;
+            drop(history);
+
+            let mut history = self.conversation_history.write().await;
+            history.push(Message {
+                role: "assistant".to_string(),
+                content: serde_json::to_string(&result.raw_content).unwrap_or_default(),
+            });
+            Self::trim_history(&mut history);
+
+            return Ok(result);
+        }
+
+        // Route Bedrock directly (SigV4-signed Anthropic Messages API)
+        if provider == LlmProvider::Bedrock {
+            let history = self.conversation_history.read().await;
+            let result = self
+                .send_message_bedrock(effective_model, &system_prompt, &history, tools)
                 .await?;
             drop(history);
 
@@ -2581,7 +2713,11 @@ impl ClaudeClient {
             p if p.is_cloud_openai_compat() => {
                 anyhow::bail!("Provider {:?} marked as cloud OpenAI-compatible but not handled in dispatch", p)
             }
-            p @ (LlmProvider::Ollama | LlmProvider::LMStudio | LlmProvider::Google) => {
+            p @ (LlmProvider::Ollama
+                | LlmProvider::LMStudio
+                | LlmProvider::Google
+                | LlmProvider::Bedrock
+                | LlmProvider::Mantle) => {
                 anyhow::bail!("Provider {:?} should have been handled by direct dispatch above", p)
             }
             _ => anyhow::bail!(
@@ -2737,6 +2873,8 @@ impl ClaudeClient {
         if provider.is_cloud_openai_compat() {
             let cloud_max_tokens = if provider == LlmProvider::Cerebras {
                 config.cerebras.max_tokens
+            } else if provider == LlmProvider::Mantle {
+                config.mantle.as_ref().map_or(4096, |m| m.max_tokens)
             } else {
                 Self::effective_max_tokens(effective_model, config.claude.max_tokens)
             };
@@ -2751,6 +2889,24 @@ impl ClaudeClient {
                     provider,
                     callback,
                 )
+                .await?;
+            drop(history);
+
+            let mut history = self.conversation_history.write().await;
+            history.push(Message {
+                role: "assistant".to_string(),
+                content: serde_json::to_string(&result.raw_content).unwrap_or_default(),
+            });
+            Self::trim_history(&mut history);
+
+            return Ok(result);
+        }
+
+        // Route Bedrock directly (streaming falls back to non-streaming)
+        if provider == LlmProvider::Bedrock {
+            let history = self.conversation_history.read().await;
+            let result = self
+                .send_message_bedrock(effective_model, &system_prompt, &history, tools)
                 .await?;
             drop(history);
 
@@ -2794,7 +2950,11 @@ impl ClaudeClient {
             p if p.is_cloud_openai_compat() => {
                 anyhow::bail!("Provider {:?} marked as cloud OpenAI-compatible but not handled in dispatch", p)
             }
-            p @ (LlmProvider::Ollama | LlmProvider::LMStudio | LlmProvider::Google) => {
+            p @ (LlmProvider::Ollama
+                | LlmProvider::LMStudio
+                | LlmProvider::Google
+                | LlmProvider::Bedrock
+                | LlmProvider::Mantle) => {
                 anyhow::bail!("Provider {:?} should have been handled by direct dispatch above", p)
             }
             _ => anyhow::bail!(
@@ -3315,6 +3475,8 @@ impl ClaudeClient {
         if provider.is_cloud_openai_compat() {
             let cloud_max_tokens = if provider == LlmProvider::Cerebras {
                 config.cerebras.max_tokens
+            } else if provider == LlmProvider::Mantle {
+                config.mantle.as_ref().map_or(4096, |m| m.max_tokens)
             } else {
                 Self::effective_max_tokens(effective_model, config.claude.max_tokens)
             };
@@ -3335,6 +3497,35 @@ impl ClaudeClient {
                     provider,
                     callback,
                 )
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    history.pop();
+                    return Err(e);
+                }
+            };
+
+            history.push(Message {
+                role: "assistant".to_string(),
+                content: serde_json::to_string(&result.raw_content).unwrap_or_default(),
+            });
+            Self::trim_history(&mut history);
+
+            return Ok(result);
+        }
+
+        // Route Bedrock directly (streaming falls back to non-streaming)
+        if provider == LlmProvider::Bedrock {
+            let mut history = self.conversation_history.write().await;
+            history.push(Message {
+                role: "user".to_string(),
+                content: message.to_string(),
+            });
+            Self::trim_history(&mut history);
+
+            let result = match self
+                .send_message_bedrock(effective_model, &system_prompt, &history, tools)
                 .await
             {
                 Ok(r) => r,
@@ -3394,7 +3585,11 @@ impl ClaudeClient {
             p if p.is_cloud_openai_compat() => {
                 anyhow::bail!("Provider {:?} marked as cloud OpenAI-compatible but not handled in dispatch", p)
             }
-            p @ (LlmProvider::Ollama | LlmProvider::LMStudio | LlmProvider::Google) => {
+            p @ (LlmProvider::Ollama
+                | LlmProvider::LMStudio
+                | LlmProvider::Google
+                | LlmProvider::Bedrock
+                | LlmProvider::Mantle) => {
                 anyhow::bail!("Provider {:?} should have been handled by direct dispatch above", p)
             }
             _ => anyhow::bail!(

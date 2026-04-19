@@ -6,6 +6,7 @@
 
 pub mod anthropic;
 pub mod auth_profiles;
+pub mod bedrock;
 pub mod cerebras;
 pub mod conversation;
 pub mod google;
@@ -261,6 +262,24 @@ impl ModelRegistry {
             .insert(LlmProvider::Ollama, ProviderAuth::None);
         self.provider_configs
             .insert(LlmProvider::LMStudio, ProviderAuth::None);
+        // Bedrock uses SigV4 signing — register if credentials are present
+        if let Some(ref bedrock) = cfg.bedrock {
+            if !bedrock.access_key_id.is_empty() {
+                self.provider_configs.insert(
+                    LlmProvider::Bedrock,
+                    ProviderAuth::ApiKey(bedrock.access_key_id.clone()),
+                );
+            }
+        }
+        // Mantle uses API key auth
+        if let Some(ref mantle) = cfg.mantle {
+            if !mantle.api_key.is_empty() {
+                self.provider_configs.insert(
+                    LlmProvider::Mantle,
+                    ProviderAuth::ApiKey(mantle.api_key.clone()),
+                );
+            }
+        }
         if let Some(ref google) = cfg.google {
             if let Some(ref key) = google.api_key {
                 if !key.is_empty() {

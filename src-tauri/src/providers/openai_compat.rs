@@ -81,6 +81,25 @@ impl OpenAICompatibleClient {
     fn build_openai_messages(system_prompt: &str, messages: &[Message]) -> Vec<serde_json::Value> {
         crate::tool_converter::convert_messages_to_openai(system_prompt, messages)
     }
+
+    /// Apply transport settings (proxy, timeouts) to this client.
+    pub fn with_transport(mut self, transport: crate::config::providers::TransportConfig) -> Self {
+        let mut builder = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(transport.read_timeout_secs))
+            .connect_timeout(std::time::Duration::from_secs(transport.connect_timeout_secs));
+        if let Some(proxy_url) = &transport.proxy_url {
+            match reqwest::Proxy::all(proxy_url) {
+                Ok(proxy) => {
+                    builder = builder.proxy(proxy);
+                }
+                Err(e) => {
+                    tracing::warn!("[TRANSPORT] Invalid proxy URL '{}': {}", proxy_url, e);
+                }
+            }
+        }
+        self.http_client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+        self
+    }
 }
 
 #[async_trait]
@@ -98,6 +117,7 @@ impl LlmClient for OpenAICompatibleClient {
             supports_thinking: false,
             supports_computer_use: false,
             supports_tools: true,
+            supports_vision: false,
         }
     }
 
@@ -272,5 +292,21 @@ impl LlmClient for OpenAICompatibleClient {
         // For now, fall back to non-streaming
         self.send_message_with_tools(messages, tools, system_prompt, overrides)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_transport_sets_timeouts() {
+        let client = OpenAICompatibleClient::via_bridge("gpt-4o", "key", "http://localhost:18790", 4096);
+        let transport = crate::config::providers::TransportConfig {
+            proxy_url: None,
+            connect_timeout_secs: 10,
+            read_timeout_secs: 120,
+        };
+        let _updated = client.with_transport(transport); // should not panic
     }
 }

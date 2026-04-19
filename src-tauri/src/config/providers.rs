@@ -221,6 +221,66 @@ impl Default for LMStudioConfig {
     }
 }
 
+fn default_connect_timeout() -> u64 { 30 }
+fn default_read_timeout() -> u64 { 600 }
+fn default_bedrock_region() -> String { "us-east-1".to_string() }
+
+/// Transport configuration for proxy and timeout settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportConfig {
+    #[serde(default)]
+    pub proxy_url: Option<String>,
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout_secs: u64,
+    #[serde(default = "default_read_timeout")]
+    pub read_timeout_secs: u64,
+}
+
+impl Default for TransportConfig {
+    fn default() -> Self {
+        Self {
+            proxy_url: None,
+            connect_timeout_secs: default_connect_timeout(),
+            read_timeout_secs: default_read_timeout(),
+        }
+    }
+}
+
+/// AWS Bedrock API configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BedrockConfig {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    #[serde(default = "default_bedrock_region")]
+    pub region: String,
+    #[serde(default)]
+    pub model_id: String,
+    #[serde(default = "default_openai_max_tokens")]
+    pub max_tokens: usize,
+}
+
+impl Default for BedrockConfig {
+    fn default() -> Self {
+        Self {
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            region: default_bedrock_region(),
+            model_id: String::new(),
+            max_tokens: 4096,
+        }
+    }
+}
+
+/// Mantle API configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MantleConfig {
+    pub base_url: String,
+    pub api_key: String,
+    pub model_id: String,
+    #[serde(default = "default_openai_max_tokens")]
+    pub max_tokens: usize,
+}
+
 /// Get the default max_tokens for a given model.
 /// Returns a sensible default based on model capabilities.
 pub fn default_max_tokens_for_model(model: &str) -> usize {
@@ -234,5 +294,24 @@ pub fn default_max_tokens_for_model(model: &str) -> usize {
         4096
     } else {
         4096
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transport_config_defaults() {
+        let t = TransportConfig::default();
+        assert!(t.proxy_url.is_none());
+        assert_eq!(t.connect_timeout_secs, 30);
+        assert_eq!(t.read_timeout_secs, 600);
+    }
+
+    #[test]
+    fn bedrock_config_default_region() {
+        let b = BedrockConfig::default();
+        assert_eq!(b.region, "us-east-1");
     }
 }
