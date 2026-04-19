@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { notifyError } from '../shared/notify';
+import MemoryPanel from './MemoryPanel';
 import './HistorySidebar.css';
 
 interface ConversationSession {
@@ -51,6 +52,7 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showMemories, setShowMemories] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -104,6 +106,18 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
         + New Conversation
       </button>
 
+      <button
+        className="sidebar-memories-btn"
+        aria-label="Memories"
+        onClick={() => setShowMemories(!showMemories)}
+      >
+        {showMemories ? '← Back to History' : '🧠 Memories'}
+      </button>
+
+      {showMemories ? (
+        <MemoryPanel onClose={() => setShowMemories(false)} />
+      ) : (
+        <>
       <div className="history-search">
         <input
           ref={searchInputRef}
@@ -162,6 +176,8 @@ function HistorySidebar({ isOpen, onSessionSelect, onNewConversation, currentSes
           );
         })}
       </div>
+        </>
+      )}
     </nav>
   );
 }

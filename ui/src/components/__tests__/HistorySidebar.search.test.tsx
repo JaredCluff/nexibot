@@ -70,6 +70,21 @@ describe('HistorySidebar search', () => {
     expect(screen.queryByText('React hooks tutorial')).toBeNull();
   });
 
+  it('shows memory panel button', async () => {
+    render(
+      <HistorySidebar
+        isOpen={true}
+        onToggle={vi.fn()}
+        onSessionSelect={vi.fn()}
+        onNewConversation={vi.fn()}
+        currentSessionId={undefined}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /memories/i })).toBeTruthy();
+    });
+  });
+
   it('shows no-results message when nothing matches', async () => {
     render(
       <HistorySidebar
