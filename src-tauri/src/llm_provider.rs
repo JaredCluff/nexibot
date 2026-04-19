@@ -52,6 +52,7 @@ impl LlmProvider {
                 | LlmProvider::GitHubCopilot
                 | LlmProvider::MiniMax
                 | LlmProvider::Qwen
+                | LlmProvider::Mantle
         )
     }
 }
