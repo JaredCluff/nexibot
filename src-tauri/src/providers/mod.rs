@@ -6,6 +6,7 @@
 
 pub mod anthropic;
 pub mod auth_profiles;
+pub mod bedrock;
 pub mod cerebras;
 pub mod conversation;
 pub mod google;
