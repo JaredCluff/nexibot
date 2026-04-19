@@ -186,8 +186,8 @@ static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         Regex::new(r"sk-[a-zA-Z0-9]{20,}").expect("invariant: literal regex is valid"),
         // Generic Bearer tokens (e.g. "Bearer eyJhb...")
         Regex::new(r"Bearer [A-Za-z0-9_-]{20,}").expect("invariant: literal regex is valid"),
-        // Generic API key patterns (key=value)
-        Regex::new(r#"(?i)(api[_-]?key|auth[_-]?token|access[_-]?token|secret[_-]?key|bearer[_-]?token)\s*[=:]\s*['"]?[a-zA-Z0-9_\-./+]{16,}['"]?"#).expect("invariant: literal regex is valid"),
+        // Generic API key patterns (key=value); xi-api-key is ElevenLabs header
+        Regex::new(r#"(?i)(xi-api-key|api[_-]?key|auth[_-]?token|access[_-]?token|secret[_-]?key|bearer[_-]?token)\s*[=:]\s*['"]?[a-zA-Z0-9_\-./+]{16,}['"]?"#).expect("invariant: literal regex is valid"),
         // Bot tokens (Telegram, Discord numeric prefix)
         Regex::new(r"\d{8,}:[A-Za-z0-9_-]{30,}").expect("invariant: literal regex is valid"),
         // Discord bot tokens (M/N prefix format)

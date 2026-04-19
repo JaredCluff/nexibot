@@ -133,6 +133,9 @@ fn redact_secrets(config: &mut NexiBotConfig) {
     if let Some(ref mut mantle) = config.mantle {
         mask_string(&mut mantle.api_key);
     }
+    mask_option(&mut config.media_gen.image_api_key);
+    mask_option(&mut config.media_gen.audio_api_key);
+    mask_option(&mut config.media_gen.video_api_key);
 }
 
 /// Update configuration
@@ -223,6 +226,9 @@ pub async fn update_config(
         if let (Some(cur_m), Some(new_m)) = (current.mantle.as_ref(), new_config.mantle.as_mut()) {
             restore_str_if_masked(&cur_m.api_key, &mut new_m.api_key);
         }
+        restore_if_masked(&current.media_gen.image_api_key, &mut new_config.media_gen.image_api_key);
+        restore_if_masked(&current.media_gen.audio_api_key, &mut new_config.media_gen.audio_api_key);
+        restore_if_masked(&current.media_gen.video_api_key, &mut new_config.media_gen.video_api_key);
     }
 
     // Intercept real API keys in config values before persisting.

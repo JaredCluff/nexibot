@@ -193,7 +193,10 @@ mod integration_tests {
         let plan_state = std::sync::Arc::new(tokio::sync::RwLock::new(
             crate::tools::plan_mode::PlanModeState::default()
         ));
-        crate::tools::register_all(&mut registry, plan_state, crate::config::LspConfig::default());
+        let config = std::sync::Arc::new(tokio::sync::RwLock::new(
+            crate::config::NexiBotConfig::default()
+        ));
+        crate::tools::register_all(&mut registry, plan_state, crate::config::LspConfig::default(), config);
         for tool_name in expected_tools {
             assert!(
                 registry.get(tool_name).is_some(),

@@ -5,6 +5,7 @@ pub mod file_edit;
 pub mod file_read;
 pub mod file_read_state;
 pub mod lsp;
+pub mod media_gen;
 pub mod notebook_edit;
 pub mod send_message;
 pub mod tasks;
@@ -16,10 +17,12 @@ pub mod worktree;
 /// `plan_state` must be the SAME Arc stored in AppState::plan_mode_state so
 /// the gate in chat.rs and the tools see the same allocation.
 /// `lsp_config` is the user-configured LSP server map from config.yaml.
+/// `config` is the shared NexiBotConfig Arc used by media generation tools.
 pub fn register_all(
     registry: &mut crate::tool_registry::ToolRegistry,
     plan_state: std::sync::Arc<tokio::sync::RwLock<plan_mode::PlanModeState>>,
     lsp_config: crate::config::LspConfig,
+    config: std::sync::Arc<tokio::sync::RwLock<crate::config::NexiBotConfig>>,
 ) {
     registry.register(Box::new(file_read::FileReadTool));
     registry.register(Box::new(file_edit::FileEditTool));
@@ -76,4 +79,9 @@ pub fn register_all(
         )
     ));
     registry.register(Box::new(lsp::LspTool { manager: lsp_manager }));
+
+    // Media generation tools (DALL-E 3, ElevenLabs, Runway)
+    registry.register(Box::new(media_gen::GenerateImageTool::new(config.clone())));
+    registry.register(Box::new(media_gen::GenerateAudioTool::new(config.clone())));
+    registry.register(Box::new(media_gen::GenerateVideoTool::new(config)));
 }
