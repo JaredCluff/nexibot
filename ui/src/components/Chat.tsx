@@ -7,7 +7,7 @@ import VoiceBar from './VoiceBar';
 import SlashCommandPalette from './SlashCommandPalette';
 import { notifyError } from '../shared/notify';
 import type {
-  Message, ToolIndicator, SessionOverrides, AvailableModel, BackgroundTaskUI,
+  Message, ToolIndicator, SessionOverrides, AvailableModel, BackgroundTaskUI, ExecutionSummary,
 } from './chat-types';
 import './Chat.css';
 
@@ -168,6 +168,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   const [loopProgress, setLoopProgress] = useState<{ iteration: number; total: number } | null>(null);
   const streamingTextRef = useRef('');
   const activeToolsRef = useRef<ToolIndicator[]>([]);
+  const pendingExecSummaryRef = useRef<ExecutionSummary | null>(null);
 
   // Cancel streaming — resolved by Stop button to abort the Promise.race in sendMessage
   const abortRef = useRef<((partial: string) => void) | null>(null);
@@ -714,6 +715,15 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
         setMessages((prev) => [...prev, { id: makeId(), role: 'assistant' as const, content: notice, timestamp: new Date() }]);
       }));
 
+      unsubs.push(await listen<{
+        iterations_used: number;
+        elapsed_ms: number;
+        tools_called: string[];
+        fallbacks: [string, string, string][];
+      }>('chat:execution-complete', (event) => {
+        pendingExecSummaryRef.current = event.payload;
+      }));
+
       const completePromise = new Promise<{ response: string; error?: string; model_used?: string }>((resolve) => {
         listen<{ response: string; error?: string; model_used?: string }>('chat:complete', (event) => {
           setThinkingIndicator(false);
@@ -771,6 +781,8 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
       }
 
       const finalText = result.error ? `Error: ${result.error}` : result.response || streamingTextRef.current;
+      const execSummary = pendingExecSummaryRef.current ?? undefined;
+      pendingExecSummaryRef.current = null;
       setMessages((prev) => [...prev, {
         id: makeId(),
         role: 'assistant',
@@ -779,6 +791,7 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
         isError: !!result.error,
         toolIndicators: activeToolsRef.current.length > 0 ? [...activeToolsRef.current] : undefined,
         model: (result as any).model_used || undefined,
+        executionSummary: execSummary,
       }]);
       setStreamingText(''); setActiveTools([]); setThinkingIndicator(false); setLoopProgress(null);
       streamingTextRef.current = ''; activeToolsRef.current = [];

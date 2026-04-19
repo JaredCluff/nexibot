@@ -968,3 +968,63 @@
   cursor: pointer;
   color: var(--text);
 }
+
+/* ─── Execution Summary Badge ───────────────────────────────────────────── */
+.execution-summary {
+  margin-top: 6px;
+}
+
+.execution-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  transition: background 0.15s;
+}
+
+.execution-summary-badge:hover {
+  background: var(--hover-bg, rgba(0,0,0,0.04));
+}
+
+.exec-chevron {
+  font-size: 0.6rem;
+  margin-left: 2px;
+}
+
+.execution-summary-detail {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border-color, #e0e0e0);
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+}
+
+.exec-tool-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.exec-tool-item {
+  margin: 2px 0;
+}
+
+.exec-tool-count-badge {
+  color: var(--text-muted, #aaa);
+  font-size: 0.75rem;
+}
+
+.exec-fallbacks {
+  margin-top: 6px;
+}
+
+.exec-fallback-item {
+  font-size: 0.75rem;
+  color: var(--warning-color, #e6a817);
+}

@@ -15,6 +15,7 @@ const MAX_ACTIVE_MCP_TOOLS: usize = 50;
 
 use async_trait::async_trait;
 use futures_util::future::join_all;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use crate::channel::ChannelSource;
@@ -25,6 +26,15 @@ use crate::config::NexiBotConfig;
 use crate::security::dangerous_tools;
 use crate::session_overrides::SessionOverrides;
 use crate::tool_retry::{self, ToolErrorInfo, ToolErrorKind};
+
+/// Summary of a completed tool loop execution, emitted as `chat:execution-complete`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionSummary {
+    pub iterations_used: usize,
+    pub elapsed_ms: u64,
+    pub tools_called: Vec<String>,
+    pub fallbacks: Vec<(String, String, String)>,
+}
 
 /// Configuration for a tool-use loop invocation.
 #[derive(Debug, Clone)]
@@ -522,6 +532,12 @@ pub trait ToolLoopObserver: Send + Sync {
     /// Called when the LLM falls back to a different model due to an error.
     async fn on_model_fallback(&self, _from_model: &str, _to_model: &str, _reason: &str) {}
 
+    /// Called when the tool loop starts, with the names of available tools.
+    async fn on_loop_start(&self, _tool_names: &[String]) {}
+
+    /// Called when the tool loop completes with a summary of execution.
+    async fn on_loop_complete(&self, _summary: &ExecutionSummary) {}
+
     /// Whether this observer can collect approval decisions from a human.
     fn supports_approval(&self) -> bool {
         false
@@ -685,6 +701,27 @@ impl ToolLoopObserver for GuiStreamingObserver {
                 "{} unavailable ({}). Trying {}…",
                 from_model, reason, to_model
             ),
+        );
+    }
+
+    async fn on_loop_start(&self, tool_names: &[String]) {
+        use tauri::Emitter;
+        let _ = self.window.emit(
+            "chat:execution-start",
+            serde_json::json!({ "tool_names": tool_names }),
+        );
+    }
+
+    async fn on_loop_complete(&self, summary: &ExecutionSummary) {
+        use tauri::Emitter;
+        let _ = self.window.emit(
+            "chat:execution-complete",
+            serde_json::json!({
+                "iterations_used": summary.iterations_used,
+                "elapsed_ms": summary.elapsed_ms,
+                "tools_called": summary.tools_called,
+                "fallbacks": summary.fallbacks,
+            }),
         );
     }
 
@@ -1350,6 +1387,18 @@ pub async fn execute_tool_loop(
     let mut active_tools: Vec<serde_json::Value> = tools.to_vec();
     let mut total_tool_calls: usize = 0;
 
+    // Execution tracking for structured execution events.
+    let mut summary_tools_called: Vec<String> = Vec::new();
+    let mut summary_fallbacks: Vec<(String, String, String)> = Vec::new();
+    let mut iterations_completed: usize = 0;
+
+    // Emit loop start with available tool names.
+    let tool_names: Vec<String> = tools
+        .iter()
+        .filter_map(|t| t["name"].as_str().map(|s| s.to_string()))
+        .collect();
+    observer.on_loop_start(&tool_names).await;
+
     for iteration in 0..config.max_iterations {
         // Check stop conditions
         if result.tool_uses.is_empty() {
@@ -1440,6 +1489,9 @@ pub async fn execute_tool_loop(
                     }
                 }
             }
+
+            // Record this tool call for the execution summary.
+            summary_tools_called.push(tool_use.name.clone());
 
             // Notify observer that a tool is starting.
             observer.on_tool_start(&tool_use.name, &tool_use.id).await;
@@ -1752,6 +1804,13 @@ pub async fn execute_tool_loop(
                 "[{}] Detaching tool loop — background task spawned, returning acknowledgment",
                 label
             );
+            let detach_summary = ExecutionSummary {
+                iterations_used: iteration + 1,
+                elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                tools_called: summary_tools_called.clone(),
+                fallbacks: summary_fallbacks.clone(),
+            };
+            observer.on_loop_complete(&detach_summary).await;
             return Ok(ClaudeMessageResult {
                 text: ack,
                 tool_uses: vec![],
@@ -1874,6 +1933,13 @@ pub async fn execute_tool_loop(
                                 label, final_err
                             );
                             TOOL_PAIRING_ERRORS.fetch_add(1, Ordering::Relaxed);
+                            let partial_summary = ExecutionSummary {
+                                iterations_used: iterations_completed,
+                                elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                                tools_called: summary_tools_called.clone(),
+                                fallbacks: summary_fallbacks.clone(),
+                            };
+                            observer.on_loop_complete(&partial_summary).await;
                             return Err(final_err.to_string());
                         }
                     }
@@ -1885,9 +1951,18 @@ pub async fn execute_tool_loop(
             Err(e) => {
                 observer.on_after_continue().await;
                 error!("[{}] Failed to continue after tools: {}", label, e);
+                let partial_summary = ExecutionSummary {
+                    iterations_used: iterations_completed,
+                    elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                    tools_called: summary_tools_called.clone(),
+                    fallbacks: summary_fallbacks.clone(),
+                };
+                observer.on_loop_complete(&partial_summary).await;
                 return Err(e);
             }
         };
+
+        iterations_completed += 1;
     }
 
     // Force summary if configured and loop exhausted without text
@@ -1919,6 +1994,15 @@ pub async fn execute_tool_loop(
     }
 
     result.tool_calls_made = total_tool_calls;
+
+    let summary = ExecutionSummary {
+        iterations_used: iterations_completed,
+        elapsed_ms: loop_start.elapsed().as_millis() as u64,
+        tools_called: summary_tools_called,
+        fallbacks: summary_fallbacks,
+    };
+    observer.on_loop_complete(&summary).await;
+
     Ok(result)
 }
 
@@ -2589,5 +2673,34 @@ mod tests {
             &loop_config,
             "nexibot_execute"
         ));
+    }
+
+    #[test]
+    fn execution_summary_serializable() {
+        let s = ExecutionSummary {
+            iterations_used: 3,
+            elapsed_ms: 1500,
+            tools_called: vec!["nexibot_bash".to_string(), "nexibot_file_read".to_string()],
+            fallbacks: vec![],
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("iterations_used"), "json: {}", json);
+        assert!(json.contains("nexibot_bash"), "json: {}", json);
+    }
+
+    #[test]
+    fn execution_summary_tools_called_records_all_calls() {
+        let summary = ExecutionSummary {
+            iterations_used: 2,
+            elapsed_ms: 800,
+            tools_called: vec![
+                "nexibot_bash".to_string(),
+                "nexibot_bash".to_string(),
+                "nexibot_file_read".to_string(),
+            ],
+            fallbacks: vec![],
+        };
+        assert_eq!(summary.tools_called.len(), 3);
+        assert_eq!(summary.tools_called.iter().filter(|t| t.as_str() == "nexibot_bash").count(), 2);
     }
 }

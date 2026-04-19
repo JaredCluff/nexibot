@@ -13,8 +13,20 @@ fn default_matrix_command_prefix() -> Option<String> {
     Some("!nexi".to_string())
 }
 
-/// Telegram Bot configuration
+/// Configuration for a single Telegram bot instance.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramBotConfig {
+    pub bot_token: String,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub allowed_chat_ids: Vec<i64>,
+    #[serde(default)]
+    pub admin_chat_ids: Vec<i64>,
+}
+
+/// Telegram Bot configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
     /// Whether the Telegram bot is enabled
     #[serde(default)]
@@ -42,6 +54,33 @@ pub struct TelegramConfig {
     /// Per-channel tool access policy
     #[serde(default)]
     pub tool_policy: ChannelToolPolicy,
+    /// Additional bot instances (each with their own token and optional agent binding)
+    #[serde(default)]
+    pub bots: Vec<TelegramBotConfig>,
+    /// Enable forum topic/thread routing (separate session per thread)
+    #[serde(default)]
+    pub thread_routing_enabled: bool,
+    /// React to messages with 👀 (processing) and ✅ (done)
+    #[serde(default = "default_true")]
+    pub reactions_enabled: bool,
+}
+
+impl Default for TelegramConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bot_token: String::new(),
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+            voice_enabled: false,
+            voice_response: true,
+            dm_policy: crate::pairing::DmPolicy::default(),
+            tool_policy: ChannelToolPolicy::default(),
+            bots: vec![],
+            thread_routing_enabled: false,
+            reactions_enabled: true,
+        }
+    }
 }
 
 /// WhatsApp Cloud API configuration
@@ -302,5 +341,22 @@ mod tests {
         assert!(c.typing_indicators, "typing_indicators should default to true");
         assert!(c.read_receipts, "read_receipts should default to true");
         assert!(c.reactions_enabled, "reactions_enabled should default to true");
+    }
+
+    #[test]
+    fn telegram_config_default_bots_empty() {
+        let c = TelegramConfig::default();
+        assert!(c.bots.is_empty(), "bots should default to empty");
+    }
+
+    #[test]
+    fn telegram_bot_config_agent_id_optional() {
+        let bot = TelegramBotConfig {
+            bot_token: "123:ABC".to_string(),
+            agent_id: None,
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+        };
+        assert!(bot.agent_id.is_none());
     }
 }
