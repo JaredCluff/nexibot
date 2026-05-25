@@ -14,7 +14,7 @@ use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup};
 use tokio::sync::{Mutex, RwLock};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::channel::ChannelSource;
 use crate::commands::memory::{list_sessions_for_resume, SessionSummary};
@@ -89,6 +89,10 @@ pub struct TelegramBotState {
     allowed_chat_ids_override: Vec<i64>,
     /// Per-bot override for admin chat IDs (empty = use global config).
     admin_chat_ids_override: Vec<i64>,
+    /// Per-chat last error timestamp for error cooldown.
+    last_error_at: tokio::sync::Mutex<HashMap<i64, Instant>>,
+    /// Last time an update was received (for polling stall detection).
+    last_update_at: tokio::sync::Mutex<Instant>,
 }
 
 impl TelegramBotState {
@@ -107,6 +111,8 @@ impl TelegramBotState {
             // Primary bot uses global config; secondary bots set these in new_with_agent.
             allowed_chat_ids_override: vec![],
             admin_chat_ids_override: vec![],
+            last_error_at: tokio::sync::Mutex::new(HashMap::new()),
+            last_update_at: tokio::sync::Mutex::new(Instant::now()),
         }
     }
 
@@ -228,6 +234,35 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
                 me.username(),
                 me.id
             );
+
+            // Register custom commands with BotFather
+            let custom_cmds = {
+                let cfg = app_state.config.read().await;
+                cfg.telegram.custom_commands.clone()
+            };
+            if !custom_cmds.is_empty() {
+                let mut cmds = vec![
+                    teloxide::types::BotCommand::new("start", "Start the bot"),
+                    teloxide::types::BotCommand::new("resume", "Resume a previous session"),
+                    teloxide::types::BotCommand::new("sessions", "List active sessions"),
+                    teloxide::types::BotCommand::new("compact", "Compact conversation history"),
+                    teloxide::types::BotCommand::new("settings", "Open settings"),
+                ];
+                for cc in &custom_cmds {
+                    let cmd = cc.command.trim_start_matches('/').to_lowercase();
+                    if !cmd.is_empty() {
+                        cmds.push(teloxide::types::BotCommand::new(
+                            &cmd,
+                            &cc.description,
+                        ));
+                    }
+                }
+                if let Err(e) = bot.set_my_commands(cmds).await {
+                    warn!("[TELEGRAM] Failed to set custom commands: {}", e);
+                } else {
+                    info!("[TELEGRAM] Registered {} custom command(s)", custom_cmds.len());
+                }
+            }
         }
         Err(e) => {
             let msg = format!("Telegram bot token is invalid or revoked: {}", e);
@@ -251,6 +286,10 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
     // Spawn the long-polling loop with exponential backoff on unexpected exit.
     tokio::spawn(async move {
         let mut backoff = std::time::Duration::from_secs(1);
+        let polling_stall_ms = {
+            let cfg = app_state.config.read().await;
+            cfg.telegram.polling_stall_threshold_ms
+        };
         loop {
             if stop_flag_task.load(Ordering::Relaxed) {
                 info!("[TELEGRAM] Stop flag set — exiting polling loop");
@@ -285,6 +324,40 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
 
             let mut dispatcher = Dispatcher::builder(bot.clone(), handler).build();
             info!("[TELEGRAM] Telegram bot started (long-polling)");
+
+            if polling_stall_ms > 0 {
+                // Spawn a watchdog that detects stalled polling
+                let stall_threshold = std::time::Duration::from_millis(polling_stall_ms);
+                let watchdog_state = bot_state.clone();
+                let watchdog_stop = stop_flag_task.clone();
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(stall_threshold);
+                    loop {
+                        interval.tick().await;
+                        if watchdog_stop.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let last = *watchdog_state.last_update_at.lock().await;
+                        if Instant::now().duration_since(last) >= stall_threshold {
+                            warn!(
+                                "[TELEGRAM] Polling stall detected (>{}ms since last update). Checking connectivity...",
+                                polling_stall_ms
+                            );
+                            match watchdog_state.app_state.config.read().await {
+                                _ => {
+                                    // getMe probe to check connectivity
+                                    let bot_clone = bot.clone();
+                                    match bot_clone.get_me().await {
+                                        Ok(me) => info!("[TELEGRAM] Connectivity OK — @{}", me.username().unwrap_or("?")),
+                                        Err(e) => warn!("[TELEGRAM] getMe probe failed: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             dispatcher.dispatch().await;
 
             if stop_flag_task.load(Ordering::Relaxed) {
@@ -423,8 +496,35 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         return;
     }
 
+    // Update last activity timestamp for polling stall detection
+    {
+        let mut last = state.last_update_at.lock().await;
+        *last = Instant::now();
+    }
+
     let chat_id = msg.chat.id;
     let sender_user_id = msg.from.as_ref().and_then(|u| i64::try_from(u.id.0).ok());
+    let sender_is_bot = msg.from.as_ref().map(|u| u.is_bot).unwrap_or(false);
+
+    // Sender-type policy: filter bot-to-bot messages.
+    {
+        let cfg = state.app_state.config.read().await;
+        match cfg.telegram.sender_type_policy {
+            crate::config::channels::SenderTypePolicy::HumansOnly if sender_is_bot => {
+                debug!("[TELEGRAM] Ignoring message from bot {} per sender_type_policy", sender_user_id.unwrap_or(0));
+                return;
+            }
+            crate::config::channels::SenderTypePolicy::HumansAndAllowlistedBots if sender_is_bot => {
+                let allowed = !cfg.telegram.allowed_chat_ids.is_empty()
+                    && cfg.telegram.allowed_chat_ids.contains(&sender_user_id.unwrap_or(0));
+                if !allowed {
+                    debug!("[TELEGRAM] Ignoring message from unallowlisted bot {} per sender_type_policy", sender_user_id.unwrap_or(0));
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
 
     // Fix 1: Per-chat rate limiting
     let rate_key = format!("telegram:{}", chat_id.0);
@@ -801,13 +901,30 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     let chat_lock = state.chat_lock(chat_id.0).await;
     let _chat_guard = chat_lock.lock().await;
 
-    let reactions_enabled = {
+    let (reactions_enabled, ack_emoji, done_emoji, reaction_scope) = {
         let cfg = state.app_state.config.read().await;
-        cfg.telegram.reactions_enabled
+        (
+            cfg.telegram.reactions_enabled,
+            cfg.telegram.ack_emoji.clone(),
+            cfg.telegram.done_emoji.clone(),
+            cfg.telegram.reaction_scope.clone(),
+        )
     };
+    let is_private = matches!(msg.chat.kind, teloxide::types::ChatKind::Private(_));
+    let bot_mentioned = msg.text().map(|t| {
+        t.contains("@nexibot") || t.contains("@NexiBot")
+    }).unwrap_or(false);
+    let should_react = reactions_enabled && match reaction_scope {
+        crate::config::channels::ReactionScope::All => true,
+        crate::config::channels::ReactionScope::Direct => is_private,
+        crate::config::channels::ReactionScope::GroupMentions => is_private || bot_mentioned,
+        crate::config::channels::ReactionScope::Off => false,
+    };
+    let ack = ack_emoji.as_deref().unwrap_or(REACTION_PROCESSING);
+    let done = done_emoji.as_deref().unwrap_or(REACTION_DONE);
 
-    if reactions_enabled {
-        set_message_reaction(&bot, chat_id.0, msg.id.0, REACTION_PROCESSING).await;
+    if should_react {
+        set_message_reaction(&bot, chat_id.0, msg.id.0, ack).await;
     }
 
     let result = {
@@ -841,29 +958,66 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         router::route_message(&message, options, app_state).await
     };
 
-    if reactions_enabled {
-        set_message_reaction(&bot, chat_id.0, msg.id.0, REACTION_DONE).await;
+    if should_react {
+        set_message_reaction(&bot, chat_id.0, msg.id.0, done).await;
     }
+
+    // Gather P2 config for response sending
+    let (response_prefix, link_preview, dm_thread_replies, error_policy, error_cooldown_ms) = {
+        let cfg = state.app_state.config.read().await;
+        (
+            cfg.telegram.response_prefix.clone(),
+            cfg.telegram.link_preview,
+            cfg.telegram.dm_thread_replies.clone(),
+            cfg.telegram.error_policy.clone(),
+            cfg.telegram.error_cooldown_ms,
+        )
+    };
+    let reply_to = if is_private {
+        match dm_thread_replies {
+            crate::config::channels::DmThreadReplyMode::Always => Some(msg.id.0),
+            crate::config::channels::DmThreadReplyMode::Inbound if msg.reply_to_message().is_some() => Some(msg.id.0),
+            _ => None,
+        }
+    } else {
+        None
+    };
 
     match result {
         Ok(routed) => {
             let response = router::extract_text_from_response(&routed.text);
             if response.is_empty() {
-                if let Err(e) = bot.send_message(chat_id, "(No response)").await {
+                let text = format!("{}(No response)", response_prefix);
+                let mut req = bot.send_message(chat_id, text);
+                if !link_preview {
+                    req = req.disable_web_page_preview(true);
+                }
+                if let Some(rt) = reply_to {
+                    req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
+                }
+                if let Err(e) = req.await {
                     warn!(
                         "[TELEGRAM] Failed to send '(No response)' to {}: {}",
                         chat_id, e
                     );
                 }
             } else {
+                let prefixed = format!("{}{}", response_prefix, response);
                 // If the incoming message was voice AND voice_response is enabled,
                 // synthesize TTS audio and send as a Telegram voice note.
                 let voice_response_enabled = was_voice_message && voice_response;
 
                 if voice_response_enabled {
                     // Send text first, then voice
-                    for chunk in router::split_message(&response, 4096) {
-                        if let Err(e) = bot.send_message(chat_id, &chunk).await {
+                    for chunk in router::split_message(&prefixed, 4096) {
+                        let mut req = bot.send_message(chat_id, chunk);
+                        if !link_preview {
+                            req = req.disable_web_page_preview(true);
+                        }
+                        if let Some(rt) = reply_to {
+                            req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
+                        }
+                        if let Err(e) = req.await {
                             warn!(
                                 "[TELEGRAM] Failed to send response chunk to {}: {}",
                                 chat_id, e
@@ -871,7 +1025,7 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
                         }
                     }
                     // Send voice response
-                    match synthesize_voice_response(&response, &state.app_state).await {
+                    match synthesize_voice_response(&prefixed, &state.app_state).await {
                         Ok(ogg_bytes) => {
                             use teloxide::types::InputFile;
                             let voice_file = InputFile::memory(ogg_bytes).file_name("response.ogg");
@@ -888,8 +1042,15 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
                     }
                 } else {
                     // Text-only response
-                    for chunk in router::split_message(&response, 4096) {
-                        if let Err(e) = bot.send_message(chat_id, &chunk).await {
+                    for chunk in router::split_message(&prefixed, 4096) {
+                        let mut req = bot.send_message(chat_id, chunk);
+                        if !link_preview {
+                            req = req.disable_web_page_preview(true);
+                        }
+                        if let Some(rt) = reply_to {
+                            req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
+                        }
+                        if let Err(e) = req.await {
                             warn!(
                                 "[TELEGRAM] Failed to send response chunk to {}: {}",
                                 chat_id, e
@@ -900,7 +1061,14 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
             }
         }
         Err(RouterError::Blocked(msg)) => {
-            if let Err(e) = bot.send_message(chat_id, msg).await {
+            let mut req = bot.send_message(chat_id, msg);
+            if !link_preview {
+                req = req.disable_web_page_preview(true);
+            }
+            if let Some(rt) = reply_to {
+                req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
+            }
+            if let Err(e) = req.await {
                 warn!(
                     "[TELEGRAM] Failed to send blocked-message notice to {}: {}",
                     chat_id, e
@@ -912,14 +1080,39 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
             if is_auth_error(&err_str) {
                 send_auth_prompt(&bot, chat_id, &state).await;
             } else {
-                if let Err(send_err) = bot
-                    .send_message(chat_id, format!("Error: {}", err_str))
-                    .await
-                {
-                    warn!(
-                        "[TELEGRAM] Failed to send error message to {}: {}",
-                        chat_id, send_err
-                    );
+                // Error policy + cooldown check
+                let should_send_error = match error_policy {
+                    crate::config::channels::ErrorPolicy::Silent => false,
+                    crate::config::channels::ErrorPolicy::Reply => {
+                        if error_cooldown_ms > 0 {
+                            let mut last_errors = state.last_error_at.lock().await;
+                            let now = Instant::now();
+                            let can_send = last_errors.get(&chat_id.0).map(|t| now.duration_since(*t).as_millis() as u64 >= error_cooldown_ms).unwrap_or(true);
+                            if can_send {
+                                last_errors.insert(chat_id.0, now);
+                            }
+                            can_send
+                        } else {
+                            true
+                        }
+                    }
+                };
+                if should_send_error {
+                    let mut req = bot.send_message(chat_id, format!("Error: {}", err_str));
+                    if !link_preview {
+                        req = req.disable_web_page_preview(true);
+                    }
+                    if let Some(rt) = reply_to {
+                        req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
+                    }
+                    if let Err(send_err) = req.await {
+                        warn!(
+                            "[TELEGRAM] Failed to send error message to {}: {}",
+                            chat_id, send_err
+                        );
+                    }
+                } else {
+                    info!("[TELEGRAM] Suppressed error for {} per error_policy/cooldown", chat_id);
                 }
             }
         }
