@@ -354,6 +354,31 @@ fn main() {
                 }
             };
 
+            // Initialize episodic memory store
+            let episodic_store = {
+                let cfg = config.try_read().map(|c| c.episodic_memory.clone()).unwrap_or_default();
+                if cfg.enabled {
+                    let db_path = dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("nexibot")
+                        .join("memory")
+                        .join("episodic.db");
+                    match crate::episodic_memory::EpisodicStore::new(&db_path) {
+                        Ok(store) => {
+                            info!("[EPISODIC] Store initialised at {:?}", db_path);
+                            Some(Arc::new(store))
+                        }
+                        Err(e) => {
+                            warn!("[EPISODIC] Failed to open store: {}. Episodic memory disabled.", e);
+                            None
+                        }
+                    }
+                } else {
+                    info!("[EPISODIC] Disabled by config");
+                    None
+                }
+            };
+
             // Initialize heartbeat manager (disabled by default)
             let heartbeat_manager = Arc::new(HeartbeatManager::new(HeartbeatConfig::default()));
             info!("[HEARTBEAT] Heartbeat system initialized (disabled by default)");
@@ -903,6 +928,8 @@ fn main() {
                 notification_dispatcher,
                 // Logging
                 log_state: Some(log_state.clone()),
+                // Episodic self-improvement store
+                episodic_store,
                 // Telegram tool approval flow
                 telegram_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 telegram_last_error: Arc::new(tokio::sync::Mutex::new(None)),

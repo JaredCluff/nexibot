@@ -347,6 +347,9 @@ pub struct AppState {
     // Logging
     pub log_state: Option<crate::logging::LogState>,
 
+    // Episodic self-improvement store
+    pub episodic_store: Option<Arc<crate::episodic_memory::EpisodicStore>>,
+
     // Telegram bot running flag — set to true when the bot is polling, false when stopped.
     pub telegram_running: Arc<std::sync::atomic::AtomicBool>,
     // Last Telegram startup error — surfaced to the UI so users know why the bot isn't running.

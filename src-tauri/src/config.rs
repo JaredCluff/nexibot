@@ -380,6 +380,10 @@ pub struct NexiBotConfig {
     /// Media generation configuration (images, audio, video)
     #[serde(default)]
     pub media_gen: MediaGenConfig,
+
+    /// Episodic self-improvement memory configuration
+    #[serde(default)]
+    pub episodic_memory: crate::episodic_memory::EpisodicMemoryConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +553,7 @@ impl Default for NexiBotConfig {
             lsp: LspConfig::default(),
             dreaming: crate::memory_dreaming::DreamingConfig::default(),
             media_gen: MediaGenConfig::default(),
+            episodic_memory: crate::episodic_memory::EpisodicMemoryConfig::default(),
         }
     }
 }

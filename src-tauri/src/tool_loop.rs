@@ -5,6 +5,7 @@
 //! Channel-specific behavior (typing indicators, progress messages, TTS streaming)
 //! is handled via the `ToolLoopObserver` trait.
 
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -1370,6 +1371,7 @@ pub async fn execute_tool_loop(
     config: &ToolLoopConfig,
     state: &AppState,
     observer: &dyn ToolLoopObserver,
+    goal: Option<String>,
 ) -> Result<ClaudeMessageResult, String> {
     let label = config.channel_label();
     let loop_start = Instant::now();
@@ -1391,6 +1393,9 @@ pub async fn execute_tool_loop(
     let mut summary_tools_called: Vec<String> = Vec::new();
     let mut summary_fallbacks: Vec<(String, String, String)> = Vec::new();
     let mut iterations_completed: usize = 0;
+    // Episodic memory tracking
+    let mut what_worked: Vec<String> = Vec::new();
+    let mut what_failed: Vec<String> = Vec::new();
 
     // Emit loop start with available tool names.
     let tool_names: Vec<String> = tools
@@ -1679,6 +1684,13 @@ pub async fn execute_tool_loop(
             let tool_use = &result.tool_uses[call.idx];
             let success =
                 !tool_result.starts_with("BLOCKED") && !tool_result.starts_with("Error");
+
+            // Track for episodic memory
+            if success {
+                what_worked.push(tool_use.name.clone());
+            } else {
+                what_failed.push(format!("{}: {}", tool_use.name, tool_result));
+            }
 
             // Cumulative output gate.
             cumulative_output_bytes += tool_result.len();
@@ -2002,6 +2014,47 @@ pub async fn execute_tool_loop(
         fallbacks: summary_fallbacks,
     };
     observer.on_loop_complete(&summary).await;
+
+    // Write episodic retrospective if enabled
+    if let (Some(store), Some(goal_text)) = (&state.episodic_store, goal) {
+        let cfg = state.config.read().await;
+        if cfg.episodic_memory.enabled {
+            drop(cfg);
+            let outcome = if result.text.is_empty() {
+                crate::episodic_memory::EpisodicOutcome::Failure
+            } else if iterations_completed >= config.max_iterations {
+                crate::episodic_memory::EpisodicOutcome::Partial
+            } else {
+                crate::episodic_memory::EpisodicOutcome::Success
+            };
+            let record = crate::episodic_memory::EpisodicRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                created_at: chrono::Utc::now(),
+                goal: goal_text.chars().take(512).collect(),
+                outcome,
+                iterations: iterations_completed,
+                elapsed_ms: loop_start.elapsed().as_millis() as u64,
+                tools_used: summary.tools_called.clone(),
+                what_worked: what_worked.clone(),
+                what_failed: what_failed.clone(),
+                embedding: None,
+            };
+            if let Err(e) = store.write(&record).await {
+                warn!("[EPISODIC] Failed to write record: {}", e);
+            } else {
+                info!("[EPISODIC] Wrote retrospective for goal: {}", record.goal.chars().take(60).collect::<String>());
+            }
+            // Prune old records asynchronously (fire-and-forget)
+            let store_clone = Arc::clone(store);
+            let max_records = {
+                let cfg = state.config.read().await;
+                cfg.episodic_memory.max_records
+            };
+            tokio::spawn(async move {
+                let _ = store_clone.prune_old(max_records).await;
+            });
+        }
+    }
 
     Ok(result)
 }

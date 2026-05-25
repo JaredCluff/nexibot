@@ -238,6 +238,52 @@ pub async fn route_message(
         chat::maybe_auto_compact(state, options.window, Some(options.claude_client)).await;
     }
 
+    // 2.5. Episodic memory injection — retrieve similar past experiences
+    let safe_text = if let Some(ref store) = state.episodic_store {
+        let (enabled, limit, threshold) = {
+            let cfg = state.config.read().await;
+            (
+                cfg.episodic_memory.enabled,
+                cfg.episodic_memory.inject_limit,
+                cfg.episodic_memory.inject_threshold,
+            )
+        };
+        if enabled {
+            match store.search_similar(&message.text, limit).await {
+                Ok(records) => {
+                    let relevant: Vec<_> = records
+                        .into_iter()
+                        .filter(|(_r, sim)| *sim >= threshold)
+                        .map(|(r, _sim)| r)
+                        .collect();
+                    if !relevant.is_empty() {
+                        let retrospectives = relevant
+                            .iter()
+                            .map(|r| crate::episodic_memory::format_retrospective(r))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        let injected = format!(
+                            "Past experience on similar tasks:\n{}\n\n{}",
+                            retrospectives, safe_text
+                        );
+                        info!("[EPISODIC] Injected {} retrospective(s)", relevant.len());
+                        injected
+                    } else {
+                        safe_text
+                    }
+                }
+                Err(e) => {
+                    warn!("[EPISODIC] Search failed: {}", e);
+                    safe_text
+                }
+            }
+        } else {
+            safe_text
+        }
+    } else {
+        safe_text
+    };
+
     // 3. Collect tools (pass user message for semantic MCP tool filtering)
     let (all_tools, mcp_count, computer_use_enabled, browser_enabled) =
         chat::collect_all_tools(state, Some(&message.text), Some(&message.channel)).await;
@@ -328,6 +374,7 @@ pub async fn route_message(
         .unwrap_or_default();
 
     // 7. Tool loop
+    let goal = Some(message.text.clone());
     let result = crate::tool_loop::execute_tool_loop(
         options.claude_client,
         &all_tools,
@@ -336,6 +383,7 @@ pub async fn route_message(
         &options.loop_config,
         state,
         options.observer,
+        goal,
     )
     .await
     .map_err(RouterError::ToolLoopError)?;
