@@ -417,10 +417,9 @@ export function KnowledgeTab() {
             <button disabled={loadingCapabilities} onClick={async () => {
               setLoadingCapabilities(true);
               try {
-                const caps = await invoke<AgentCapabilityInfo[]>('list_agent_capabilities');
-                const capNames = caps.map(c => c.name);
-                setAgentCapabilities(capNames);
-                if (capNames.length > 0 && !selectedCapability) setSelectedCapability(capNames[0]);
+                const caps = await invoke<string[]>('list_agent_capabilities');
+                setAgentCapabilities(caps);
+                if (caps.length > 0 && !selectedCapability) setSelectedCapability(caps[0]);
               } catch (error) {
                 notifyError('Agent Tasks', `Failed to load capabilities: ${error}`);
               } finally {
