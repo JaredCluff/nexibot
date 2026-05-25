@@ -55,6 +55,8 @@ pub use mcp::{
 
 pub mod media_gen;
 pub use media_gen::MediaGenConfig;
+pub mod skills;
+pub use skills::SkillsConfig;
 
 use anyhow::{Context, Result};
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
@@ -384,6 +386,10 @@ pub struct NexiBotConfig {
     /// Episodic self-improvement memory configuration
     #[serde(default)]
     pub episodic_memory: crate::episodic_memory::EpisodicMemoryConfig,
+
+    /// Skills system configuration
+    #[serde(default)]
+    pub skills: SkillsConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -554,6 +560,7 @@ impl Default for NexiBotConfig {
             dreaming: crate::memory_dreaming::DreamingConfig::default(),
             media_gen: MediaGenConfig::default(),
             episodic_memory: crate::episodic_memory::EpisodicMemoryConfig::default(),
+            skills: SkillsConfig::default(),
         }
     }
 }
