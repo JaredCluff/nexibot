@@ -2606,13 +2606,16 @@ pub async fn compact_conversation(
 
 /// Get estimated context usage stats.
 #[tauri::command]
-pub async fn get_context_usage(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn get_context_usage(
+    state: State<'_, AppState>,
+    agent_id: Option<String>,
+) -> Result<serde_json::Value, String> {
     let config = state.config.read().await;
     let model = config.claude.model.clone();
     drop(config);
 
-    let claude_client = state.claude_client.read().await;
-    let (total_tokens, window_size, usage_pct) = claude_client.get_context_usage(&model).await;
+    let client = resolve_gui_client(&state, agent_id.as_deref()).await;
+    let (total_tokens, window_size, usage_pct) = client.get_context_usage(&model).await;
 
     Ok(serde_json::json!({
         "estimated_tokens": total_tokens,

@@ -262,9 +262,9 @@ function Chat({ sessionId, onSessionChange, onAuthRequired, onOpenInCanvas }: Ch
   // Context usage after each message
   useEffect(() => {
     if (messages.length === 0) return;
-    invoke<typeof contextUsage>('get_context_usage').then(setContextUsage)
+    invoke<typeof contextUsage>('get_context_usage', { agentId: activeAgent || null }).then(setContextUsage)
       .catch((e) => console.warn('Failed to get context usage:', e));
-  }, [messages.length]);
+  }, [messages.length, activeAgent]);
 
   // Auto-compact events
   useEffect(() => {
