@@ -50,6 +50,33 @@ cargo tauri build
 
 See [detailed setup guide](docs/SETUP_NEXIBOT.md) for platform-specific instructions.
 
+## Deploy in 60 Seconds (Headless / VPS)
+
+NexiBot runs as a headless server on any $5/month VPS.
+
+1.  Clone and copy the environment template:
+
+    ```bash
+    git clone https://github.com/jaredcluff/nexibot.git
+    cd nexibot
+    cp .env.example .env
+    cp config/presets/minimal.yaml ~/.config/nexibot/config.yaml
+    ```
+
+2.  Fill in `.env` with your `ANTHROPIC_API_KEY` and channel tokens, then start:
+
+    ```bash
+    docker compose up -d
+    docker compose logs -f nexibot
+    ```
+
+3.  Confirm:
+    - `curl http://127.0.0.1:18790/health` → bridge healthy
+    - Send a message to your Telegram bot → reply received
+    - Memory persists across restarts in `./memory/`
+
+For full channel setup, see [docs/CHANNELS_SETUP.md](docs/CHANNELS_SETUP.md).
+
 ## Configuration
 
 Config lives at standard XDG paths:

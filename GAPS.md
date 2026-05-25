@@ -17,6 +17,8 @@ Living tracker of competitor features and their closure status.
 | 11 | Multi-agent workflow visual editor | OpenClaw | 🔴 Open | — |
 | 12 | Native iOS companion app | OpenClaw | 🟡 Partial (mobile/ hooks) | — |
 | 13 | Structured workflow recording/playback | OpenClaw | 🔴 Open | — |
+| 14 | Post-task episodic retrospective / self-improvement loop | Hermes Agent | ✅ Closed | v0.11.0 |
+| 15 | Telegram parity (streaming, group config, reply threading, webhook, formatting) | OpenClaw | 🟡 Partial | v0.11.x |
 
 ## Legend
 

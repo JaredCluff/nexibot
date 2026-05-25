@@ -1,0 +1,105 @@
+# NexiBot Minimal Preset
+# Works out of the box with just an ANTHROPIC_API_KEY + one channel token.
+# All optional features are commented out so you can layer them in.
+
+config_version: 4
+
+# =============================================================================
+# Tier 1 — Always On
+# =============================================================================
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4
+  max_tokens: 4096
+  api_key: "${ANTHROPIC_API_KEY}"
+
+memory:
+  enabled: true
+  max_session_messages: 500
+
+# =============================================================================
+# Tier 2 — Pick One Channel (uncomment the one you want)
+# =============================================================================
+
+telegram:
+  enabled: true
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+
+# discord:
+#   enabled: false
+#   bot_token: "${DISCORD_BOT_TOKEN}"
+
+# slack:
+#   enabled: false
+#   bot_token: "${SLACK_BOT_TOKEN}"
+
+# signal:
+#   enabled: false
+#   cli_rest_url: "http://127.0.0.1:8080"
+
+# whatsapp:
+#   enabled: false
+#   token: "${WHATSAPP_TOKEN}"
+
+# matrix:
+#   enabled: false
+#   homeserver: "https://matrix.org"
+#   access_token: "${MATRIX_ACCESS_TOKEN}"
+
+# =============================================================================
+# Tier 3 — Voice (optional, requires API keys)
+# =============================================================================
+
+# voice:
+#   enabled: false
+#   stt:
+#     provider: deepgram
+#     deepgram_api_key: "${DEEPGRAM_API_KEY}"
+#   tts:
+#     provider: elevenlabs
+#     elevenlabs_api_key: "${ELEVENLABS_API_KEY}"
+
+# =============================================================================
+# Tier 4 — Security (enabled by default, tune conservatively)
+# =============================================================================
+
+defense:
+  enabled: true
+  fail_open: false
+
+# =============================================================================
+# Tier 5 — Orchestration (multi-agent teams)
+# =============================================================================
+
+# orchestration:
+#   enabled: false
+
+# =============================================================================
+# Tier 6 — Episodic Self-Improvement (new in v0.11.0)
+# =============================================================================
+
+episodic_memory:
+  enabled: true
+  max_records: 10000
+  inject_limit: 3
+  inject_threshold: 0.72
+
+# =============================================================================
+# Tier 7 — Self-Learning Skills (new in v0.11.0)
+# =============================================================================
+
+skills:
+  enabled: true
+  auto_save_interactions: true
+  auto_suggest_improvements: true
+  improvement_interval_days: 7
+
+# =============================================================================
+# Logging
+# =============================================================================
+
+logging:
+  level: info
+  format: pretty
+  file: "~/.config/nexibot/nexibot.log"

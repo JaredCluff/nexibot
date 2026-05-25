@@ -36,6 +36,7 @@ mod defense;
 mod discord;
 mod email;
 mod embeddings;
+mod episodic_memory;
 mod gmail;
 mod family_mode;
 mod gated_shell;

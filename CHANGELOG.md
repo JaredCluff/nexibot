@@ -4,6 +4,31 @@ All notable changes to NexiBot will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.0] - 2026-05-24
+
+### Added
+
+- **Episodic self-improvement loop**: Post-task retrospectives stored in SQLite with vector
+  similarity search. Before each task, up to 3 similar past experiences are injected into
+  the system prompt, helping the agent learn from prior runs.
+- **Deployability polish**: `.env.example` with all supported environment variables,
+  `config/presets/minimal.yaml` for single-key VPS deployment, and a "Deploy in 60 seconds"
+  section in README.
+- **Telegram P2 QoL features** (config fields, wired in v0.11.1):
+  - Configurable ack/done reaction emojis + scope (`reaction_scope`: all/direct/group-mentions/off)
+  - Error policy + cooldown (`error_policy`: reply/silent, `error_cooldown_ms`)
+  - Per-DM thread reply mode (`dm_thread_replies`: off/inbound/always)
+  - Polling stall detection (`polling_stall_threshold_ms`)
+  - Bot sender filtering (`sender_type_policy`: humans-only/humans-and-allowlisted-bots/open)
+  - Custom command menu (`custom_commands` registered with `setMyCommands`)
+  - Response prefix + link preview control
+
+### Fixed
+
+- Merged 11 unmerged audit-pass branches (37–45) covering HTTP timeouts, TaskStore bounds,
+  UTF-8 truncation safety, circuit breaker caps, Telegram LLM lock eviction, MCP tool naming,
+  iframe sandbox, DAG task timeouts, and retry logic fixes.
+
 ## [0.8.1] - 2026-03-24
 
 ### Added
