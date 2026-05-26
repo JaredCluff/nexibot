@@ -198,6 +198,306 @@ impl TelegramBotState {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Resolved config helpers (P1: group-level config + per-topic overrides)
+// ---------------------------------------------------------------------------
+
+/// Effective configuration for a single Telegram message after merging
+/// global → group → topic defaults.
+#[derive(Debug, Clone)]
+struct ResolvedConfig {
+    pub require_mention: bool,
+    pub allow_from: Vec<i64>,
+    pub group_policy: crate::config::channels::GroupPolicy,
+    pub agent_id: Option<String>,
+    pub system_prompt: Option<String>,
+    pub skills: Vec<String>,
+    pub enabled: bool,
+}
+
+impl Default for ResolvedConfig {
+    fn default() -> Self {
+        Self {
+            require_mention: false,
+            allow_from: vec![],
+            group_policy: crate::config::channels::GroupPolicy::Open,
+            agent_id: None,
+            system_prompt: None,
+            skills: vec![],
+            enabled: true,
+        }
+    }
+}
+
+/// Resolve effective config for a chat/thread by merging global → group → topic.
+fn resolve_config(
+    global: &crate::config::channels::TelegramConfig,
+    chat_id: i64,
+    thread_id: Option<i32>,
+) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+
+    // Global defaults
+    resolved.require_mention = false;
+    resolved.allow_from = global.allowed_chat_ids.clone();
+    resolved.agent_id = global.bots.first().and_then(|b| b.agent_id.clone());
+
+    // Group-level override
+    if let Some(group) = global.groups.get(&chat_id) {
+        resolved.require_mention = group.require_mention;
+        resolved.allow_from = group.allow_from.clone();
+        resolved.group_policy = group.group_policy.clone();
+        resolved.agent_id = group.agent_id.clone().or(resolved.agent_id);
+        resolved.system_prompt = group.system_prompt.clone();
+        resolved.skills = group.skills.clone();
+        resolved.enabled = group.enabled;
+
+        // Topic-level override
+        if let Some(tid) = thread_id {
+            let tid_str = tid.to_string();
+            let topic = group
+                .topics
+                .get(&tid_str)
+                .or_else(|| group.topics.get("*"));
+            if let Some(topic) = topic {
+                if let Some(v) = topic.require_mention {
+                    resolved.require_mention = v;
+                }
+                if let Some(v) = topic.allow_from.clone() {
+                    resolved.allow_from = v;
+                }
+                if let Some(v) = topic.group_policy.clone() {
+                    resolved.group_policy = v;
+                }
+                if let Some(v) = topic.agent_id.clone() {
+                    resolved.agent_id = Some(v);
+                }
+                if let Some(v) = topic.enabled {
+                    resolved.enabled = v;
+                }
+                if let Some(v) = topic.system_prompt.clone() {
+                    resolved.system_prompt = Some(v);
+                }
+                if let Some(v) = topic.skills.clone() {
+                    resolved.skills = v;
+                }
+            }
+        }
+    }
+
+    resolved
+}
+
+// ---------------------------------------------------------------------------
+// Markdown → Telegram HTML (P1.6)
+// ---------------------------------------------------------------------------
+
+/// Convert a subset of Markdown to Telegram HTML.
+///
+/// Supports:
+/// - `**bold**` → `<b>bold</b>`
+/// - `*italic*` → `<i>italic</i>`
+/// - `` `code` `` → `<code>code</code>`
+/// - `\`\`\`lang\ncode\n\`\`\`` → `<pre><code class="language-lang">code</code></pre>`
+///
+/// Falls back to escaping `<`, `>`, `&` in plain text.
+pub fn markdown_to_telegram_html(text: &str) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        // Fenced code block: ```lang\n...\n```
+        if ch == '`' && chars.peek() == Some(&'`') {
+            let mut next = chars.clone();
+            next.next(); // second `
+            if next.peek() == Some(&'`') {
+                // Consume the opening ```
+                chars.next(); // second `
+                chars.next(); // third `
+                // Optional language tag
+                let mut lang = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c == '\n' {
+                        chars.next();
+                        break;
+                    }
+                    lang.push(c);
+                    chars.next();
+                }
+                // Collect until ```
+                let mut code = String::new();
+                let mut backtick_count = 0;
+                while let Some(c) = chars.next() {
+                    if c == '`' {
+                        backtick_count += 1;
+                        if backtick_count == 3 {
+                            break;
+                        }
+                    } else {
+                        // flush buffered backticks
+                        for _ in 0..backtick_count {
+                            code.push('`');
+                        }
+                        backtick_count = 0;
+                        code.push(c);
+                    }
+                }
+                // Trim trailing newline if present
+                let code = code.strip_suffix('\n').unwrap_or(&code);
+                if lang.is_empty() {
+                    out.push_str("<pre>");
+                } else {
+                    out.push_str(&format!("<pre><code class=\"language-{}\">", escape_html(&lang)));
+                }
+                out.push_str(&escape_html(code));
+                if lang.is_empty() {
+                    out.push_str("</pre>");
+                } else {
+                    out.push_str("</code></pre>");
+                }
+                continue;
+            }
+        }
+
+        // Inline code: `...`
+        if ch == '`' {
+            let mut code = String::new();
+            while let Some(c) = chars.next() {
+                if c == '`' {
+                    break;
+                }
+                code.push(c);
+            }
+            out.push_str("<code>");
+            out.push_str(&escape_html(&code));
+            out.push_str("</code>");
+            continue;
+        }
+
+        // Bold: **...**
+        if ch == '*' && chars.peek() == Some(&'*') {
+            let mut next = chars.clone();
+            next.next();
+            if next.peek() != Some(&'*') {
+                chars.next(); // consume second *
+                let mut content = String::new();
+                let mut found = false;
+                while let Some(c) = chars.next() {
+                    if c == '*' && chars.peek() == Some(&'*') {
+                        chars.next();
+                        found = true;
+                        break;
+                    }
+                    content.push(c);
+                }
+                if found {
+                    out.push_str("<b>");
+                    out.push_str(&escape_html(&content));
+                    out.push_str("</b>");
+                    continue;
+                } else {
+                    out.push_str("**");
+                    out.push_str(&escape_html(&content));
+                    continue;
+                }
+            }
+        }
+
+        // Italic: *...* (but not **)
+        if ch == '*' {
+            let mut content = String::new();
+            let mut found = false;
+            while let Some(c) = chars.next() {
+                if c == '*' {
+                    found = true;
+                    break;
+                }
+                content.push(c);
+            }
+            if found {
+                out.push_str("<i>");
+                out.push_str(&escape_html(&content));
+                out.push_str("</i>");
+                continue;
+            } else {
+                out.push('*');
+                out.push_str(&escape_html(&content));
+                continue;
+            }
+        }
+
+        out.push_str(&escape_html(&ch.to_string()));
+    }
+
+    out
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Send a message with optional HTML formatting, falling back to plain text
+/// if Telegram rejects the parse mode (e.g. malformed HTML).
+async fn send_formatted_message(
+    bot: &Bot,
+    chat_id: teloxide::types::ChatId,
+    text: &str,
+    parse_mode: &str,
+    link_preview: bool,
+    reply_to: Option<i32>,
+) {
+    let is_html = parse_mode.eq_ignore_ascii_case("html");
+    let formatted = if is_html {
+        markdown_to_telegram_html(text)
+    } else {
+        text.to_string()
+    };
+
+    for chunk in router::split_message(&formatted, 4096) {
+        let mut req = bot.send_message(chat_id, chunk.clone());
+        if !link_preview {
+            req = req.disable_web_page_preview(true);
+        }
+        if let Some(rt) = reply_to {
+            req = req.reply_parameters(teloxide::types::ReplyParameters::new(
+                teloxide::types::MessageId(rt),
+            ));
+        }
+        if is_html {
+            req = req.parse_mode(teloxide::types::ParseMode::Html);
+        }
+        if let Err(e) = req.await {
+            // If Telegram rejected HTML, retry as plain text
+            if is_html && e.to_string().contains("400") {
+                warn!(
+                    "[TELEGRAM] HTML parse failed for {}, retrying as plain text",
+                    chat_id
+                );
+                let mut req2 = bot.send_message(chat_id, chunk);
+                if !link_preview {
+                    req2 = req2.disable_web_page_preview(true);
+                }
+                if let Some(rt) = reply_to {
+                    req2 = req2.reply_parameters(teloxide::types::ReplyParameters::new(
+                        teloxide::types::MessageId(rt),
+                    ));
+                }
+                if let Err(e2) = req2.await {
+                    warn!(
+                        "[TELEGRAM] Failed to send message to {}: {}",
+                        chat_id, e2
+                    );
+                }
+            } else {
+                warn!("[TELEGRAM] Failed to send message to {}: {}", chat_id, e);
+            }
+        }
+    }
+}
+
 /// Start the Telegram bot service.
 ///
 /// Returns an `Arc<AtomicBool>` stop handle.  Set it to `true` to request
@@ -505,6 +805,22 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     let chat_id = msg.chat.id;
     let sender_user_id = msg.from.as_ref().and_then(|u| i64::try_from(u.id.0).ok());
     let sender_is_bot = msg.from.as_ref().map(|u| u.is_bot).unwrap_or(false);
+    let thread_id = msg.thread_id.map(|t| t.0 .0);
+
+    // Resolve effective config: global → group → topic
+    let resolved = {
+        let cfg = state.app_state.config.read().await;
+        resolve_config(&cfg.telegram, chat_id.0, thread_id)
+    };
+
+    // Skip disabled groups/topics
+    if !resolved.enabled {
+        debug!(
+            "[TELEGRAM] Chat {} thread {:?} is disabled by group config",
+            chat_id.0, thread_id
+        );
+        return;
+    }
 
     // Sender-type policy: filter bot-to-bot messages.
     {
@@ -865,14 +1181,12 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
 
     // Build the session key, incorporating the forum thread ID when thread
     // routing is enabled so each topic gets an isolated conversation history.
-    let thread_id = msg.thread_id;
     let thread_routing = {
         let cfg = state.app_state.config.read().await;
         cfg.telegram.thread_routing_enabled
     };
     let session_key = if thread_routing {
-        // ThreadId(MessageId(i32)) — extract the inner i32 with .0 .0
-        make_session_key_with_thread(chat_id.0, thread_id.map(|t| t.0 .0))
+        make_session_key_with_thread(chat_id.0, thread_id)
     } else {
         format!("telegram:{}", chat_id.0)
     };
@@ -883,7 +1197,8 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     let message = IncomingMessage {
         text: text.to_string(),
         channel: ChannelSource::Telegram { chat_id: chat_id.0 },
-        agent_id: state.agent_id_override.clone(),
+        // Per-topic/group agent_id takes precedence over bot-level override.
+        agent_id: resolved.agent_id.clone().or(state.agent_id_override.clone()),
         metadata: HashMap::new(),
     };
 
@@ -962,8 +1277,8 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         set_message_reaction(&bot, chat_id.0, msg.id.0, done).await;
     }
 
-    // Gather P2 config for response sending
-    let (response_prefix, link_preview, dm_thread_replies, error_policy, error_cooldown_ms) = {
+    // Gather P2 + P1 config for response sending
+    let (response_prefix, link_preview, dm_thread_replies, error_policy, error_cooldown_ms, reply_to_mode, formatting) = {
         let cfg = state.app_state.config.read().await;
         (
             cfg.telegram.response_prefix.clone(),
@@ -971,16 +1286,28 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
             cfg.telegram.dm_thread_replies.clone(),
             cfg.telegram.error_policy.clone(),
             cfg.telegram.error_cooldown_ms,
+            cfg.telegram.reply_to_mode.clone(),
+            cfg.telegram.formatting.clone(),
         )
     };
+
+    // Compute reply_to based on DM thread replies + reply_to_mode (P1.4)
+    let trigger_msg_id = msg.id.0;
     let reply_to = if is_private {
+        // DM thread replies take precedence in private chats
         match dm_thread_replies {
-            crate::config::channels::DmThreadReplyMode::Always => Some(msg.id.0),
-            crate::config::channels::DmThreadReplyMode::Inbound if msg.reply_to_message().is_some() => Some(msg.id.0),
-            _ => None,
+            crate::config::channels::DmThreadReplyMode::Always => Some(trigger_msg_id),
+            crate::config::channels::DmThreadReplyMode::Inbound if msg.reply_to_message().is_some() => Some(trigger_msg_id),
+            _ => match reply_to_mode {
+                crate::config::channels::ReplyToMode::First => Some(trigger_msg_id),
+                _ => None,
+            }
         }
     } else {
-        None
+        match reply_to_mode {
+            crate::config::channels::ReplyToMode::First => Some(trigger_msg_id),
+            _ => None,
+        }
     };
 
     match result {
@@ -988,19 +1315,9 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
             let response = router::extract_text_from_response(&routed.text);
             if response.is_empty() {
                 let text = format!("{}(No response)", response_prefix);
-                let mut req = bot.send_message(chat_id, text);
-                if !link_preview {
-                    req = req.disable_web_page_preview(true);
-                }
-                if let Some(rt) = reply_to {
-                    req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
-                }
-                if let Err(e) = req.await {
-                    warn!(
-                        "[TELEGRAM] Failed to send '(No response)' to {}: {}",
-                        chat_id, e
-                    );
-                }
+                send_formatted_message(
+                    &bot, chat_id, &text, &formatting.parse_mode, link_preview, reply_to,
+                ).await;
             } else {
                 let prefixed = format!("{}{}", response_prefix, response);
                 // If the incoming message was voice AND voice_response is enabled,
@@ -1009,21 +1326,9 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
 
                 if voice_response_enabled {
                     // Send text first, then voice
-                    for chunk in router::split_message(&prefixed, 4096) {
-                        let mut req = bot.send_message(chat_id, chunk);
-                        if !link_preview {
-                            req = req.disable_web_page_preview(true);
-                        }
-                        if let Some(rt) = reply_to {
-                            req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
-                        }
-                        if let Err(e) = req.await {
-                            warn!(
-                                "[TELEGRAM] Failed to send response chunk to {}: {}",
-                                chat_id, e
-                            );
-                        }
-                    }
+                    send_formatted_message(
+                        &bot, chat_id, &prefixed, &formatting.parse_mode, link_preview, reply_to,
+                    ).await;
                     // Send voice response
                     match synthesize_voice_response(&prefixed, &state.app_state).await {
                         Ok(ogg_bytes) => {
@@ -1041,39 +1346,17 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
                         }
                     }
                 } else {
-                    // Text-only response
-                    for chunk in router::split_message(&prefixed, 4096) {
-                        let mut req = bot.send_message(chat_id, chunk);
-                        if !link_preview {
-                            req = req.disable_web_page_preview(true);
-                        }
-                        if let Some(rt) = reply_to {
-                            req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
-                        }
-                        if let Err(e) = req.await {
-                            warn!(
-                                "[TELEGRAM] Failed to send response chunk to {}: {}",
-                                chat_id, e
-                            );
-                        }
-                    }
+                    // Text-only response with formatting
+                    send_formatted_message(
+                        &bot, chat_id, &prefixed, &formatting.parse_mode, link_preview, reply_to,
+                    ).await;
                 }
             }
         }
         Err(RouterError::Blocked(msg)) => {
-            let mut req = bot.send_message(chat_id, msg);
-            if !link_preview {
-                req = req.disable_web_page_preview(true);
-            }
-            if let Some(rt) = reply_to {
-                req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
-            }
-            if let Err(e) = req.await {
-                warn!(
-                    "[TELEGRAM] Failed to send blocked-message notice to {}: {}",
-                    chat_id, e
-                );
-            }
+            send_formatted_message(
+                &bot, chat_id, &msg, &formatting.parse_mode, link_preview, reply_to,
+            ).await;
         }
         Err(e) => {
             let err_str = e.to_string();
@@ -1098,19 +1381,9 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
                     }
                 };
                 if should_send_error {
-                    let mut req = bot.send_message(chat_id, format!("Error: {}", err_str));
-                    if !link_preview {
-                        req = req.disable_web_page_preview(true);
-                    }
-                    if let Some(rt) = reply_to {
-                        req = req.reply_parameters(teloxide::types::ReplyParameters::new(teloxide::types::MessageId(rt)));
-                    }
-                    if let Err(send_err) = req.await {
-                        warn!(
-                            "[TELEGRAM] Failed to send error message to {}: {}",
-                            chat_id, send_err
-                        );
-                    }
+                    send_formatted_message(
+                        &bot, chat_id, &format!("Error: {}", err_str), &formatting.parse_mode, link_preview, reply_to,
+                    ).await;
                 } else {
                     info!("[TELEGRAM] Suppressed error for {} per error_policy/cooldown", chat_id);
                 }

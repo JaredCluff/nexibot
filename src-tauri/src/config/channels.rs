@@ -53,6 +53,15 @@ pub enum SenderTypePolicy {
     Open,
 }
 
+/// Group access policy.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupPolicy {
+    #[default]
+    Open,
+    Restricted,
+}
+
 /// A custom slash command registered with BotFather via setMyCommands.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CustomCommand {
@@ -70,6 +79,141 @@ pub struct TelegramBotConfig {
     pub allowed_chat_ids: Vec<i64>,
     #[serde(default)]
     pub admin_chat_ids: Vec<i64>,
+}
+
+// -- P1: Group-level config types --
+
+/// Per-topic override within a Telegram group.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramTopicConfig {
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub require_mention: Option<bool>,
+    #[serde(default)]
+    pub allow_from: Option<Vec<i64>>,
+    #[serde(default)]
+    pub group_policy: Option<GroupPolicy>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub skills: Option<Vec<String>>,
+}
+
+/// Per-group configuration with topic overrides.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramGroupConfig {
+    #[serde(default)]
+    pub require_mention: bool,
+    #[serde(default)]
+    pub allow_from: Vec<i64>,
+    #[serde(default)]
+    pub group_policy: GroupPolicy,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub topics: std::collections::HashMap<String, TelegramTopicConfig>,
+}
+
+/// Reply threading mode for Telegram responses.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplyToMode {
+    #[default]
+    Off,
+    First,
+    All,
+}
+
+/// Message formatting configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramFormattingConfig {
+    #[serde(default = "default_parse_mode_html")]
+    pub parse_mode: String,
+    #[serde(default = "default_chunk_mode")]
+    pub chunk_mode: String,
+    #[serde(default = "default_chunk_limit")]
+    pub chunk_limit: usize,
+}
+
+fn default_parse_mode_html() -> String {
+    "html".to_string()
+}
+fn default_chunk_mode() -> String {
+    "newline".to_string()
+}
+fn default_chunk_limit() -> usize {
+    4000
+}
+
+impl Default for TelegramFormattingConfig {
+    fn default() -> Self {
+        Self {
+            parse_mode: default_parse_mode_html(),
+            chunk_mode: default_chunk_mode(),
+            chunk_limit: default_chunk_limit(),
+        }
+    }
+}
+
+/// Streaming progress draft configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramStreamingConfig {
+    #[serde(default = "default_streaming_mode")]
+    pub mode: String,
+    #[serde(default = "default_max_progress_lines")]
+    pub max_progress_lines: usize,
+    #[serde(default = "default_true")]
+    pub show_tool_names: bool,
+}
+
+fn default_streaming_mode() -> String {
+    "off".to_string()
+}
+fn default_max_progress_lines() -> usize {
+    4
+}
+
+impl Default for TelegramStreamingConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_streaming_mode(),
+            max_progress_lines: default_max_progress_lines(),
+            show_tool_names: true,
+        }
+    }
+}
+
+/// Webhook configuration for Telegram bot.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramWebhookConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub secret: String,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default = "default_webhook_host")]
+    pub host: String,
+    #[serde(default = "default_webhook_port")]
+    pub port: u16,
+}
+
+fn default_webhook_host() -> String {
+    "127.0.0.1".to_string()
+}
+fn default_webhook_port() -> u16 {
+    8443
 }
 
 /// Telegram Bot configuration
@@ -151,6 +295,28 @@ pub struct TelegramConfig {
     /// Whether Telegram shows link previews in bot messages.
     #[serde(default = "default_true")]
     pub link_preview: bool,
+
+    // -- P1 features --
+
+    /// Per-group configuration overrides.
+    #[serde(default)]
+    pub groups: std::collections::HashMap<i64, TelegramGroupConfig>,
+
+    /// Reply threading mode: off, first, or all.
+    #[serde(default)]
+    pub reply_to_mode: ReplyToMode,
+
+    /// Message formatting (HTML vs plain text, chunking).
+    #[serde(default)]
+    pub formatting: TelegramFormattingConfig,
+
+    /// Streaming progress draft configuration.
+    #[serde(default)]
+    pub streaming: TelegramStreamingConfig,
+
+    /// Webhook mode configuration.
+    #[serde(default)]
+    pub webhook: TelegramWebhookConfig,
 }
 
 impl Default for TelegramConfig {
@@ -178,6 +344,11 @@ impl Default for TelegramConfig {
             custom_commands: vec![],
             response_prefix: String::new(),
             link_preview: true,
+            groups: std::collections::HashMap::new(),
+            reply_to_mode: ReplyToMode::Off,
+            formatting: TelegramFormattingConfig::default(),
+            streaming: TelegramStreamingConfig::default(),
+            webhook: TelegramWebhookConfig::default(),
         }
     }
 }
