@@ -30,6 +30,11 @@ pub const REACTION_PROCESSING: &str = "👀";
 /// Reaction emoji shown when a message has been fully handled.
 pub const REACTION_DONE: &str = "✅";
 
+/// Global storage for Telegram webhook state (P1.5).
+/// Set when webhook mode is enabled so the axum handler can dispatch updates.
+static TELEGRAM_WEBHOOK_STATE: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Option<(teloxide::Bot, Arc<TelegramBotState>)>>>> =
+    std::sync::OnceLock::new();
+
 /// Per-chat UI state for Telegram conversations.
 /// The actual conversation history lives in the global AppState.claude_client.
 struct TelegramChatSession {
@@ -498,6 +503,36 @@ async fn send_formatted_message(
     }
 }
 
+/// Process a Telegram update received via webhook (P1.5).
+///
+/// Dispatches the update to the same handlers used by long-polling.
+/// Called from the axum webhook route in `webhooks.rs`.
+pub async fn process_telegram_webhook_update(update: teloxide::types::Update) {
+    let lock = TELEGRAM_WEBHOOK_STATE
+        .get()
+        .expect("TELEGRAM_WEBHOOK_STATE not initialized");
+    let guard = lock.lock().unwrap();
+    let Some((ref bot, ref state)) = *guard else {
+        warn!("[TELEGRAM] Webhook update received but state is not set");
+        return;
+    };
+    let bot = bot.clone();
+    let state = state.clone();
+    drop(guard);
+
+    match update.kind {
+        teloxide::types::UpdateKind::Message(msg) => {
+            tokio::spawn(handle_telegram_message(bot, msg, state));
+        }
+        teloxide::types::UpdateKind::CallbackQuery(cb) => {
+            tokio::spawn(handle_callback_query(bot, cb, state));
+        }
+        _ => {
+            debug!("[TELEGRAM] Webhook received unsupported update kind");
+        }
+    }
+}
+
 /// Start the Telegram bot service.
 ///
 /// Returns an `Arc<AtomicBool>` stop handle.  Set it to `true` to request
@@ -582,6 +617,53 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
     // Stop flag: set to true by the caller to request graceful shutdown.
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_task = stop_flag.clone();
+
+    // -- Webhook mode (P1.5) --
+    let webhook_config = {
+        let cfg = app_state.config.read().await;
+        cfg.telegram.webhook.clone()
+    };
+
+    if webhook_config.enabled {
+        if webhook_config.url.is_empty() {
+            warn!("[TELEGRAM] Webhook enabled but no URL configured; falling back to polling");
+        } else {
+            let secret = webhook_config.secret.clone();
+            let set_result = if secret.is_empty() {
+                bot.set_webhook(teloxide::types::SetWebhook::new(&webhook_config.url))
+                    .await
+            } else {
+                bot.set_webhook(teloxide::types::SetWebhook::new(&webhook_config.url))
+                    .secret_token(secret)
+                    .await
+            };
+
+            match set_result {
+                Ok(_) => {
+                    info!("[TELEGRAM] Webhook registered: {}", webhook_config.url);
+                    // Store bot + state for the axum handler
+                    let _ = TELEGRAM_WEBHOOK_STATE
+                        .set(std::sync::Arc::new(std::sync::Mutex::new(Some((
+                            bot.clone(),
+                            bot_state.clone(),
+                        )))));
+                    // Return stop flag; no polling loop needed
+                    return Ok(Some(stop_flag));
+                }
+                Err(e) => {
+                    warn!(
+                        "[TELEGRAM] Failed to set webhook ({}), falling back to polling: {}",
+                        webhook_config.url, e
+                    );
+                }
+            }
+        }
+    } else {
+        // Ensure webhook is cleared when switching back to polling
+        if let Err(e) = bot.delete_webhook().await {
+            warn!("[TELEGRAM] Failed to delete webhook: {}", e);
+        }
+    }
 
     // Spawn the long-polling loop with exponential backoff on unexpected exit.
     tokio::spawn(async move {

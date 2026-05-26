@@ -186,6 +186,13 @@ pub async fn start_webhook_server(
         app = app.merge(wa_router);
         info!("[WEBHOOK] WhatsApp webhook routes added");
 
+        // Telegram webhook route (P1.5)
+        let tg_router = Router::new()
+            .route("/telegram/webhook", post(telegram_webhook_handler))
+            .with_state(state.clone());
+        app = app.merge(tg_router);
+        info!("[WEBHOOK] Telegram webhook route added");
+
         let slack_state = Arc::new(crate::slack::SlackState::new(app_st.clone()));
         let slack_cleanup = slack_state.clone();
         tokio::spawn(crate::slack::session_cleanup_loop(slack_cleanup));
@@ -347,6 +354,45 @@ pub async fn start_webhook_server(
     }
 
     Ok(())
+}
+
+/// Telegram Bot API webhook handler (P1.5).
+///
+/// Receives updates from Telegram servers, validates the secret token,
+/// and dispatches to the same handlers used by long-polling.
+async fn telegram_webhook_handler(
+    AxumState(state): AxumState<Arc<WebhookState>>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    // Validate secret token if configured
+    let expected_secret = {
+        let cfg = state.config.read().await;
+        cfg.telegram.webhook.secret.clone()
+    };
+
+    if !expected_secret.is_empty() {
+        let provided = headers
+            .get("x-telegram-bot-api-secret-token")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if provided != expected_secret {
+            warn!("[WEBHOOK] Telegram secret token mismatch — rejecting update");
+            return StatusCode::UNAUTHORIZED;
+        }
+    }
+
+    // Parse the update and dispatch
+    match serde_json::from_value::<teloxide::types::Update>(payload) {
+        Ok(update) => {
+            crate::telegram::process_telegram_webhook_update(update).await;
+            StatusCode::OK
+        }
+        Err(e) => {
+            warn!("[WEBHOOK] Failed to parse Telegram update: {}", e);
+            StatusCode::BAD_REQUEST
+        }
+    }
 }
 
 /// Middleware that adds security headers to all HTTP responses.
