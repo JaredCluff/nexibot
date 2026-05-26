@@ -48,13 +48,9 @@ const OPENWAKEWORD_BASE_URL: &str =
 
 /// Expected SHA-256 digests for OpenWakeWord v0.5.1 pipeline models.
 ///
-/// **SECURITY**: Downloads are BLOCKED until these are replaced with real digests.
-/// To generate a digest, download the model manually from a trusted source, then run:
-///   shasum -a 256 melspectrogram.onnx
-///   shasum -a 256 embedding_model.onnx
-///   shasum -a 256 hey_nexus.onnx
-/// Paste the 64-character hex string here. This prevents supply-chain attacks
-/// where a CDN serves a tampered model file.
+/// Built-in models (melspectrogram, embedding_model) have verified digests.
+/// Custom wake-word models (e.g. hey_nexus.onnx) must be placed manually;
+/// update their constants after computing `shasum -a 256 <file>`.
 const MELSPECTROGRAM_SHA256: &str =
     "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f";
 const EMBEDDING_MODEL_SHA256: &str =
@@ -244,6 +240,16 @@ impl WakeWordDetector {
                     std::fs::copy(&existing, &model_path)?;
                 }
                 continue;
+            }
+
+            // Custom models with no URL must be placed manually
+            if model.url.is_empty() {
+                anyhow::bail!(
+                    "Wake word model '{}' not found. It must be placed manually in one of: {:?}. \
+                     There is no public download URL for this custom model.",
+                    model.filename,
+                    Self::get_search_dirs()
+                );
             }
 
             // Download if not found

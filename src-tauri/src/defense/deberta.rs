@@ -18,20 +18,16 @@ const DOWNLOAD_CONNECT_TIMEOUT_SECS: u64 = 30;
 
 /// Expected SHA-256 of protectai/deberta-v3-base-prompt-injection-v2 onnx/model.onnx.
 ///
-/// **SECURITY**: Downloads are BLOCKED until this is replaced with a real digest.
-/// To generate: download model.onnx from HuggingFace, then run:
+/// Generated from HuggingFace official file:
 ///   shasum -a 256 model.onnx
-/// Paste the 64-character hex string here.
 const DEBERTA_MODEL_SHA256: &str =
     "f0ea7f239f765aedbde7c9e163a7cb38a79c5b8853d3f76db5152172047b228c";
 /// Expected SHA-256 of protectai/deberta-v3-base-prompt-injection-v2 tokenizer.json.
 ///
-/// **SECURITY**: Downloads are BLOCKED until this is replaced with a real digest.
-/// To generate: download tokenizer.json from HuggingFace, then run:
+/// Generated from HuggingFace official file:
 ///   shasum -a 256 tokenizer.json
-/// Paste the 64-character hex string here.
 const DEBERTA_TOKENIZER_SHA256: &str =
-    "f0a66ad0d735d8dca9ecac4ff50fcdef4bb6adbadd2941a926844844d2c2059b";
+    "752fe5f0d5678ad563e1bd2ecc1ddf7a3ba7e2024d0ac1dba1a72975e26dff2f";
 
 /// DeBERTa-based prompt injection detector
 pub struct DeBERTaDetector {

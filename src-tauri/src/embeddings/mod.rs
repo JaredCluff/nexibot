@@ -370,8 +370,7 @@ fn download_file(url: &str, path: &PathBuf, expected_sha256: &str) -> Result<()>
         info!("[EMBEDDINGS] SHA-256 verified for {}", path.display());
     } else {
         anyhow::bail!(
-            "SHA-256 not configured for {} — refusing to write unverified file. \
-             Replace the TODO constant in embeddings/mod.rs with the expected SHA-256.",
+            "SHA-256 not configured for {} — refusing to write unverified file.",
             path.display()
         );
     }
