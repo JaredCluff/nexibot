@@ -3,8 +3,10 @@
 //! Provides a trait-based interface for multiple STT backends.
 //! Supports native OS speech, SenseVoice (local), and cloud APIs (Deepgram, OpenAI).
 
+pub mod azure;
 pub mod cloud;
 pub mod deepgram_rate_limiter;
+pub mod google_cloud;
 #[cfg(target_os = "macos")]
 pub mod macos_speech;
 pub mod sensevoice;
@@ -15,8 +17,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::time::Duration;
 
+pub use azure::AzureStt;
 pub use cloud::{DeepgramStt, OpenAIStt};
 pub use deepgram_rate_limiter::DeepgramRateLimiter;
+pub use google_cloud::GoogleCloudStt;
 #[cfg(target_os = "macos")]
 pub use macos_speech::MacOsSpeechStt;
 pub use sensevoice::SenseVoiceStt;

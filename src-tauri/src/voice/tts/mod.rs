@@ -3,6 +3,7 @@
 //! Provides a trait-based interface for multiple TTS backends.
 //! Supports native OS speech, Piper (local), espeak-ng (Linux), and cloud APIs.
 
+pub mod azure;
 pub mod cloud;
 #[cfg(target_os = "linux")]
 pub mod espeak;
@@ -15,6 +16,7 @@ pub mod windows_sapi;
 use anyhow::Result;
 use async_trait::async_trait;
 
+pub use azure::AzureTts;
 pub use cloud::{CartesiaTts, ElevenLabsTts};
 #[cfg(target_os = "macos")]
 pub use macos_say::MacOsSayTts;

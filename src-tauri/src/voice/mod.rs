@@ -321,6 +321,11 @@ fn register_tts_backends(tts: &mut tts::TtsManager, config: &NexiBotConfig) {
         config.tts.cartesia_model.clone(),
         config.tts.cartesia_speed,
     )));
+    tts.register_backend(Box::new(tts::AzureTts::new(
+        config.tts.azure_subscription_key.clone(),
+        config.tts.azure_region.clone(),
+        config.tts.azure_voice_name.clone(),
+    )));
 }
 
 /// Register all STT backends from config (shared by start and reinit).
@@ -361,6 +366,15 @@ async fn register_stt_backends(stt: &mut stt::SttManager, config: &NexiBotConfig
     )));
     stt.register_backend(Box::new(stt::OpenAIStt::new(
         config.stt.openai_api_key.clone(),
+    )));
+    stt.register_backend(Box::new(stt::GoogleCloudStt::new(
+        config.stt.google_cloud_api_key.clone(),
+        config.stt.google_cloud_language.clone(),
+    )));
+    stt.register_backend(Box::new(stt::AzureStt::new(
+        config.stt.azure_subscription_key.clone(),
+        config.stt.azure_region.clone(),
+        config.stt.azure_language.clone(),
     )));
 }
 

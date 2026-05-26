@@ -141,6 +141,18 @@ fn default_calls_per_minute() -> u32 {
 fn default_monthly_budget_secs() -> f32 {
     200.0 * 3600.0 // 720 000 s = Deepgram free tier
 }
+fn default_google_cloud_language() -> String {
+    "en-US".to_string()
+}
+fn default_azure_region() -> String {
+    "westus".to_string()
+}
+fn default_azure_language() -> String {
+    "en-US".to_string()
+}
+fn default_azure_voice() -> String {
+    "en-US-AriaNeural".to_string()
+}
 
 impl Default for DeepgramRateLimitConfig {
     fn default() -> Self {
@@ -170,6 +182,26 @@ pub struct SttConfig {
     /// OpenAI API key (for cloud STT)
     #[serde(default)]
     pub openai_api_key: Option<String>,
+
+    /// Google Cloud API key (for cloud STT)
+    #[serde(default)]
+    pub google_cloud_api_key: Option<String>,
+
+    /// Google Cloud STT language code (default: "en-US")
+    #[serde(default = "default_google_cloud_language")]
+    pub google_cloud_language: String,
+
+    /// Azure Speech subscription key (for cloud STT)
+    #[serde(default)]
+    pub azure_subscription_key: Option<String>,
+
+    /// Azure Speech region (e.g. "westus", "eastus")
+    #[serde(default = "default_azure_region")]
+    pub azure_region: String,
+
+    /// Azure Speech language (default: "en-US")
+    #[serde(default = "default_azure_language")]
+    pub azure_language: String,
 
     /// SenseVoice ONNX model path (for local STT)
     #[serde(default)]
@@ -220,6 +252,18 @@ pub struct TtsConfig {
     /// Cartesia speech speed multiplier (0.6–1.5, default: 1.0)
     #[serde(default)]
     pub cartesia_speed: Option<f64>,
+
+    /// Azure Speech subscription key (for Neural TTS)
+    #[serde(default)]
+    pub azure_subscription_key: Option<String>,
+
+    /// Azure Speech region (e.g. "westus", "eastus")
+    #[serde(default = "default_azure_region")]
+    pub azure_region: String,
+
+    /// Azure Neural voice name (default: "en-US-AriaNeural")
+    #[serde(default = "default_azure_voice")]
+    pub azure_voice_name: String,
 
     /// Piper ONNX model path (for local TTS)
     #[serde(default)]
@@ -355,6 +399,11 @@ impl Default for SttConfig {
             .to_string(),
             deepgram_api_key: None,
             openai_api_key: None,
+            google_cloud_api_key: None,
+            google_cloud_language: default_google_cloud_language(),
+            azure_subscription_key: None,
+            azure_region: default_azure_region(),
+            azure_language: default_azure_language(),
             sensevoice_model_path: None,
             deepgram_rate_limit: DeepgramRateLimitConfig::default(),
             preferred_language: None,
@@ -380,6 +429,9 @@ impl Default for TtsConfig {
             cartesia_voice_id: None,
             cartesia_model: None,
             cartesia_speed: None,
+            azure_subscription_key: None,
+            azure_region: default_azure_region(),
+            azure_voice_name: default_azure_voice(),
             piper_model_path: None,
             piper_voice: None,
             espeak_voice: None,
