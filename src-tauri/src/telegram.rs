@@ -1202,12 +1202,38 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         metadata: HashMap::new(),
     };
 
+    // Streaming progress draft (P1.1)
+    let (streaming_enabled, streaming_mode, max_progress_lines, show_tool_names) = {
+        let cfg = state.app_state.config.read().await;
+        let enabled = cfg.telegram.streaming.mode != "off";
+        (
+            enabled,
+            cfg.telegram.streaming.mode.clone(),
+            cfg.telegram.streaming.max_progress_lines,
+            cfg.telegram.streaming.show_tool_names,
+        )
+    };
+
     let observer = tool_loop::TelegramObserver::new(
         bot.clone(),
         chat_id,
         sender_user_id,
         state.app_state.telegram_pending_approvals.clone(),
     );
+    observer.set_streaming_config(max_progress_lines, show_tool_names);
+
+    let mut draft_message_id: Option<i32> = None;
+    if streaming_enabled {
+        match bot.send_message(chat_id, "⏳ Working…").await {
+            Ok(sent) => {
+                draft_message_id = Some(sent.id.0);
+                observer.set_draft_message_id(sent.id.0);
+            }
+            Err(e) => {
+                warn!("[TELEGRAM] Failed to send draft message to {}: {}", chat_id, e);
+            }
+        }
+    }
 
     // Serialize LLM calls per-chat so rapid successive messages don't
     // interleave in the same conversation history.  The approval callback path
@@ -1277,6 +1303,52 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         set_message_reaction(&bot, chat_id.0, msg.id.0, done).await;
     }
 
+    // Pre-read config needed for draft finalization
+    let (response_prefix_early, formatting_early) = {
+        let cfg = state.app_state.config.read().await;
+        (cfg.telegram.response_prefix.clone(), cfg.telegram.formatting.clone())
+    };
+
+    // Finalize streaming draft: if the response is plain text and fits in one
+    // message, edit the draft in place. Otherwise delete the draft and send
+    // the final response as a new message (media, voice, multi-chunk).
+    let mut draft_finalized = false;
+    if let (Some(draft_id), Ok(ref routed)) = (draft_message_id, &result) {
+        let response = router::extract_text_from_response(&routed.text);
+        let prefixed = format!("{}{}", response_prefix_early, response);
+        let voice_response_enabled = was_voice_message && voice_response;
+        let fits_single = !prefixed.is_empty()
+            && !voice_response_enabled
+            && router::split_message(&prefixed, formatting_early.chunk_limit).len() == 1;
+
+        if fits_single {
+            let edit_req = bot.edit_message_text(
+                chat_id,
+                teloxide::types::MessageId(draft_id),
+                prefixed.clone(),
+            );
+            // Apply parse_mode if HTML formatting is enabled
+            let edit_req = if formatting_early.parse_mode.eq_ignore_ascii_case("html") {
+                edit_req.parse_mode(teloxide::types::ParseMode::Html)
+            } else {
+                edit_req
+            };
+            if let Err(e) = edit_req.await {
+                warn!("[TELEGRAM] Failed to finalize draft to final response: {}", e);
+                // Fall through to normal send path
+            } else {
+                draft_finalized = true;
+            }
+        }
+
+        if !draft_finalized {
+            // Delete the draft so it doesn't linger
+            if let Err(e) = bot.delete_message(chat_id, teloxide::types::MessageId(draft_id)).await {
+                debug!("[TELEGRAM] Draft delete failed (may already be gone): {}", e);
+            }
+        }
+    }
+
     // Gather P2 + P1 config for response sending
     let (response_prefix, link_preview, dm_thread_replies, error_policy, error_cooldown_ms, reply_to_mode, formatting) = {
         let cfg = state.app_state.config.read().await;
@@ -1313,7 +1385,9 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
     match result {
         Ok(routed) => {
             let response = router::extract_text_from_response(&routed.text);
-            if response.is_empty() {
+            if draft_finalized {
+                // Draft was already edited to the final response; skip sending.
+            } else if response.is_empty() {
                 let text = format!("{}(No response)", response_prefix);
                 send_formatted_message(
                     &bot, chat_id, &text, &formatting.parse_mode, link_preview, reply_to,

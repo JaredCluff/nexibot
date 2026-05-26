@@ -825,6 +825,17 @@ pub struct TelegramObserver {
             std::collections::HashMap<(i64, i64), tokio::sync::oneshot::Sender<bool>>,
         >,
     >,
+    /// Draft message ID for streaming progress (P1.1). When set, tool-start
+    /// notifications edit this message instead of sending new ones.
+    pub draft_message_id: std::sync::Arc<std::sync::Mutex<Option<i32>>>,
+    /// Max progress lines to show in the draft.
+    pub max_progress_lines: usize,
+    /// Show tool names in progress draft.
+    pub show_tool_names: bool,
+    /// Debounce: last time the draft was edited.
+    pub last_draft_edit: std::sync::Arc<std::sync::Mutex<std::time::Instant>>,
+    /// Collected progress lines for the draft.
+    pub draft_lines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl TelegramObserver {
@@ -847,7 +858,23 @@ impl TelegramObserver {
             last_tool_ok: std::sync::Arc::new(std::sync::Mutex::new(true)),
             tools_done: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pending_approvals,
+            draft_message_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            max_progress_lines: 4,
+            show_tool_names: true,
+            last_draft_edit: std::sync::Arc::new(std::sync::Mutex::new(std::time::Instant::now())),
+            draft_lines: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         }
+    }
+
+    /// Set the draft message ID for streaming progress updates.
+    pub fn set_draft_message_id(&self, id: i32) {
+        *self.draft_message_id.lock().unwrap_or_else(|e| e.into_inner()) = Some(id);
+    }
+
+    /// Configure streaming progress display.
+    pub fn set_streaming_config(&self, max_lines: usize, show_names: bool) {
+        self.max_progress_lines = max_lines;
+        self.show_tool_names = show_names;
     }
 }
 
@@ -859,6 +886,39 @@ impl ToolLoopObserver for TelegramObserver {
 
     async fn on_tool_start(&self, name: &str, _id: &str) {
         *self.last_tool.lock().unwrap_or_else(|e| e.into_inner()) = Some(name.to_string());
+
+        // Streaming progress draft (P1.1)
+        let draft_id = *self.draft_message_id.lock().unwrap_or_else(|e| e.into_inner());
+        if draft_id.is_some() {
+            let mut lines = self.draft_lines.lock().unwrap_or_else(|e| e.into_inner());
+            if self.show_tool_names {
+                lines.push(format!("🛠️ {}", name));
+            }
+            if lines.len() > self.max_progress_lines {
+                lines.remove(0);
+            }
+            let text = format!("⏳ Working…\n{}", lines.join("\n"));
+            drop(lines);
+
+            // Debounce: only edit once per second
+            let should_edit = {
+                let last = self.last_draft_edit.lock().unwrap_or_else(|e| e.into_inner());
+                last.elapsed().as_millis() >= 1000
+            };
+            if should_edit {
+                *self.last_draft_edit.lock().unwrap_or_else(|e| e.into_inner()) = std::time::Instant::now();
+                let chat_id = self.chat_id;
+                let bot = self.bot.clone();
+                let msg_id = draft_id.unwrap();
+                let text_clone = text.clone();
+                tokio::spawn(async move {
+                    let req = bot.edit_message_text(chat_id, teloxide::types::MessageId(msg_id), text_clone);
+                    if let Err(e) = req.await {
+                        debug!("[TELEGRAM] Draft edit failed (may have been deleted): {}", e);
+                    }
+                });
+            }
+        }
     }
 
     async fn on_tool_result(&self, _name: &str, _id: &str, success: bool) {
