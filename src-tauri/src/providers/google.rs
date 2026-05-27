@@ -81,13 +81,12 @@ impl GoogleGeminiClient {
         (system_instruction, contents)
     }
 
-    /// Send a request through the NexiBot bridge instead of directly to the Gemini API.
+    /// Send a non-streaming request through the NexiBot bridge.
     async fn send_via_bridge(
         &self,
         messages: &[Message],
         tools: &[serde_json::Value],
         system_prompt: &str,
-        _streaming: bool,
     ) -> Result<LlmMessageResult> {
         let mut request_body = json!({
             "apiKey": self.api_key,
@@ -169,6 +168,147 @@ impl GoogleGeminiClient {
             model_used: self.model_id.clone(),
         })
     }
+
+    /// Send a streaming request through the NexiBot bridge.
+    ///
+    /// The bridge forwards raw Gemini SSE chunks, so the parsing logic mirrors
+    /// the direct Gemini streaming path.
+    async fn send_via_bridge_streaming(
+        &self,
+        messages: &[Message],
+        tools: &[serde_json::Value],
+        system_prompt: &str,
+        on_chunk: Box<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>,
+    ) -> Result<LlmMessageResult> {
+        let mut request_body = json!({
+            "apiKey": self.api_key,
+            "model": self.model_id,
+            "max_tokens": self.max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+        });
+
+        if !tools.is_empty() {
+            request_body["tools"] = json!(tools);
+        }
+
+        let endpoint = format!("{}/api/google/messages/stream", self.bridge_url);
+        info!(
+            "[GOOGLE] Sending streaming request via bridge (model: {})",
+            self.model_id
+        );
+
+        let mut req = self
+            .http_client
+            .post(&endpoint)
+            .header("Content-Type", "application/json");
+        if let Some(secret) = crate::bridge::get_bridge_secret() {
+            req = req.header("x-bridge-secret", secret);
+        }
+        let mut response = req
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send streaming request to bridge")?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let error_text = response.text().await?;
+            anyhow::bail!("Bridge streaming error (HTTP {}): {}", status, error_text);
+        }
+
+        // Parse Gemini SSE format forwarded by the bridge.
+        let mut full_text = String::new();
+        let mut tool_uses: Vec<LlmToolUse> = Vec::new();
+        let mut stop_reason = "STOP".to_string();
+        let mut line_buffer = String::new();
+        const MAX_LINE_BUFFER: usize = 1024 * 1024; // 1 MB
+
+        while let Some(chunk_result) = response.chunk().await.transpose() {
+            let chunk_bytes = chunk_result.context("Failed to read bridge streaming chunk")?;
+            let chunk_text = String::from_utf8_lossy(&chunk_bytes);
+            line_buffer.push_str(&chunk_text);
+            if line_buffer.len() > MAX_LINE_BUFFER {
+                anyhow::bail!("Bridge streaming line buffer exceeded 1 MB — possible malformed response");
+            }
+
+            while let Some(newline_pos) = line_buffer.find('\n') {
+                let line = line_buffer[..newline_pos].trim_end_matches('\r').to_string();
+                line_buffer = line_buffer[newline_pos + 1..].to_string();
+
+                if line.is_empty() {
+                    continue;
+                }
+
+                let data = if let Some(stripped) = line.strip_prefix("data: ") {
+                    stripped
+                } else {
+                    continue;
+                };
+
+                if data == "[DONE]" {
+                    break;
+                }
+
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(candidates) = parsed.get("candidates").and_then(|c| c.as_array()) {
+                        for candidate in candidates {
+                            if let Some(parts) = candidate
+                                .get("content")
+                                .and_then(|c| c.get("parts"))
+                                .and_then(|p| p.as_array())
+                            {
+                                for part in parts {
+                                    if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
+                                        full_text.push_str(t);
+                                        on_chunk(t);
+                                    }
+                                    if let Some(fc) = part.get("functionCall") {
+                                        tool_uses.push(LlmToolUse {
+                                            id: format!("gemini-{}", tool_uses.len()),
+                                            name: fc["name"].as_str().unwrap_or("").to_string(),
+                                            input: fc["args"].clone(),
+                                        });
+                                    }
+                                }
+                            }
+
+                            if let Some(fr) = candidate
+                                .get("finishReason")
+                                .and_then(|f| f.as_str())
+                            {
+                                stop_reason = fr.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let final_stop = if !tool_uses.is_empty() {
+            "tool_use".to_string()
+        } else if stop_reason == "STOP" {
+            "end_turn".to_string()
+        } else {
+            stop_reason
+        };
+
+        info!(
+            "[GOOGLE] Bridge streaming complete: {} chars, {} tool_uses (model: {})",
+            full_text.len(),
+            tool_uses.len(),
+            self.model_id
+        );
+
+        Ok(LlmMessageResult {
+            text: full_text.clone(),
+            tool_uses,
+            stop_reason: final_stop,
+            raw_content: vec![json!({ "type": "text", "text": full_text })],
+            usage: None,
+            model_used: self.model_id.clone(),
+        })
+    }
 }
 
 #[async_trait]
@@ -200,7 +340,7 @@ impl LlmClient for GoogleGeminiClient {
         // Route through bridge if configured
         if self.use_bridge {
             return self
-                .send_via_bridge(messages, tools, system_prompt, false)
+                .send_via_bridge(messages, tools, system_prompt)
                 .await;
         }
 
@@ -311,11 +451,9 @@ impl LlmClient for GoogleGeminiClient {
         on_chunk: Box<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>,
     ) -> Result<LlmMessageResult> {
         // Route through bridge if configured
-        // TODO: Implement bridge streaming for Google provider.
-        // For now, bridge routing falls back to non-streaming.
         if self.use_bridge {
             return self
-                .send_via_bridge(messages, tools, system_prompt, true)
+                .send_via_bridge_streaming(messages, tools, system_prompt, on_chunk)
                 .await;
         }
 
