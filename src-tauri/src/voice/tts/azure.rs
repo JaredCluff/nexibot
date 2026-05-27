@@ -119,3 +119,52 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_azure_requires_key_and_region() {
+        let tts = AzureTts::new(None, "westus".into(), "en-US-AriaNeural".into());
+        assert!(!tts.is_available());
+
+        let tts = AzureTts::new(Some("key".into()), "".into(), "en-US-AriaNeural".into());
+        assert!(!tts.is_available());
+
+        let tts = AzureTts::new(Some("key".into()), "westus".into(), "en-US-AriaNeural".into());
+        assert!(tts.is_available());
+    }
+
+    #[test]
+    fn test_azure_name() {
+        let tts = AzureTts::new(None, "westus".into(), "en-US-AriaNeural".into());
+        assert_eq!(tts.name(), "azure");
+    }
+
+    #[tokio::test]
+    async fn test_azure_initialize_fails_without_key() {
+        let mut tts = AzureTts::new(None, "westus".into(), "en-US-AriaNeural".into());
+        assert!(tts.initialize().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_azure_initialize_fails_without_region() {
+        let mut tts = AzureTts::new(Some("key".into()), "".into(), "en-US-AriaNeural".into());
+        assert!(tts.initialize().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_azure_initialize_succeeds() {
+        let mut tts = AzureTts::new(Some("key".into()), "westus".into(), "en-US-AriaNeural".into());
+        assert!(tts.initialize().await.is_ok());
+    }
+
+    #[test]
+    fn test_xml_escape() {
+        assert_eq!(xml_escape("a & b"), "a &amp; b");
+        assert_eq!(xml_escape("<tag>"), "&lt;tag&gt;");
+        assert_eq!(xml_escape("\"quote\""), "&quot;quote&quot;");
+        assert_eq!(xml_escape("it's"), "it&apos;s");
+    }
+}

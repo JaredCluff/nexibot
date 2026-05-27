@@ -127,3 +127,38 @@ impl SttBackend for GoogleCloudStt {
         Ok(transcript)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_google_cloud_requires_api_key() {
+        let stt = GoogleCloudStt::new(None, "en-US".into());
+        assert!(!stt.is_available());
+    }
+
+    #[test]
+    fn test_google_cloud_available_with_key() {
+        let stt = GoogleCloudStt::new(Some("test-key".into()), "en-US".into());
+        assert!(stt.is_available());
+    }
+
+    #[test]
+    fn test_google_cloud_name() {
+        let stt = GoogleCloudStt::new(None, "en-US".into());
+        assert_eq!(stt.name(), "google_cloud");
+    }
+
+    #[tokio::test]
+    async fn test_google_cloud_initialize_fails_without_key() {
+        let mut stt = GoogleCloudStt::new(None, "en-US".into());
+        assert!(stt.initialize().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_google_cloud_initialize_succeeds_with_key() {
+        let mut stt = GoogleCloudStt::new(Some("test-key".into()), "en-US".into());
+        assert!(stt.initialize().await.is_ok());
+    }
+}

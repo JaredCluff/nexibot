@@ -119,3 +119,44 @@ impl SttBackend for AzureStt {
         Ok(transcript)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_azure_requires_key_and_region() {
+        let stt = AzureStt::new(None, "westus".into(), "en-US".into());
+        assert!(!stt.is_available());
+
+        let stt = AzureStt::new(Some("key".into()), "".into(), "en-US".into());
+        assert!(!stt.is_available());
+
+        let stt = AzureStt::new(Some("key".into()), "westus".into(), "en-US".into());
+        assert!(stt.is_available());
+    }
+
+    #[test]
+    fn test_azure_name() {
+        let stt = AzureStt::new(None, "westus".into(), "en-US".into());
+        assert_eq!(stt.name(), "azure");
+    }
+
+    #[tokio::test]
+    async fn test_azure_initialize_fails_without_key() {
+        let mut stt = AzureStt::new(None, "westus".into(), "en-US".into());
+        assert!(stt.initialize().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_azure_initialize_fails_without_region() {
+        let mut stt = AzureStt::new(Some("key".into()), "".into(), "en-US".into());
+        assert!(stt.initialize().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_azure_initialize_succeeds() {
+        let mut stt = AzureStt::new(Some("key".into()), "westus".into(), "en-US".into());
+        assert!(stt.initialize().await.is_ok());
+    }
+}
