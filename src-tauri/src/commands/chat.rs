@@ -2394,8 +2394,8 @@ pub(crate) async fn maybe_auto_compact(
             "[CHAT] Pre-compaction flush: analyzing last {} messages (timeout: {}s)",
             flush_cfg.message_window, flush_cfg.timeout_seconds
         );
-        // TODO: Invoke LLM with memory tools for fact extraction
-        // For now, transition directly to Compact
+        // Extract facts from recent session messages before compaction.
+        try_extract_session_facts(state).await;
         state.context_manager.set_flush_complete();
     }
 
