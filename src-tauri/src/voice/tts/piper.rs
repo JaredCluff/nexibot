@@ -34,10 +34,7 @@ impl PiperTts {
         Self { model_path, voice }
     }
 
-    /// Check if piper binary is available on PATH
-    // TODO: This uses std::process::Command which blocks. Called from async fns
-    // initialize() and synthesize(). Wrap in tokio::task::spawn_blocking() or
-    // switch to tokio::process::Command.
+    /// Check if piper binary is available on PATH (sync — safe for is_available).
     fn piper_on_path() -> bool {
         Command::new("piper")
             .arg("--help")
@@ -68,7 +65,10 @@ impl TtsBackend for PiperTts {
     }
 
     async fn initialize(&mut self) -> Result<()> {
-        if !Self::piper_on_path() {
+        let available = tokio::task::spawn_blocking(|| Self::piper_on_path())
+            .await
+            .map_err(|e| anyhow::anyhow!("Piper path check task panicked: {}", e))?;
+        if !available {
             return Err(anyhow::anyhow!(
                 "Piper TTS not found on PATH. Install from https://github.com/rhasspy/piper"
             ));
@@ -83,7 +83,10 @@ impl TtsBackend for PiperTts {
     }
 
     async fn synthesize(&self, text: &str) -> Result<Vec<u8>> {
-        if !Self::piper_on_path() {
+        let available = tokio::task::spawn_blocking(|| Self::piper_on_path())
+            .await
+            .map_err(|e| anyhow::anyhow!("Piper path check task panicked: {}", e))?;
+        if !available {
             return Err(anyhow::anyhow!("Piper TTS not available"));
         }
 

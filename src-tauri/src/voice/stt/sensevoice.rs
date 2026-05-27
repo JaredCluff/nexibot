@@ -7,7 +7,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info};
 
 use super::SttBackend;
@@ -16,7 +16,7 @@ use super::SttBackend;
 pub struct SenseVoiceStt {
     initialized: bool,
     model_path: Option<PathBuf>,
-    recognizer: Mutex<Option<sherpa_rs::sense_voice::SenseVoiceRecognizer>>,
+    recognizer: Arc<Mutex<Option<sherpa_rs::sense_voice::SenseVoiceRecognizer>>>,
 }
 
 impl SenseVoiceStt {
@@ -25,7 +25,7 @@ impl SenseVoiceStt {
         Self {
             initialized: false,
             model_path: None,
-            recognizer: Mutex::new(None),
+            recognizer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -34,7 +34,7 @@ impl SenseVoiceStt {
         Self {
             initialized: false,
             model_path: Some(model_path),
-            recognizer: Mutex::new(None),
+            recognizer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -110,7 +110,7 @@ impl SttBackend for SenseVoiceStt {
         .await
         .map_err(|e| anyhow::anyhow!("SenseVoice init task panicked: {}", e))??;
 
-        *self.recognizer.lock().unwrap_or_else(|e| {
+        *Arc::clone(&self.recognizer).lock().unwrap_or_else(|e| {
             error!("[STT] SenseVoice recognizer mutex poisoned during initialize: {}", e);
             e.into_inner()
         }) = Some(recognizer);
@@ -123,9 +123,6 @@ impl SttBackend for SenseVoiceStt {
         Ok(())
     }
 
-    // TODO: transcribe() calls blocking ONNX inference (recognizer.transcribe()) inside
-    // an async fn. Wrap in tokio::task::spawn_blocking() when feasible (&self borrow
-    // and Mutex make this non-trivial without Arc refactoring).
     async fn transcribe(&self, audio: &[f32]) -> Result<String> {
         if !self.initialized {
             return Err(anyhow::anyhow!("SenseVoice not initialized"));
@@ -136,18 +133,26 @@ impl SttBackend for SenseVoiceStt {
             audio.len()
         );
 
-        let mut recognizer = self.recognizer.lock().unwrap_or_else(|e| {
-            error!("[STT] SenseVoice recognizer mutex poisoned during transcribe: {}", e);
-            e.into_inner()
-        });
-        let recognizer = recognizer
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("SenseVoice recognizer not available"))?;
+        let recognizer_arc = Arc::clone(&self.recognizer);
+        let audio = audio.to_vec();
 
-        let result = recognizer.transcribe(16000, audio);
+        let text = tokio::task::spawn_blocking(move || {
+            let mut recognizer = recognizer_arc.lock().unwrap_or_else(|e| {
+                error!("[STT] SenseVoice recognizer mutex poisoned during transcribe: {}", e);
+                e.into_inner()
+            });
+            let recognizer = recognizer
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("SenseVoice recognizer not available"))?;
 
-        info!("[STT] SenseVoice transcribed: {}", result.text);
-        Ok(result.text)
+            let result = recognizer.transcribe(16000, &audio);
+            Ok::<String, anyhow::Error>(result.text)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("SenseVoice transcribe task panicked: {}", e))??;
+
+        info!("[STT] SenseVoice transcribed: {}", text);
+        Ok(text)
     }
 }
 
