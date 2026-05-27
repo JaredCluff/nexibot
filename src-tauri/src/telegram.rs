@@ -3171,4 +3171,189 @@ mod tests {
         });
         assert_eq!(cfg.bots.len(), 2);
     }
+
+    // -- P1: resolve_config tests --
+
+    #[test]
+    fn resolve_config_global_defaults() {
+        let cfg = crate::config::channels::TelegramConfig::default();
+        let resolved = resolve_config(&cfg, 123456, None);
+        assert!(!resolved.require_mention);
+        assert!(resolved.allow_from.is_empty());
+        assert_eq!(resolved.group_policy, crate::config::channels::GroupPolicy::Open);
+        assert!(resolved.agent_id.is_none());
+        assert!(resolved.system_prompt.is_none());
+        assert!(resolved.skills.is_empty());
+        assert!(resolved.enabled);
+    }
+
+    #[test]
+    fn resolve_config_group_override() {
+        use crate::config::channels::{GroupPolicy, TelegramGroupConfig};
+        let mut cfg = crate::config::channels::TelegramConfig::default();
+        cfg.bots.push(crate::config::channels::TelegramBotConfig {
+            bot_token: "test".into(),
+            agent_id: Some("global_agent".into()),
+            allowed_chat_ids: vec![],
+            admin_chat_ids: vec![],
+        });
+        let mut group = TelegramGroupConfig::default();
+        group.require_mention = true;
+        group.allow_from = vec![111];
+        group.group_policy = GroupPolicy::Restricted;
+        group.agent_id = Some("group_agent".into());
+        group.system_prompt = Some("group prompt".into());
+        group.skills = vec!["skill1".into()];
+        group.enabled = false;
+        cfg.groups.insert(123456, group);
+
+        let resolved = resolve_config(&cfg, 123456, None);
+        assert!(resolved.require_mention);
+        assert_eq!(resolved.allow_from, vec![111]);
+        assert_eq!(resolved.group_policy, GroupPolicy::Restricted);
+        assert_eq!(resolved.agent_id, Some("group_agent".into()));
+        assert_eq!(resolved.system_prompt, Some("group prompt".into()));
+        assert_eq!(resolved.skills, vec!["skill1".into()]);
+        assert!(!resolved.enabled);
+    }
+
+    #[test]
+    fn resolve_config_topic_override() {
+        use crate::config::channels::{GroupPolicy, TelegramGroupConfig, TelegramTopicConfig};
+        let mut cfg = crate::config::channels::TelegramConfig::default();
+        let mut group = TelegramGroupConfig::default();
+        group.require_mention = true;
+        group.agent_id = Some("group_agent".into());
+
+        let mut topic = TelegramTopicConfig::default();
+        topic.require_mention = Some(false);
+        topic.agent_id = Some("topic_agent".into());
+        topic.group_policy = Some(GroupPolicy::Open);
+        group.topics.insert("42".into(), topic);
+        cfg.groups.insert(123456, group);
+
+        let resolved = resolve_config(&cfg, 123456, Some(42));
+        assert!(!resolved.require_mention); // overridden by topic
+        assert_eq!(resolved.agent_id, Some("topic_agent".into()));
+        assert_eq!(resolved.group_policy, GroupPolicy::Open);
+    }
+
+    #[test]
+    fn resolve_config_wildcard_topic() {
+        use crate::config::channels::{TelegramGroupConfig, TelegramTopicConfig};
+        let mut cfg = crate::config::channels::TelegramConfig::default();
+        let mut group = TelegramGroupConfig::default();
+        group.require_mention = true;
+
+        let mut topic = TelegramTopicConfig::default();
+        topic.require_mention = Some(false);
+        group.topics.insert("*".into(), topic);
+        cfg.groups.insert(123456, group);
+
+        // Wildcard matches any thread ID
+        let resolved = resolve_config(&cfg, 123456, Some(99));
+        assert!(!resolved.require_mention);
+    }
+
+    #[test]
+    fn resolve_config_specific_topic_beats_wildcard() {
+        use crate::config::channels::{TelegramGroupConfig, TelegramTopicConfig};
+        let mut cfg = crate::config::channels::TelegramConfig::default();
+        let mut group = TelegramGroupConfig::default();
+
+        let mut wildcard = TelegramTopicConfig::default();
+        wildcard.require_mention = Some(true);
+        group.topics.insert("*".into(), wildcard);
+
+        let mut specific = TelegramTopicConfig::default();
+        specific.require_mention = Some(false);
+        group.topics.insert("42".into(), specific);
+        cfg.groups.insert(123456, group);
+
+        let resolved = resolve_config(&cfg, 123456, Some(42));
+        assert!(!resolved.require_mention); // specific wins
+    }
+
+    // -- P1: markdown_to_telegram_html tests --
+
+    #[test]
+    fn markdown_bold() {
+        assert_eq!(
+            markdown_to_telegram_html("hello **world**"),
+            "hello <b>world</b>"
+        );
+    }
+
+    #[test]
+    fn markdown_italic() {
+        assert_eq!(
+            markdown_to_telegram_html("hello *world*"),
+            "hello <i>world</i>"
+        );
+    }
+
+    #[test]
+    fn markdown_inline_code() {
+        assert_eq!(
+            markdown_to_telegram_html("use `cargo build`"),
+            "use <code>cargo build</code>"
+        );
+    }
+
+    #[test]
+    fn markdown_fenced_code_no_lang() {
+        assert_eq!(
+            markdown_to_telegram_html("```\nhello\nworld\n```"),
+            "<pre>hello\nworld</pre>"
+        );
+    }
+
+    #[test]
+    fn markdown_fenced_code_with_lang() {
+        assert_eq!(
+            markdown_to_telegram_html("```rust\nfn main() {}\n```"),
+            "<pre><code class=\"language-rust\"></code></pre>"
+        );
+    }
+
+    #[test]
+    fn markdown_plain_text_escapes_html() {
+        assert_eq!(
+            markdown_to_telegram_html("hello <world> & \"test\""),
+            "hello &lt;world&gt; &amp; &quot;test&quot;"
+        );
+    }
+
+    #[test]
+    fn markdown_mixed_formatting() {
+        assert_eq!(
+            markdown_to_telegram_html("**bold** and *italic* and `code`"),
+            "<b>bold</b> and <i>italic</i> and <code>code</code>"
+        );
+    }
+
+    #[test]
+    fn markdown_unclosed_bold_falls_back() {
+        assert_eq!(
+            markdown_to_telegram_html("**unclosed bold"),
+            "**unclosed bold"
+        );
+    }
+
+    #[test]
+    fn markdown_unclosed_italic_falls_back() {
+        assert_eq!(
+            markdown_to_telegram_html("*unclosed italic"),
+            "*unclosed italic"
+        );
+    }
+
+    #[test]
+    fn markdown_triple_star_not_bold() {
+        // *** should not be treated as bold (third * prevents it)
+        assert_eq!(
+            markdown_to_telegram_html("***not bold***"),
+            "*<b>not bold</b>*"
+        );
+    }
 }
