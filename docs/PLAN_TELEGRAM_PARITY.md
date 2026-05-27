@@ -15,7 +15,11 @@ formatting, reaction handling, and a handful of UX/config quality-of-life featur
 
 ## Priority 1 — High Impact, Core Gaps
 
-### 1.1 Streaming Progress Drafts
+> **Status:** All P1 features implemented in v0.11.0.
+
+### 1.1 Streaming Progress Drafts ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 Maintains a single editable "working" draft message while tools run. Shows tool
@@ -66,7 +70,9 @@ Files to modify:
 
 ---
 
-### 1.2 Group-Level Config (`groups.<chatId>`)
+### 1.2 Group-Level Config (`groups.<chatId>`) ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 Per-group settings with inheritance:
@@ -136,7 +142,9 @@ Files to modify:
 
 ---
 
-### 1.3 Per-Topic Agent Routing
+### 1.3 Per-Topic Agent Routing ✅
+
+**Status:** Implemented in v0.11.0 (via `ResolvedConfig.agent_id`).
 
 **What OpenClaw does:**  
 Each forum topic can bind to a specific agent. The bot becomes a different persona
@@ -160,7 +168,9 @@ Files to modify:
 
 ---
 
-### 1.4 Reply Threading Modes (`replyToMode`)
+### 1.4 Reply Threading Modes (`replyToMode`) ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 - `off` (default): flat sends
@@ -195,7 +205,9 @@ Files to modify:
 
 ---
 
-### 1.5 Webhook Mode
+### 1.5 Webhook Mode ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 Optional webhook mode alongside long polling. Useful for VPS deployments where
@@ -234,7 +246,9 @@ Files to modify:
 
 ---
 
-### 1.6 Markdown → Telegram HTML Formatting
+### 1.6 Markdown → Telegram HTML Formatting ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 Converts markdown to Telegram-safe HTML before sending. Falls back to plain text
@@ -273,7 +287,9 @@ Files to modify:
 
 ## Priority 2 — Medium Impact
 
-### 2.1 Reaction Notifications (Inbound)
+### 2.1 Reaction Notifications (Inbound) 🚧
+
+**Status:** Not yet implemented.
 
 **What OpenClaw does:**  
 Receives and routes user reactions to bot messages back as context. Three modes:
@@ -297,7 +313,9 @@ channels.telegram.reactions:
 
 ---
 
-### 2.2 Configurable Ack Reaction + Scope
+### 2.2 Configurable Ack Reaction + Scope ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 Configurable per-account ack emoji and scope:
@@ -323,7 +341,9 @@ Update `TelegramConfig` and replace constant references in
 
 ---
 
-### 2.3 Error Policy + Cooldown
+### 2.3 Error Policy + Cooldown ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 - `errorPolicy: "reply" | "silent"` — optionally suppress error replies
@@ -347,7 +367,9 @@ In the error path of `handle_telegram_message()`, check cooldown before sending.
 
 ---
 
-### 2.4 Per-DM Thread Reply Mode
+### 2.4 Per-DM Thread Reply Mode ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 - `channels.telegram.dm.threadReplies: "inbound" | "always" | "off"`
@@ -374,7 +396,9 @@ message has `reply_to_message_id`. If so (and `thread_replies: inbound`), set
 
 ---
 
-### 2.5 Polling Stall Detection
+### 2.5 Polling Stall Detection ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 `pollingStallThresholdMs: 120000` — detects when the polling loop hasn't received
@@ -399,7 +423,9 @@ channels.telegram.polling_stall_threshold_ms: 120000
 
 ---
 
-### 2.6 Sender-Type Policy (Bot Filtering)
+### 2.6 Sender-Type Policy (Bot Filtering) ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 `senderTypePolicy: "humans-only" | "humans-and-allowlisted-bots" | "open"`
@@ -426,7 +452,9 @@ if config.sender_type_policy == SenderTypePolicy::HumansOnly && from.is_bot {
 
 ---
 
-### 2.7 Custom Command Menu
+### 2.7 Custom Command Menu ✅
+
+**Status:** Implemented in v0.11.0.
 
 **What OpenClaw does:**  
 `customCommands` array registers slash commands in the BotFather menu via
@@ -453,7 +481,11 @@ the merged list of built-in + custom commands.
 
 ## Priority 3 — Quality of Life
 
-### 3.1 Link Preview Control
+### 3.1 Link Preview Control ✅
+
+**Status:** Implemented in v0.11.0.
+
+**What OpenClaw does:**
 
 New config field:
 ```yaml
@@ -463,7 +495,9 @@ channels.telegram.link_preview: true
 Add `disable_web_page_preview: !config.link_preview` to all `sendMessage` calls.
 Currently NexiBot always sends with previews enabled (Telegram default).
 
-### 3.2 Response Prefix
+### 3.2 Response Prefix ✅
+
+**Status:** Implemented in v0.11.0.
 
 ```yaml
 channels.telegram.response_prefix: ""    # e.g. "🤖 "
@@ -471,7 +505,9 @@ channels.telegram.response_prefix: ""    # e.g. "🤖 "
 
 Prepend to all outbound message text before chunking.
 
-### 3.3 Media Group / Album Buffering
+### 3.3 Media Group / Album Buffering 🚧
+
+**Status:** Not yet implemented.
 
 **What OpenClaw does:**  
 Buffers album updates (`mediaGroupId`) for `mediaGroupFlushMs: 500` ms before
@@ -487,7 +523,9 @@ buffer the update keyed by `media_group_id` in a `DashMap<String, Vec<Update>>`
 with a 500ms flush timeout. After flush, merge all photo annotations into one
 `IncomingMessage`.
 
-### 3.4 History Limit Config
+### 3.4 History Limit Config 🚧
+
+**Status:** Not yet implemented.
 
 OpenClaw exposes `historyLimit` (group context window) and `dmHistoryLimit`
 per-chat. NexiBot's session history is managed globally in `memory.rs`.
@@ -504,25 +542,25 @@ Pass to session/memory manager when creating or resuming a session.
 
 ## Delivery Order
 
-| # | Feature | Priority | Complexity | Target |
-|---|---------|----------|------------|--------|
-| 1 | Streaming progress drafts (1.1) | P1 | High | v0.11.0 |
-| 2 | Group-level config + allowFrom/agentId (1.2) | P1 | High | v0.11.0 |
-| 3 | Per-topic agent routing (1.3) | P1 | Low (needs 1.2) | v0.11.0 |
-| 4 | Reply threading + quote excerpts (1.4) | P1 | Medium | v0.11.0 |
-| 5 | Webhook mode (1.5) | P1 | Medium | v0.11.0 |
-| 6 | Markdown → Telegram HTML formatting (1.6) | P1 | Medium | v0.11.0 |
-| 7 | Reaction notifications inbound (2.1) | P2 | Medium | v0.11.0 |
-| 8 | Configurable ack reaction + scope (2.2) | P2 | Low | v0.11.0 |
-| 9 | Error policy + cooldown (2.3) | P2 | Low | v0.11.0 |
-| 10 | Per-DM thread reply mode (2.4) | P2 | Low | v0.11.0 |
-| 11 | Polling stall detection (2.5) | P2 | Low | v0.11.0 |
-| 12 | Sender-type policy / bot filtering (2.6) | P2 | Low | v0.11.0 |
-| 13 | Custom command menu (2.7) | P2 | Low | v0.11.0 |
-| 14 | Link preview control (3.1) | P3 | Trivial | v0.11.0 |
-| 15 | Response prefix (3.2) | P3 | Trivial | v0.11.0 |
-| 16 | Album / media group buffering (3.3) | P3 | Medium | v0.11.0 |
-| 17 | History limit config (3.4) | P3 | Low | v0.11.0 |
+| # | Feature | Priority | Complexity | Target | Status |
+|---|---------|----------|------------|--------|--------|
+| 1 | Streaming progress drafts (1.1) | P1 | High | v0.11.0 | ✅ Done |
+| 2 | Group-level config + allowFrom/agentId (1.2) | P1 | High | v0.11.0 | ✅ Done |
+| 3 | Per-topic agent routing (1.3) | P1 | Low (needs 1.2) | v0.11.0 | ✅ Done |
+| 4 | Reply threading + quote excerpts (1.4) | P1 | Medium | v0.11.0 | ✅ Done |
+| 5 | Webhook mode (1.5) | P1 | Medium | v0.11.0 | ✅ Done |
+| 6 | Markdown → Telegram HTML formatting (1.6) | P1 | Medium | v0.11.0 | ✅ Done |
+| 7 | Reaction notifications inbound (2.1) | P2 | Medium | — | 🚧 Pending |
+| 8 | Configurable ack reaction + scope (2.2) | P2 | Low | v0.11.0 | ✅ Done |
+| 9 | Error policy + cooldown (2.3) | P2 | Low | v0.11.0 | ✅ Done |
+| 10 | Per-DM thread reply mode (2.4) | P2 | Low | v0.11.0 | ✅ Done |
+| 11 | Polling stall detection (2.5) | P2 | Low | v0.11.0 | ✅ Done |
+| 12 | Sender-type policy / bot filtering (2.6) | P2 | Low | v0.11.0 | ✅ Done |
+| 13 | Custom command menu (2.7) | P2 | Low | v0.11.0 | ✅ Done |
+| 14 | Link preview control (3.1) | P3 | Trivial | v0.11.0 | ✅ Done |
+| 15 | Response prefix (3.2) | P3 | Trivial | v0.11.0 | ✅ Done |
+| 16 | Album / media group buffering (3.3) | P3 | Medium | — | 🚧 Pending |
+| 17 | History limit config (3.4) | P3 | Low | — | 🚧 Pending |
 
 ---
 
