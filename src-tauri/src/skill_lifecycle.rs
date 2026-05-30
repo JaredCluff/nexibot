@@ -448,7 +448,7 @@ impl SkillLifecycleManager {
         // We must never hold this guard across an .await point.
         let manager = Arc::new(std::sync::Mutex::new(self));
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut rx = rx;
             while let Some(summary) = rx.recv().await {
                 // ── Phase 1: sync SQLite work ──────────────────────────────

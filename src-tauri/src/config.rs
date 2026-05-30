@@ -390,6 +390,10 @@ pub struct NexiBotConfig {
     /// Skills system configuration
     #[serde(default)]
     pub skills: SkillsConfig,
+
+    /// Lifecycle hooks engine configuration
+    #[serde(default)]
+    pub hooks: crate::hooks::HooksConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +565,7 @@ impl Default for NexiBotConfig {
             media_gen: MediaGenConfig::default(),
             episodic_memory: crate::episodic_memory::EpisodicMemoryConfig::default(),
             skills: SkillsConfig::default(),
+            hooks: crate::hooks::HooksConfig::default(),
         }
     }
 }

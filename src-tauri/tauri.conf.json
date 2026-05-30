@@ -24,12 +24,11 @@
     ],
     "macOS": {
       "frameworks": [
-        "../../target/release/deps/libonnxruntime.1.17.1.dylib",
-        "../../target/release/deps/libsherpa-onnx-c-api.dylib"
+        "./libonnxruntime.1.17.1.dylib",
+        "./libsherpa-onnx-c-api.dylib"
       ],
       "minimumSystemVersion": "12.0",
-      "entitlements": "./entitlements.plist",
-      "signingIdentity": "A36F0B744DE5018459D54621851C066C40417430"
+      "entitlements": "./entitlements.plist"
     },
     "windows": {
       "nsis": {

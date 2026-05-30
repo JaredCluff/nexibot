@@ -19,6 +19,7 @@ use crate::claude::ClaudeClient;
 use crate::commands::chat;
 use crate::commands::memory::save_session_history;
 use crate::commands::AppState;
+use crate::hooks::{HookContext, HookPoint};
 use crate::security::external_content;
 use crate::session_overrides::SessionOverrides;
 use crate::tool_loop::{ToolLoopConfig, ToolLoopObserver};
@@ -221,6 +222,28 @@ pub async fn route_message(
         safe_text
     };
 
+    // 0.7. UserPromptSubmit hook — behavior enforcement before safety checks.
+    let safe_text = {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_message(&safe_text)
+                .with_channel(&format!("{:?}", message.channel));
+            let result = hooks.execute_hooks(&HookPoint::UserPromptSubmit, &ctx).await;
+            if result.block {
+                let reason = result.reason.unwrap_or_else(|| "Blocked by policy hook".to_string());
+                warn!("[ROUTER] UserPromptSubmit hook blocked message: {}", reason);
+                return Err(RouterError::Blocked(reason));
+            }
+            if let Some(modified) = result.modified_content {
+                modified
+            } else {
+                safe_text
+            }
+        } else {
+            safe_text
+        }
+    };
+
     // 1. Safety check — run on the ORIGINAL message text, not the wrapped version.
     // The boundary markers added by external_content::wrap_external_content can
     // trigger DeBERTa's prompt injection detector (false positive), which would
@@ -230,7 +253,9 @@ pub async fn route_message(
         let error_msg = resp
             .error
             .unwrap_or_else(|| "Message blocked by safety checks".to_string());
-        return Err(RouterError::Blocked(error_msg));
+        let err = RouterError::Blocked(error_msg);
+        fire_on_error(state, &err.to_string(), &message.channel).await;
+        return Err(err);
     }
 
     // 2. Auto-compact
@@ -305,6 +330,29 @@ pub async fn route_message(
     // 5. Resolve agent ID (for metadata; caller already provides the client)
     let agent_id = resolve_agent_id(message, state).await;
 
+    // 5.5. BeforeMessage hook — behavior enforcement before LLM call.
+    let safe_text = {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let mut ctx = HookContext::for_message(&safe_text)
+                .with_channel(&format!("{:?}", message.channel));
+            ctx.agent_id = Some(agent_id.clone());
+            let result = hooks.execute_hooks(&HookPoint::BeforeMessage, &ctx).await;
+            if result.block {
+                let reason = result.reason.unwrap_or_else(|| "Blocked by policy hook".to_string());
+                warn!("[ROUTER] BeforeMessage hook blocked message: {}", reason);
+                return Err(RouterError::Blocked(reason));
+            }
+            if let Some(modified) = result.modified_content {
+                modified
+            } else {
+                safe_text
+            }
+        } else {
+            safe_text
+        }
+    };
+
     // 6. Initial LLM call — with single fallback attempt on failover-eligible errors.
     let initial_result = {
         use crate::providers::is_failover_eligible;
@@ -362,7 +410,14 @@ pub async fn route_message(
             }
             Err(e) => Err(RouterError::LlmError(e.to_string())),
         }
-    }?;
+    };
+    let initial_result = match initial_result {
+        Ok(r) => r,
+        Err(e) => {
+            fire_on_error(state, &e.to_string(), &message.channel).await;
+            return Err(e);
+        }
+    };
 
     // Capture model_used immediately after the initial LLM call, before the
     // tool loop runs (which may take time and allow concurrent requests to
@@ -385,10 +440,40 @@ pub async fn route_message(
         options.observer,
         goal,
     )
-    .await
-    .map_err(RouterError::ToolLoopError)?;
+    .await;
+    let result = match result {
+        Ok(r) => r,
+        Err(e) => {
+            let err = RouterError::ToolLoopError(e);
+            fire_on_error(state, &err.to_string(), &message.channel).await;
+            return Err(err);
+        }
+    };
 
     let response_text = result.text.clone();
+
+    // 7.5. AfterMessage hook — behavior enforcement after tool loop, before persistence.
+    let response_text = {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let mut ctx = HookContext::for_message(&response_text)
+                .with_channel(&format!("{:?}", message.channel));
+            ctx.agent_id = Some(agent_id.clone());
+            let result = hooks.execute_hooks(&HookPoint::AfterMessage, &ctx).await;
+            if result.block {
+                let reason = result.reason.unwrap_or_else(|| "Response blocked by policy hook".to_string());
+                warn!("[ROUTER] AfterMessage hook blocked response: {}", reason);
+                return Err(RouterError::Blocked(reason));
+            }
+            if let Some(modified) = result.modified_content {
+                modified
+            } else {
+                response_text
+            }
+        } else {
+            response_text
+        }
+    };
 
     // 8. Sensitive data check
     if options.check_sensitive_data {
@@ -524,6 +609,16 @@ async fn resolve_agent_id(message: &IncomingMessage, state: &AppState) -> String
         ChannelSource::Nats { sender } => {
             agent_mgr.resolve_agent("nats", sender).to_string()
         }
+    }
+}
+
+/// Fire the OnError hook, best-effort (errors are logged but not propagated).
+async fn fire_on_error(state: &AppState, error: &str, channel: &ChannelSource) {
+    let hooks = state.hook_manager.read().await;
+    if hooks.is_enabled() {
+        let ctx = HookContext::for_error(error)
+            .with_channel(&format!("{:?}", channel));
+        let _ = hooks.execute_hooks(&HookPoint::OnError, &ctx).await;
     }
 }
 

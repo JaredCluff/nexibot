@@ -14,6 +14,7 @@ use crate::config::AutonomyLevel;
 use crate::discord::DiscordObserver;
 use crate::google_chat::GoogleChatObserver;
 use crate::guardrails::{Guardrails, ToolCheckResult};
+use crate::hooks::{HookContext, HookPoint};
 use crate::instagram::InstagramObserver;
 use crate::line::LineObserver;
 use crate::mastodon::MastodonObserver;
@@ -1145,6 +1146,26 @@ pub(crate) async fn execute_tool_call<'obs>(
         let task_id = tm.create_task(desc, notify_target);
         drop(tm);
 
+        // TaskCreated hook — behavior enforcement when a background task is created.
+        {
+            let hooks = state.hook_manager.read().await;
+            if hooks.is_enabled() {
+                let ctx = HookContext::for_task(&task_id, Some("running"))
+                    .with_channel(&format!("{:?}", source_channel.unwrap_or(&ChannelSource::Gui)));
+                let result = hooks.execute_hooks(&HookPoint::TaskCreated, &ctx).await;
+                if result.block {
+                    let reason = result.reason.unwrap_or_else(|| "Task creation blocked by policy hook".to_string());
+                    warn!("[TASK] TaskCreated hook blocked task {}: {}", task_id, reason);
+                    let mut tm = state.task_manager.write().await;
+                    tm.fail_task(&task_id, &reason);
+                    return serde_json::json!({
+                        "error": "Task creation blocked by policy",
+                        "reason": reason,
+                    }).to_string();
+                }
+            }
+        }
+
         // Spawn background worker
         let task_id_clone = task_id.clone();
         let instructions = instructions.to_string();
@@ -1338,6 +1359,7 @@ pub(crate) async fn execute_tool_call<'obs>(
                             )
                             .await
                             {
+                                fire_permission_denied(state, tool_name, &blocked).await;
                                 return blocked;
                             }
                             explicit_user_approved = true;
@@ -1386,6 +1408,7 @@ pub(crate) async fn execute_tool_call<'obs>(
             )
             .await
             {
+                fire_permission_denied(state, tool_name, &blocked).await;
                 return blocked;
             }
         }
@@ -1441,6 +1464,7 @@ pub(crate) async fn execute_tool_call<'obs>(
                 )
                 .await
                 {
+                    fire_permission_denied(state, tool_name, &blocked).await;
                     return blocked;
                 }
                 // User approved — proceed without approval manager gating
@@ -1448,6 +1472,7 @@ pub(crate) async fn execute_tool_call<'obs>(
             Err(msg) => {
                 // Hard deny from approval manager
                 warn!("[EXECUTE] Command blocked by approval system: {}", msg);
+                fire_permission_denied(state, tool_name, &msg).await;
                 return serde_json::json!({
                     "error": "Command blocked by execution approval policy",
                     "reason": msg,
@@ -1929,6 +1954,16 @@ pub(crate) async fn execute_tool_call<'obs>(
             }
             "complete" => {
                 mgr.complete_task(&task_id, &message);
+                drop(mgr);
+                // TaskCompleted hook — behavior enforcement when a task is marked done.
+                {
+                    let hooks = state.hook_manager.read().await;
+                    if hooks.is_enabled() {
+                        let ctx = HookContext::for_task(&task_id, Some("completed"))
+                            .with_channel("gui");
+                        let _ = hooks.execute_hooks(&HookPoint::TaskCompleted, &ctx).await;
+                    }
+                }
                 return format!("Task '{}' marked complete.", task_id);
             }
             "fail" => {
@@ -2387,6 +2422,30 @@ pub(crate) async fn maybe_auto_compact(
         return;
     }
 
+    // PreCompact hook — behavior enforcement before compaction.
+    {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_message("context_compaction")
+                .with_channel("gui");
+            let result = hooks.execute_hooks(&HookPoint::PreCompact, &ctx).await;
+            if result.block {
+                let reason = result.reason.unwrap_or_else(|| "Compaction blocked by policy hook".to_string());
+                warn!("[COMPACT] PreCompact hook blocked compaction: {}", reason);
+                if let Some(w) = window {
+                    let _ = w.emit(
+                        "compact:status",
+                        serde_json::json!({
+                            "status": "blocked",
+                            "message": reason,
+                        }),
+                    );
+                }
+                return;
+            }
+        }
+    }
+
     // Pre-compaction memory flush
     if let Some(flush_cfg) = state.context_manager.flush_config() {
         state.context_manager.set_flush_in_progress();
@@ -2506,6 +2565,16 @@ pub(crate) async fn maybe_auto_compact(
                     &format!("Compaction failed: {}", e),
                 );
             }
+        }
+    }
+
+    // PostCompact hook — behavior enforcement after compaction.
+    {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_message("context_compaction")
+                .with_channel("gui");
+            let _ = hooks.execute_hooks(&HookPoint::PostCompact, &ctx).await;
         }
     }
 }
@@ -4083,7 +4152,7 @@ pub(crate) async fn execute_background_task(
     let options = RouteOptions {
         claude_client: &bg_client,
         overrides: SessionOverrides::default(),
-        loop_config: ToolLoopConfig::background_with_origin(source_channel, source_sender_id),
+        loop_config: ToolLoopConfig::background_with_origin(source_channel.clone(), source_sender_id),
         observer,
         streaming: false,
         window: None,
@@ -4106,6 +4175,15 @@ pub(crate) async fn execute_background_task(
             let mut tm = state.task_manager.write().await;
             tm.complete_task(&task_id, &routed.text);
             drop(tm);
+            // TaskCompleted hook — behavior enforcement when background task finishes.
+            {
+                let hooks = state.hook_manager.read().await;
+                if hooks.is_enabled() {
+                    let ctx = HookContext::for_task(&task_id, Some("completed"))
+                        .with_channel(&format!("{:?}", source_channel));
+                    let _ = hooks.execute_hooks(&HookPoint::TaskCompleted, &ctx).await;
+                }
+            }
             if let Some(ref h) = app_handle {
                 if let Err(e) = h.emit(
                     "task:complete",
@@ -4241,6 +4319,16 @@ pub async fn cancel_message() -> Result<(), String> {
     info!("Message cancellation requested by user — setting cancel flag");
     ACTIVE_CANCEL.store(true, std::sync::atomic::Ordering::Relaxed);
     Ok(())
+}
+
+/// Fire the PermissionDenied hook, best-effort (errors are logged but not propagated).
+async fn fire_permission_denied(state: &AppState, tool_name: &str, reason: &str) {
+    let hooks = state.hook_manager.read().await;
+    if hooks.is_enabled() {
+        let ctx = HookContext::for_error(reason)
+            .with_channel("gui");
+        let _ = hooks.execute_hooks(&HookPoint::PermissionDenied, &ctx).await;
+    }
 }
 
 #[cfg(test)]

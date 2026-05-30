@@ -24,6 +24,7 @@ use crate::claude::{ClaudeClient, ClaudeMessageResult, TOOL_PAIRING_ERRORS, TOOL
 use crate::commands::chat;
 use crate::commands::AppState;
 use crate::config::NexiBotConfig;
+use crate::hooks::{HookContext, HookPoint};
 use crate::security::dangerous_tools;
 use crate::session_overrides::SessionOverrides;
 use crate::tool_retry::{self, ToolErrorInfo, ToolErrorKind};
@@ -872,7 +873,7 @@ impl TelegramObserver {
     }
 
     /// Configure streaming progress display.
-    pub fn set_streaming_config(&self, max_lines: usize, show_names: bool) {
+    pub fn set_streaming_config(&mut self, max_lines: usize, show_names: bool) {
         self.max_progress_lines = max_lines;
         self.show_tool_names = show_names;
     }
@@ -885,6 +886,7 @@ impl ToolLoopObserver for TelegramObserver {
     }
 
     async fn on_tool_start(&self, name: &str, _id: &str) {
+        use teloxide::requests::Requester;
         *self.last_tool.lock().unwrap_or_else(|e| e.into_inner()) = Some(name.to_string());
 
         // Streaming progress draft (P1.1)
@@ -1618,6 +1620,38 @@ pub async fn execute_tool_loop(
                 }
             }
 
+            // PreToolUse hook — behavior enforcement before execution.
+            let tool_input = {
+                let hooks = state.hook_manager.read().await;
+                if hooks.is_enabled() {
+                    let ctx = HookContext::for_tool_use(
+                        &tool_use.name,
+                        &tool_use.id,
+                        tool_use.input.clone(),
+                    );
+                    let result = hooks.execute_hooks(&HookPoint::PreToolUse, &ctx).await;
+                    if result.block {
+                        let reason = result.reason.unwrap_or_else(|| "Blocked by policy hook".to_string());
+                        warn!("[{}] PreToolUse hook blocked {}: {}", label, tool_use.name, reason);
+                        prepared.push(PreparedCall {
+                            idx,
+                            session_key: String::new(),
+                            agent_id: agent_id.to_string(),
+                            restored_input: serde_json::Value::Null,
+                            early_result: Some(format!("BLOCKED: {}", reason)),
+                        });
+                        continue;
+                    }
+                    if let Some(updated) = result.updated_input {
+                        updated
+                    } else {
+                        tool_use.input.clone()
+                    }
+                } else {
+                    tool_use.input.clone()
+                }
+            };
+
             // Restore proxy keys in tool input before execution.
             let restored_input = {
                 let kv_config = {
@@ -1625,11 +1659,11 @@ pub async fn execute_tool_loop(
                     cfg.key_vault.clone()
                 };
                 if kv_config.restore_tool_inputs {
-                    let mut input_clone = tool_use.input.clone();
+                    let mut input_clone = tool_input.clone();
                     state.key_interceptor.restore_tool_input(&mut input_clone);
                     input_clone
                 } else {
-                    tool_use.input.clone()
+                    tool_input
                 }
             };
 
@@ -1742,6 +1776,37 @@ pub async fn execute_tool_loop(
         // ── Phase 3: serial result processing ────────────────────────────
         for (call, tool_result) in prepared.iter().zip(exec_results.into_iter()) {
             let tool_use = &result.tool_uses[call.idx];
+            let mut tool_result = tool_result;
+            let success =
+                !tool_result.starts_with("BLOCKED") && !tool_result.starts_with("Error");
+
+            // PostToolUse / PostToolUseFailure hooks — behavior enforcement after execution.
+            {
+                let hooks = state.hook_manager.read().await;
+                if hooks.is_enabled() {
+                    let ctx = HookContext::for_tool_result(
+                        &tool_use.name,
+                        &tool_use.id,
+                        call.restored_input.clone(),
+                        &tool_result,
+                    );
+                    let point = if success {
+                        HookPoint::PostToolUse
+                    } else {
+                        HookPoint::PostToolUseFailure
+                    };
+                    let result = hooks.execute_hooks(&point, &ctx).await;
+                    if result.block {
+                        let reason = result.reason.unwrap_or_else(|| "Result blocked by policy hook".to_string());
+                        warn!("[{}] {:?} hook blocked result for {}: {}", label, point, tool_use.name, reason);
+                        tool_result = format!("BLOCKED: {}", reason);
+                    } else if let Some(modified) = result.modified_content {
+                        tool_result = modified;
+                    }
+                }
+            }
+
+            // Recompute success after hook may have rewritten or blocked the result.
             let success =
                 !tool_result.starts_with("BLOCKED") && !tool_result.starts_with("Error");
 

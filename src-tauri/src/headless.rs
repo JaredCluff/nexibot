@@ -687,7 +687,13 @@ pub async fn run() {
         session_context_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
             crate::cost_tracker::ContextManager::new(200_000)
         )),
+        hook_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
+            crate::hooks::HookManager::from_config(
+                config.try_read().map(|c| c.hooks.clone()).unwrap_or_default()
+            )
+        )),
         log_state: None,
+        episodic_store: None,
     };
 
     // Start yolo mode expiry watcher

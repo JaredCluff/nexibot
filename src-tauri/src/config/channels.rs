@@ -352,3 +352,150 @@ impl Default for TelegramConfig {
         }
     }
 }
+
+// Stub configs for channels not yet implemented
+
+/// Discord configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DiscordConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub bot_token: String,
+    #[serde(default)]
+    pub admin_user_ids: Vec<u64>,
+    #[serde(default)]
+    pub allowed_guild_ids: Vec<u64>,
+    #[serde(default)]
+    pub allowed_channel_ids: Vec<u64>,
+    #[serde(default)]
+    pub dm_policy: crate::pairing::DmPolicy,
+    #[serde(default)]
+    pub tool_policy: super::ChannelToolPolicy,
+}
+
+/// WhatsApp configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WhatsAppConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub phone_number_id: String,
+    #[serde(default)]
+    pub access_token: String,
+    #[serde(default)]
+    pub verify_token: String,
+    #[serde(default)]
+    pub app_secret: String,
+    #[serde(default)]
+    pub dm_policy: crate::pairing::DmPolicy,
+    #[serde(default)]
+    pub tool_policy: super::ChannelToolPolicy,
+    #[serde(default)]
+    pub allowed_phone_numbers: Vec<String>,
+    #[serde(default)]
+    pub admin_phone_numbers: Vec<String>,
+}
+
+/// Slack configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SlackConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub bot_token: String,
+    #[serde(default)]
+    pub app_token: String,
+    #[serde(default)]
+    pub signing_secret: String,
+    #[serde(default)]
+    pub admin_user_ids: Vec<String>,
+    #[serde(default)]
+    pub allowed_channel_ids: Vec<String>,
+    #[serde(default)]
+    pub dm_policy: crate::pairing::DmPolicy,
+    #[serde(default)]
+    pub tool_policy: super::ChannelToolPolicy,
+}
+
+/// Signal configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SignalConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub api_url: String,
+    #[serde(default)]
+    pub phone_number: String,
+    #[serde(default)]
+    pub allowed_numbers: Vec<String>,
+    #[serde(default)]
+    pub admin_numbers: Vec<String>,
+    #[serde(default)]
+    pub dm_policy: crate::pairing::DmPolicy,
+    #[serde(default)]
+    pub tool_policy: super::ChannelToolPolicy,
+}
+
+/// Teams configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TeamsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub app_id: String,
+    #[serde(default)]
+    pub app_password: String,
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    #[serde(default)]
+    pub allowed_team_ids: Vec<String>,
+    #[serde(default)]
+    pub dm_policy: crate::pairing::DmPolicy,
+    #[serde(default)]
+    pub tool_policy: super::ChannelToolPolicy,
+    #[serde(default)]
+    pub admin_user_ids: Vec<String>,
+}
+
+/// Matrix configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MatrixConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub homeserver_url: String,
+    #[serde(default)]
+    pub access_token: String,
+    #[serde(default)]
+    pub user_id: String,
+    #[serde(default)]
+    pub allowed_room_ids: Vec<String>,
+    #[serde(default)]
+    pub dm_policy: crate::pairing::DmPolicy,
+    #[serde(default)]
+    pub tool_policy: super::ChannelToolPolicy,
+    #[serde(default)]
+    pub admin_user_ids: Vec<String>,
+    #[serde(default)]
+    pub typing_indicators: bool,
+    #[serde(default)]
+    pub e2ee_enabled: bool,
+    #[serde(default)]
+    pub read_receipts: bool,
+    #[serde(default)]
+    pub e2ee_password: String,
+    #[serde(default = "default_matrix_command_prefix")]
+    pub command_prefix: Option<String>,
+}
+
+/// NATS configuration (stub)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NatsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub inbound_subject: String,
+}

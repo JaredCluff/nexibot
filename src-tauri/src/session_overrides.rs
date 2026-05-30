@@ -29,7 +29,7 @@ pub const MODEL_ALIASES: &[(&str, &str)] = &[
     ("llama3", "ollama/llama3.2"),
     ("mistral", "ollama/mistral"),
     ("deepseek", "ollama/deepseek-coder"),
-    ("qwen", "ollama/qwen2.5"),
+    ("qwen", "ollama/qwen3-coder-next"),
     ("codellama", "ollama/codellama"),
     ("phi", "ollama/phi3"),
     ("gemma", "ollama/gemma2"),
@@ -322,7 +322,7 @@ mod tests {
     fn test_resolve_alias_qwen() {
         assert_eq!(
             SessionOverrides::resolve_model_name("qwen").unwrap(),
-            "ollama/qwen2.5"
+            "ollama/qwen3-coder-next"
         );
     }
 

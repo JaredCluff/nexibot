@@ -389,7 +389,7 @@ pub fn spawn_idle_watcher(
     advanced_memory: Arc<crate::memory_advanced::AdvancedMemoryManager>,
     last_activity: Arc<tokio::sync::RwLock<std::time::Instant>>,
 ) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             let config = engine.config.read().await.clone();

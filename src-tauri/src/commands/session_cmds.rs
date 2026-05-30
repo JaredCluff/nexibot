@@ -310,6 +310,7 @@ async fn fetch_models_from_bridge(state: &AppState) -> Vec<AvailableModel> {
         .api_key
         .clone()
         .filter(|k| !k.trim().is_empty());
+    let ollama_enabled = config.ollama.enabled;
     let ollama_url = config.ollama.url.clone();
     let lmstudio_url = config.lmstudio.url.clone();
     drop(config);
@@ -323,7 +324,7 @@ async fn fetch_models_from_bridge(state: &AppState) -> Vec<AvailableModel> {
             "/api/openai/models",
             openai_key.as_deref()
         ),
-        fetch_ollama_models_internal(&http, &ollama_url),
+        fetch_ollama_models_internal(&http, &ollama_url, ollama_enabled),
         fetch_cerebras_models_internal(&http, cerebras_key.as_deref()),
         fetch_lmstudio_models_internal(&http, &lmstudio_url),
     );
@@ -370,47 +371,82 @@ async fn fetch_models_from_bridge(state: &AppState) -> Vec<AvailableModel> {
 async fn fetch_ollama_models_internal(
     http: &reqwest::Client,
     ollama_url: &str,
+    enabled: bool,
 ) -> Vec<AvailableModel> {
+    if !enabled {
+        return Vec::new();
+    }
+
+    let mut models = Vec::new();
+    let mut local_names = std::collections::HashSet::new();
+
+    // ── Local Ollama instance ──
     let url = format!("{}/api/tags", ollama_url);
-    let resp = match http
+    match http
         .get(&url)
         .timeout(std::time::Duration::from_secs(5))
         .send()
         .await
     {
-        Ok(r) => r,
+        Ok(resp) => {
+            if let Ok(body) = resp.json::<serde_json::Value>().await {
+                if let Some(arr) = body.get("models").and_then(|v| v.as_array()) {
+                    for m in arr.iter() {
+                        if let Some(name) = m.get("name").and_then(|v| v.as_str()) {
+                            let ollama_id = format!("ollama/{}", name);
+                            local_names.insert(name.to_string());
+                            models.push(AvailableModel {
+                                id: ollama_id.clone(),
+                                display_name: name.to_string(),
+                                provider: "Ollama".to_string(),
+                                available: true,
+                                size_score: model_size_score(&ollama_id),
+                            });
+                        }
+                    }
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!("[MODELS] Failed to reach Ollama at {}: {}", url, e);
-            return Vec::new();
         }
-    };
+    }
 
-    let body: serde_json::Value = match resp.json().await {
-        Ok(b) => b,
+    // ── Ollama Cloud library ──
+    match http
+        .get("https://ollama.com/api/tags")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if let Ok(body) = resp.json::<serde_json::Value>().await {
+                if let Some(arr) = body.get("models").and_then(|v| v.as_array()) {
+                    for m in arr.iter() {
+                        if let Some(name) = m.get("name").and_then(|v| v.as_str()) {
+                            // Skip if already installed locally
+                            if local_names.contains(name) {
+                                continue;
+                            }
+                            let ollama_id = format!("ollama/{}", name);
+                            models.push(AvailableModel {
+                                id: ollama_id.clone(),
+                                display_name: name.to_string(),
+                                provider: "Ollama Cloud".to_string(),
+                                available: false,
+                                size_score: model_size_score(&ollama_id),
+                            });
+                        }
+                    }
+                }
+            }
+        }
         Err(e) => {
-            tracing::warn!("[MODELS] Failed to parse Ollama response: {}", e);
-            return Vec::new();
+            tracing::warn!("[MODELS] Failed to reach Ollama Cloud: {}", e);
         }
-    };
+    }
 
-    body.get("models")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|m| {
-                    let name = m.get("name")?.as_str()?;
-                    let ollama_id = format!("ollama/{}", name);
-                    Some(AvailableModel {
-                        id: ollama_id.clone(),
-                        display_name: name.to_string(),
-                        provider: "Ollama".to_string(),
-                        available: true,
-                        size_score: model_size_score(&ollama_id),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    models
 }
 
 /// Fetch models from Cerebras by calling their OpenAI-compatible /v1/models endpoint.

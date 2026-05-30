@@ -174,7 +174,7 @@ impl EpisodicStore {
         )?;
         let rows = stmt.query_map([], |row| {
             let emb_blob: Option<Vec<u8>> = row.get(9)?;
-            let emb = emb_blob.map(from_blob);
+            let emb = emb_blob.as_deref().map(from_blob);
             Ok((
                 EpisodicRecord {
                     id: row.get(0)?,

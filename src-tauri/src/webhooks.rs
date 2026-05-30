@@ -153,7 +153,7 @@ pub async fn start_webhook_server(
     let mut app = Router::new()
         .route("/webhook/health", get(health_handler))
         .route("/webhook/{endpoint_id}", post(webhook_handler))
-        .with_state(state)
+        .with_state(state.clone())
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10 MB max body
         .layer(middleware::from_fn(security_headers_middleware));
 

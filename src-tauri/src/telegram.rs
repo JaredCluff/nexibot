@@ -464,7 +464,13 @@ async fn send_formatted_message(
     for chunk in router::split_message(&formatted, 4096) {
         let mut req = bot.send_message(chat_id, chunk.clone());
         if !link_preview {
-            req = req.disable_web_page_preview(true);
+            req = req.link_preview_options(teloxide::types::LinkPreviewOptions {
+                is_disabled: true,
+                url: None,
+                prefer_small_media: false,
+                prefer_large_media: false,
+                show_above_text: false,
+            });
         }
         if let Some(rt) = reply_to {
             req = req.reply_parameters(teloxide::types::ReplyParameters::new(
@@ -483,7 +489,13 @@ async fn send_formatted_message(
                 );
                 let mut req2 = bot.send_message(chat_id, chunk);
                 if !link_preview {
-                    req2 = req2.disable_web_page_preview(true);
+                    req2 = req2.link_preview_options(teloxide::types::LinkPreviewOptions {
+                        is_disabled: true,
+                        url: None,
+                        prefer_small_media: false,
+                        prefer_large_media: false,
+                        show_above_text: false,
+                    });
                 }
                 if let Some(rt) = reply_to {
                     req2 = req2.reply_parameters(teloxide::types::ReplyParameters::new(
@@ -606,6 +618,12 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
         }
     }
 
+    // -- Read Telegram config before moving app_state into TelegramBotState. --
+    let (webhook_config, polling_stall_threshold_ms) = {
+        let cfg = app_state.config.read().await;
+        (cfg.telegram.webhook.clone(), cfg.telegram.polling_stall_threshold_ms)
+    };
+
     let bot_state = Arc::new(TelegramBotState::new(app_state));
 
     // Spawn session cleanup task. Move the handle into the polling loop so it
@@ -618,22 +636,23 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_task = stop_flag.clone();
 
-    // -- Webhook mode (P1.5) --
-    let webhook_config = {
-        let cfg = app_state.config.read().await;
-        cfg.telegram.webhook.clone()
-    };
-
     if webhook_config.enabled {
         if webhook_config.url.is_empty() {
             warn!("[TELEGRAM] Webhook enabled but no URL configured; falling back to polling");
         } else {
             let secret = webhook_config.secret.clone();
+            let webhook_url = match webhook_config.url.parse::<url::Url>() {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("[TELEGRAM] Invalid webhook URL: {} — {}", webhook_config.url, e);
+                    // Fall through to polling mode
+                    return Ok(Some(stop_flag));
+                }
+            };
             let set_result = if secret.is_empty() {
-                bot.set_webhook(teloxide::types::SetWebhook::new(&webhook_config.url))
-                    .await
+                bot.set_webhook(webhook_url).await
             } else {
-                bot.set_webhook(teloxide::types::SetWebhook::new(&webhook_config.url))
+                bot.set_webhook(webhook_url)
                     .secret_token(secret)
                     .await
             };
@@ -668,10 +687,7 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
     // Spawn the long-polling loop with exponential backoff on unexpected exit.
     tokio::spawn(async move {
         let mut backoff = std::time::Duration::from_secs(1);
-        let polling_stall_ms = {
-            let cfg = app_state.config.read().await;
-            cfg.telegram.polling_stall_threshold_ms
-        };
+        let polling_stall_ms = polling_stall_threshold_ms;
         loop {
             if stop_flag_task.load(Ordering::Relaxed) {
                 info!("[TELEGRAM] Stop flag set — exiting polling loop");
@@ -712,6 +728,7 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
                 let stall_threshold = std::time::Duration::from_millis(polling_stall_ms);
                 let watchdog_state = bot_state.clone();
                 let watchdog_stop = stop_flag_task.clone();
+                let watchdog_bot = bot.clone();
                 tokio::spawn(async move {
                     let mut interval = tokio::time::interval(stall_threshold);
                     loop {
@@ -728,9 +745,9 @@ pub async fn start_telegram_bot(app_state: AppState) -> Result<Option<Arc<Atomic
                             match watchdog_state.app_state.config.read().await {
                                 _ => {
                                     // getMe probe to check connectivity
-                                    let bot_clone = bot.clone();
+                                    let bot_clone = watchdog_bot.clone();
                                     match bot_clone.get_me().await {
-                                        Ok(me) => info!("[TELEGRAM] Connectivity OK — @{}", me.username().unwrap_or("?")),
+                                        Ok(me) => info!("[TELEGRAM] Connectivity OK — @{}", me.username.as_deref().unwrap_or("?")),
                                         Err(e) => warn!("[TELEGRAM] getMe probe failed: {}", e),
                                     }
                                 }
@@ -1296,7 +1313,7 @@ async fn handle_telegram_message(bot: Bot, msg: Message, state: Arc<TelegramBotS
         )
     };
 
-    let observer = tool_loop::TelegramObserver::new(
+    let mut observer = tool_loop::TelegramObserver::new(
         bot.clone(),
         chat_id,
         sender_user_id,
@@ -3213,7 +3230,7 @@ mod tests {
         assert_eq!(resolved.group_policy, GroupPolicy::Restricted);
         assert_eq!(resolved.agent_id, Some("group_agent".into()));
         assert_eq!(resolved.system_prompt, Some("group prompt".into()));
-        assert_eq!(resolved.skills, vec!["skill1".into()]);
+        assert_eq!(resolved.skills, vec!["skill1".to_string()]);
         assert!(!resolved.enabled);
     }
 

@@ -8,6 +8,7 @@ use tauri::State;
 use tracing::info;
 
 use crate::claude::{ClaudeClient, Message};
+use crate::hooks::{HookContext, HookPoint};
 use crate::memory::{ConversationSession, MemoryEntry, MemoryManager, MemoryType};
 
 use super::AppState;
@@ -83,7 +84,16 @@ pub async fn delete_memory(state: State<'_, AppState>, memory_id: String) -> Res
 pub async fn start_conversation_session(state: State<'_, AppState>) -> Result<String, String> {
     info!("Starting new conversation session");
     let mut memory_manager = state.memory_manager.write().await;
-    memory_manager.start_session().map_err(|e| e.to_string())
+    let result = memory_manager.start_session().map_err(|e| e.to_string());
+    if result.is_ok() {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_session("new", None)
+                .with_channel("gui");
+            let _ = hooks.execute_hooks(&HookPoint::SessionStart, &ctx).await;
+        }
+    }
+    result
 }
 
 /// Add a message to the current session
@@ -135,7 +145,16 @@ pub async fn list_conversation_sessions(
 pub async fn end_conversation_session(state: State<'_, AppState>) -> Result<(), String> {
     info!("Ending current conversation session");
     let mut memory_manager = state.memory_manager.write().await;
-    memory_manager.end_session().map_err(|e| e.to_string())
+    let result = memory_manager.end_session().map_err(|e| e.to_string());
+    if result.is_ok() {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_session("end", None)
+                .with_channel("gui");
+            let _ = hooks.execute_hooks(&HookPoint::SessionEnd, &ctx).await;
+        }
+    }
+    result
 }
 
 /// Load a saved conversation session: populates Claude history, sets as current session,
@@ -188,6 +207,14 @@ pub async fn new_conversation(state: State<'_, AppState>) -> Result<String, Stri
         let mut memory_manager = state.memory_manager.write().await;
         let _ = memory_manager.end_session();
     }
+    {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_session("end", None)
+                .with_channel("gui");
+            let _ = hooks.execute_hooks(&HookPoint::SessionEnd, &ctx).await;
+        }
+    }
 
     // Clear Claude history
     {
@@ -206,6 +233,14 @@ pub async fn new_conversation(state: State<'_, AppState>) -> Result<String, Stri
         let mut memory_manager = state.memory_manager.write().await;
         memory_manager.start_session().map_err(|e| e.to_string())?
     };
+    {
+        let hooks = state.hook_manager.read().await;
+        if hooks.is_enabled() {
+            let ctx = HookContext::for_session("new", None)
+                .with_channel("gui");
+            let _ = hooks.execute_hooks(&HookPoint::SessionStart, &ctx).await;
+        }
+    }
 
     Ok(session_id)
 }

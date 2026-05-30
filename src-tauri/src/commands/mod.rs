@@ -519,4 +519,7 @@ pub struct AppState {
     pub session_cost_tracker: std::sync::Arc<tokio::sync::RwLock<crate::cost_tracker::CostTracker>>,
     pub budget_limits: crate::cost_tracker::BudgetLimits,
     pub session_context_manager: std::sync::Arc<tokio::sync::RwLock<crate::cost_tracker::ContextManager>>,
+
+    // Lifecycle hooks engine
+    pub hook_manager: std::sync::Arc<tokio::sync::RwLock<crate::hooks::HookManager>>,
 }
